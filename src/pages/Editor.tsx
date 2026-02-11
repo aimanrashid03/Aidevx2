@@ -4,11 +4,16 @@ import {
     FileText, Share2, Download, Mail, Link as LinkIcon, FileDown
 } from 'lucide-react';
 import { useProjects } from '../context/ProjectContext';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import RichTextEditor from '../components/RichTextEditor';
+import PizZip from 'pizzip';
+import Docxtemplater from 'docxtemplater';
+import { saveAs } from 'file-saver';
+import { renderAsync } from 'docx-preview';
 
 const DOC_STRUCTURES: Record<string, string[]> = {
     BRS: ['1. Executive Summary', '2. Project Scope', '3. Business Requirements', '4. Stakeholders', '5. Cost Benefit Analysis'],
-    URS: ['1. Introduction', '2. User Personas', '3. User Scenarios', '4. User Requirements', '5. Acceptance Criteria'],
+    URS: ['1. Project Name', '2. File Name', '3. Issuance Department', '4. Purpose', '5. Scope', '6. Intended audience', '7. References', '8. Standards'],
     SRS: ['1. Introduction', '2. System Overview', '3. Functional Requirements', '4. Non-functional Requirements', '5. Interfaces'],
     SDS: ['1. Architecture', '2. Database Design', '3. API Design', '4. Security Components', '5. Deployment View'],
 };
@@ -32,6 +37,7 @@ export default function Editor() {
     const [showPreview, setShowPreview] = useState(false);
     const [showExport, setShowExport] = useState(false);
     const [email, setEmail] = useState('');
+    const previewContainerRef = useRef<HTMLDivElement>(null);
 
     // Initial content load
     useEffect(() => {
@@ -50,8 +56,6 @@ export default function Editor() {
     const handleContentChange = (index: number, value: string) => {
         setSectionContent(prev => ({ ...prev, [index]: value }));
     };
-
-
 
     const handleSave = () => {
         if (!projectId) return;
@@ -74,35 +78,125 @@ export default function Editor() {
         }
     };
 
+    const generateDocumentBlob = async () => {
+        if (docType !== 'URS') {
+            alert('Only URS export is currently implemented with a template.');
+            return null;
+        }
+
+        try {
+            // Load the template
+            const response = await fetch('/templates/URS.docx');
+            if (!response.ok) throw new Error('Failed to load template');
+            const data = await response.arrayBuffer();
+            const zip = new PizZip(data);
+
+            const doc = new Docxtemplater(zip, {
+                paragraphLoop: true,
+                linebreaks: true,
+            });
+
+            // Clean HTML tags for now (MVP)
+            const cleanContent = (html: string) => {
+                const tmp = document.createElement("DIV");
+                tmp.innerHTML = html;
+                return tmp.textContent || tmp.innerText || "";
+            };
+
+            const dataMap: any = {
+                project_name: project?.name || 'Untitled Project',
+                doc_title: docTitle,
+                doc_type: docType,
+                date: new Date().toLocaleDateString(),
+            };
+
+            structure.forEach((_, idx) => {
+                dataMap[`section_${idx}`] = cleanContent(sectionContent[idx] || '');
+            });
+
+            doc.render(dataMap);
+
+            return doc.getZip().generate({
+                type: "blob",
+                mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            });
+        } catch (error) {
+            console.error('Error generating document:', error);
+            alert('Failed to generate document. Please check the console for details.');
+            return null;
+        }
+    };
+
+    const handleDownload = async () => {
+        const blob = await generateDocumentBlob();
+        if (blob) {
+            saveAs(blob, `${docTitle}.docx`);
+        }
+    };
+
+    // Unified render function
+    const renderPreviewToElement = async (element: HTMLDivElement) => {
+        element.innerHTML = '<div class="flex items-center justify-center h-40 text-slate-400">Loading Preview...</div>';
+        const blob = await generateDocumentBlob();
+        if (blob) {
+            try {
+                // Clear loading text
+                element.innerHTML = '';
+
+                await renderAsync(blob, element, undefined, {
+                    inWrapper: false, // We provide our own wrapper
+                    ignoreWidth: false,
+                    experimental: true,
+                    breakPages: true,
+                    useBase64URL: true,
+                    ignoreLastRenderedPageBreak: true,
+                });
+
+                // Hack to "ignore" headers in preview - inject CSS to hide common header structures from docx-preview
+                const style = document.createElement('style');
+                style.innerHTML = `
+                    .docx-wrapper section > header { display: none !important; } 
+                    .docx-wrapper .header-content { display: none !important; }
+                    /* Ensure pages look like pages */
+                    .docx-wrapper { padding: 0 !important; background: transparent !important; }
+                    .docx-wrapper > section.docx { 
+                        box-shadow: none !important; 
+                        margin-bottom: 0 !important; 
+                        background: white !important;
+                        min-height: auto !important;
+                    }
+                `;
+                element.appendChild(style);
+
+            } catch (err) {
+                console.error("Preview render error:", err);
+                element.innerHTML = '<div class="text-red-500 p-4">Failed to render preview.</div>';
+            }
+        }
+    };
+
+    // Effect to render preview when modals open
+    useEffect(() => {
+        if (showExport && previewContainerRef.current) {
+            renderPreviewToElement(previewContainerRef.current);
+        }
+    }, [showExport, sectionContent, docTitle]);
+
+    // Separate effect for the main preview modal
+    const mainPreviewRef = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+        if (showPreview && mainPreviewRef.current) {
+            renderPreviewToElement(mainPreviewRef.current);
+        }
+    }, [showPreview, sectionContent, docTitle]);
+
+
     const scrollToSection = (index: number) => {
         const element = document.getElementById(`section-${index}`);
         if (element) {
             element.scrollIntoView({ behavior: 'smooth' });
         }
     };
-
-    const DocumentPreviewContent = () => (
-        <div className="bg-white max-w-[800px] mx-auto min-h-screen shadow-sm border border-slate-200 p-12 md:p-16">
-            {/* Document Title Page Mock */}
-            <div className="text-center mb-16 border-b pb-8 border-slate-100">
-                <div className="text-[10px] font-bold tracking-[0.2em] text-slate-400 uppercase mb-4">{project?.name || 'PROJECT NAME'}</div>
-                <h1 className="text-3xl font-bold text-slate-900 mb-4 font-serif">{docTitle}</h1>
-                <div className="text-slate-500 text-sm font-medium">{docType} • {new Date().toLocaleDateString()}</div>
-            </div>
-
-            {/* Content */}
-            <div className="space-y-10">
-                {structure.map((item, idx) => (
-                    <div key={idx}>
-                        <h3 className="text-lg font-bold text-slate-900 mb-3 pb-2 border-b border-slate-100">{item}</h3>
-                        <div className="prose prose-slate prose-sm max-w-none text-slate-700 leading-relaxed whitespace-pre-wrap">
-                            {sectionContent[idx] ? sectionContent[idx] : <span className="text-slate-300 italic">No content.</span>}
-                        </div>
-                    </div>
-                ))}
-            </div>
-        </div>
-    );
 
     return (
         <div className="flex flex-col h-screen bg-slate-50 overflow-hidden font-sans">
@@ -202,12 +296,13 @@ export default function Editor() {
                                     </div>
                                 </div>
                                 <div className="p-6 pt-4">
-                                    <textarea
-                                        value={sectionContent[idx] || ""}
-                                        onChange={(e) => handleContentChange(idx, e.target.value)}
-                                        className="w-full min-h-[120px] p-0 border-none resize-y focus:outline-none focus:ring-0 bg-transparent text-slate-700 placeholder:text-slate-300 leading-relaxed text-sm font-sans"
-                                        placeholder={`Start typing content for ${item}...`}
-                                    />
+                                    <div className="p-0">
+                                        <RichTextEditor
+                                            content={sectionContent[idx] || ""}
+                                            onChange={(html) => handleContentChange(idx, html)}
+                                            placeholder={`Start typing content for ${item}...`}
+                                        />
+                                    </div>
                                 </div>
                             </div>
                         ))}
@@ -215,11 +310,11 @@ export default function Editor() {
                 </main>
             </div>
 
-            {/* Preview Modal */}
+            {/* Main Preview Modal */}
             {showPreview && (
                 <div className="fixed inset-0 z-[100] bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
-                    <div className="bg-slate-50 w-full max-w-5xl h-[90vh] rounded shadow-2xl flex flex-col overflow-hidden border border-slate-200">
-                        <div className="h-14 bg-white border-b border-slate-200 px-6 flex items-center justify-between flex-shrink-0">
+                    <div className="bg-slate-50 w-full max-w-5xl h-[90vh] rounded shadow-2xl flex flex-col overflow-hidden border border-slate-200 relative">
+                        <div className="h-14 bg-white border-b border-slate-200 px-6 flex items-center justify-between flex-shrink-0 z-20 relative">
                             <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2 uppercase tracking-wider">
                                 <Eye size={16} className="text-slate-900" />
                                 Document Preview
@@ -238,8 +333,11 @@ export default function Editor() {
                             </div>
                         </div>
 
-                        <div className="flex-1 overflow-y-auto p-8 md:p-12">
-                            <DocumentPreviewContent />
+                        <div className="flex-1 overflow-y-auto p-8 bg-slate-200/50 flex justify-center z-10 relative">
+                            {/* Wrapper Div for separation */}
+                            <div className="w-full max-w-[800px] pb-20">
+                                <div ref={mainPreviewRef} className="bg-white shadow-lg min-h-[1100px] w-full docx-wrapper-custom" />
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -248,60 +346,67 @@ export default function Editor() {
             {/* Export Modal */}
             {showExport && (
                 <div className="fixed inset-0 z-[100] bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
-                    <div className="bg-white w-full max-w-6xl h-[90vh] rounded shadow-2xl flex overflow-hidden border border-slate-200">
+                    <div className="bg-white w-full max-w-6xl h-[90vh] rounded shadow-2xl flex overflow-hidden border border-slate-200 relative">
                         {/* Left: Preview */}
-                        <div className="flex-1 bg-slate-50 border-r border-slate-200 flex flex-col">
-                            <div className="h-14 bg-white border-b border-slate-200 px-6 flex items-center justify-between flex-shrink-0">
+                        <div className="flex-1 bg-slate-50 border-r border-slate-200 flex flex-col z-10 relative">
+                            <div className="h-14 bg-white border-b border-slate-200 px-6 flex items-center justify-between flex-shrink-0 z-20">
                                 <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2 uppercase tracking-wider">
                                     <Eye size={16} className="text-slate-900" />
-                                    Preview
+                                    Template Preview
                                 </h2>
                             </div>
-                            <div className="flex-1 overflow-y-auto p-8">
-                                <div className="transform scale-75 origin-top bg-white border border-slate-200 shadow-sm min-h-screen">
-                                    <DocumentPreviewContent />
+                            <div className="flex-1 overflow-y-auto p-4 md:p-8 bg-slate-200/50 flex justify-center">
+                                {/* Container for docx-preview */}
+                                <div className="w-full max-w-[800px] pb-20">
+                                    <div
+                                        ref={previewContainerRef}
+                                        className="bg-white shadow-lg min-h-[1100px] w-full docx-wrapper-custom"
+                                    />
                                 </div>
                             </div>
                         </div>
 
                         {/* Right: Sidebar Actions */}
-                        <div className="w-80 bg-white flex flex-col">
-                            <div className="h-14 border-b border-slate-200 px-6 flex items-center justify-between flex-shrink-0">
-                                <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider">Export & Share</h2>
+                        <div className="w-80 bg-white flex flex-col z-20 relative shadow-[-4px_0_15px_-3px_rgba(0,0,0,0.1)]">
+                            <div className="h-12 border-b border-slate-200 px-5 flex items-center justify-between flex-shrink-0">
+                                <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wider">Export & Share</h2>
                                 <button
                                     onClick={() => setShowExport(false)}
-                                    className="p-1.5 hover:bg-slate-100 rounded text-slate-500 hover:text-slate-900 transition-colors"
+                                    className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-slate-900 transition-colors relative z-50"
                                 >
-                                    <X size={18} />
+                                    <X size={16} />
                                 </button>
                             </div>
 
-                            <div className="p-6 space-y-8 overflow-y-auto flex-1">
+                            <div className="p-5 space-y-6 overflow-y-auto flex-1">
                                 {/* Export Section */}
                                 <section>
-                                    <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                                    <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
                                         <Download size={12} />
                                         Download As
                                     </h3>
-                                    <div className="space-y-3">
-                                        <button className="flex items-center justify-between w-full p-3 border border-slate-200 rounded hover:border-slate-900 hover:bg-slate-50 transition-all text-left group">
+                                    <div className="space-y-2">
+                                        <button className="flex items-center justify-between w-full p-2.5 border border-slate-200 rounded hover:border-slate-900 hover:bg-slate-50 transition-all text-left group">
                                             <div className="flex items-center gap-3">
                                                 <div className="w-8 h-8 bg-slate-100 text-slate-600 rounded flex items-center justify-center group-hover:bg-slate-900 group-hover:text-white transition-colors">
                                                     <FileDown size={16} />
                                                 </div>
                                                 <div>
-                                                    <div className="font-bold text-slate-900 text-sm">PDF Document</div>
+                                                    <div className="font-bold text-slate-900 text-xs">PDF Document</div>
                                                     <div className="text-[10px] text-slate-500">Portable Document Format</div>
                                                 </div>
                                             </div>
                                         </button>
-                                        <button className="flex items-center justify-between w-full p-3 border border-slate-200 rounded hover:border-slate-900 hover:bg-slate-50 transition-all text-left group">
+                                        <button
+                                            onClick={handleDownload}
+                                            className="flex items-center justify-between w-full p-2.5 border border-slate-200 rounded hover:border-slate-900 hover:bg-slate-50 transition-all text-left group"
+                                        >
                                             <div className="flex items-center gap-3">
                                                 <div className="w-8 h-8 bg-slate-100 text-slate-600 rounded flex items-center justify-center group-hover:bg-slate-900 group-hover:text-white transition-colors">
                                                     <FileText size={16} />
                                                 </div>
                                                 <div>
-                                                    <div className="font-bold text-slate-900 text-sm">Word Document</div>
+                                                    <div className="font-bold text-slate-900 text-xs">Word Document</div>
                                                     <div className="text-[10px] text-slate-500">Microsoft Word .docx</div>
                                                 </div>
                                             </div>
@@ -310,24 +415,24 @@ export default function Editor() {
                                 </section>
 
                                 {/* Share Section */}
-                                <section className="pt-8 border-t border-slate-100">
-                                    <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                                <section className="pt-6 border-t border-slate-100">
+                                    <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
                                         <Share2 size={12} />
                                         Share
                                     </h3>
 
-                                    <div className="space-y-4">
+                                    <div className="space-y-3">
                                         <div>
-                                            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-2">Send to Email</label>
+                                            <label className="block text-[10px] font-bold text-slate-700 uppercase tracking-wide mb-1.5">Send to Email</label>
                                             <div className="flex gap-2">
                                                 <input
                                                     type="email"
                                                     value={email}
                                                     onChange={(e) => setEmail(e.target.value)}
                                                     placeholder="colleague@example.com"
-                                                    className="flex-1 px-3 py-1.5 border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-slate-900 focus:border-slate-900 text-sm"
+                                                    className="flex-1 px-2.5 py-1.5 border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-slate-900 focus:border-slate-900 text-xs"
                                                 />
-                                                <button className="px-3 py-1.5 bg-slate-900 text-white rounded hover:bg-slate-800 transition-colors font-bold text-xs uppercase tracking-wider flex items-center gap-2">
+                                                <button className="px-2.5 py-1.5 bg-slate-900 text-white rounded hover:bg-slate-800 transition-colors font-bold text-[10px] uppercase tracking-wider flex items-center gap-1.5">
                                                     <Mail size={12} />
                                                     Send
                                                 </button>
@@ -337,12 +442,12 @@ export default function Editor() {
                                         <div className="relative">
                                             <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 flex items-center justify-center">
                                                 <div className="h-px w-full bg-slate-200"></div>
-                                                <span className="bg-white px-2 text-[10px] font-bold text-slate-300 absolute uppercase tracking-widest">OR</span>
+                                                <span className="bg-white px-2 text-[8px] font-bold text-slate-300 absolute uppercase tracking-widest">OR</span>
                                             </div>
-                                            <div className="h-4"></div>
+                                            <div className="h-3"></div>
                                         </div>
 
-                                        <button className="w-full flex items-center justify-center gap-2 px-4 py-2 border border-slate-200 rounded hover:bg-slate-50 transition-colors font-bold text-slate-700 text-xs uppercase tracking-wider">
+                                        <button className="w-full flex items-center justify-center gap-2 px-4 py-2 border border-slate-200 rounded hover:bg-slate-50 transition-colors font-bold text-slate-700 text-[10px] uppercase tracking-wider">
                                             <LinkIcon size={12} />
                                             Copy Share Link
                                         </button>
