@@ -1,24 +1,27 @@
 import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useProjects } from '../context/ProjectContext';
+import { supabase } from '../lib/supabase';
 import { Save, ArrowLeft, Upload, File, X } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
 export default function AddProject() {
     const navigate = useNavigate();
     const { addProject } = useProjects();
+    const { user } = useAuth();
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const [loading, setLoading] = useState(false);
 
     const [formData, setFormData] = useState({
         name: '',
         description: '',
         notes: '',
-        documents: [] as string[],
-        requirementDocs: []
+        documents: [] as File[], // Store actual File objects
     });
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files.length > 0) {
-            const newFiles = Array.from(e.target.files).map(f => f.name);
+            const newFiles = Array.from(e.target.files);
             setFormData(prev => ({
                 ...prev,
                 documents: [...prev.documents, ...newFiles]
@@ -26,19 +29,69 @@ export default function AddProject() {
         }
     };
 
-    const removeFile = (fileName: string) => {
+    const removeFile = (index: number) => {
         setFormData(prev => ({
             ...prev,
-            documents: prev.documents.filter(f => f !== fileName)
+            documents: prev.documents.filter((_, i) => i !== index)
         }));
     };
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!formData.name) return;
+        if (!formData.name || !user) return;
 
-        addProject(formData);
-        navigate('/dashboard');
+        try {
+            setLoading(true);
+
+            // 1. Create Project
+            const projectId = await addProject({
+                name: formData.name,
+                description: formData.description,
+                notes: formData.notes
+            });
+
+            if (!projectId) {
+                throw new Error('Failed to create project');
+            }
+
+            // 2. Upload Files
+            if (formData.documents.length > 0) {
+                const uploadPromises = formData.documents.map(async (file) => {
+                    const fileExt = file.name.split('.').pop();
+                    const fileName = `${projectId}/${Math.random().toString(36).substring(2)}.${fileExt}`;
+                    const filePath = fileName;
+
+                    // Upload to Storage
+                    const { error: uploadError } = await supabase.storage
+                        .from('project-files')
+                        .upload(filePath, file);
+
+                    if (uploadError) throw uploadError;
+
+                    // Save Metadata
+                    const { error: metaError } = await supabase
+                        .from('project_documents')
+                        .insert({
+                            project_id: projectId,
+                            file_name: file.name,
+                            file_path: filePath,
+                            file_size: file.size,
+                            mime_type: file.type
+                        });
+
+                    if (metaError) throw metaError;
+                });
+
+                await Promise.all(uploadPromises);
+            }
+
+            navigate('/dashboard');
+        } catch (error) {
+            console.error('Error creating project:', error);
+            alert('Failed to create project. Please try again.');
+        } finally {
+            setLoading(false);
+        }
     };
 
     return (
@@ -115,11 +168,11 @@ export default function AddProject() {
                                     <div key={idx} className="flex items-center justify-between p-2 bg-slate-50 rounded border border-slate-200">
                                         <div className="flex items-center gap-2 overflow-hidden">
                                             <File size={14} className="text-slate-500 flex-shrink-0" />
-                                            <span className="text-sm text-slate-700 truncate font-medium">{doc}</span>
+                                            <span className="text-sm text-slate-700 truncate font-medium">{doc.name}</span>
                                         </div>
                                         <button
                                             type="button"
-                                            onClick={() => removeFile(doc)}
+                                            onClick={() => removeFile(idx)}
                                             className="text-slate-400 hover:text-red-600 p-1"
                                         >
                                             <X size={14} />
@@ -134,16 +187,24 @@ export default function AddProject() {
                         <button
                             type="button"
                             onClick={() => navigate('/dashboard')}
-                            className="px-4 py-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded font-medium transition-colors text-sm"
+                            disabled={loading}
+                            className="px-4 py-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded font-medium transition-colors text-sm disabled:opacity-50"
                         >
                             Cancel
                         </button>
                         <button
                             type="submit"
-                            className="flex items-center gap-2 px-6 py-2 bg-slate-900 text-white rounded font-medium hover:bg-slate-800 transition-colors shadow-sm text-sm"
+                            disabled={loading}
+                            className="flex items-center gap-2 px-6 py-2 bg-slate-900 text-white rounded font-medium hover:bg-slate-800 transition-colors shadow-sm text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                            <Save size={16} />
-                            Create Project
+                            {loading ? (
+                                <span className="flex items-center gap-2">Processing...</span>
+                            ) : (
+                                <>
+                                    <Save size={16} />
+                                    <span>Create Project</span>
+                                </>
+                            )}
                         </button>
                     </div>
                 </form>

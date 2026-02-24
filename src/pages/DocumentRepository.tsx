@@ -1,10 +1,33 @@
+import { useState } from 'react';
 import { useProjects } from '../context/ProjectContext';
 import { useNavigate } from 'react-router-dom';
-import { FileText, File, FolderOpen, ArrowRight } from 'lucide-react';
+import { FileText, File, FolderOpen, ArrowRight, Download } from 'lucide-react';
+import { supabase } from '../lib/supabase';
 
 export default function DocumentRepository() {
     const { projects } = useProjects();
     const navigate = useNavigate();
+    const [downloading, setDownloading] = useState<string | null>(null);
+
+    const handleDownload = async (filePath: string) => {
+        try {
+            setDownloading(filePath);
+            const { data, error } = await supabase.storage
+                .from('project-files')
+                .createSignedUrl(filePath, 60);
+
+            if (error) throw error;
+
+            if (data?.signedUrl) {
+                window.open(data.signedUrl, '_blank');
+            }
+        } catch (error) {
+            console.error('Error downloading file:', error);
+            alert('Failed to download file.');
+        } finally {
+            setDownloading(null);
+        }
+    };
 
     return (
         <div className="p-6 max-w-7xl mx-auto font-sans">
@@ -62,9 +85,20 @@ export default function DocumentRepository() {
                                 {project.documents && project.documents.length > 0 ? (
                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
                                         {project.documents.map((doc, idx) => (
-                                            <div key={idx} className="flex items-center gap-2 p-2 bg-white rounded border border-slate-200 text-xs text-slate-700 hover:border-slate-300 transition-colors">
-                                                <File size={12} className="text-slate-400" />
-                                                <span className="truncate font-medium">{doc}</span>
+                                            <div
+                                                key={idx}
+                                                onClick={() => handleDownload(doc.path)}
+                                                className="flex items-center gap-2 p-2 bg-white rounded border border-slate-200 text-xs text-slate-700 hover:border-slate-300 transition-colors cursor-pointer group"
+                                            >
+                                                <div className="flex-shrink-0">
+                                                    {downloading === doc.path ? (
+                                                        <div className="animate-spin h-3 w-3 border-2 border-slate-400 border-t-slate-900 rounded-full"></div>
+                                                    ) : (
+                                                        <File size={12} className="text-slate-400" />
+                                                    )}
+                                                </div>
+                                                <span className="truncate font-medium flex-1">{doc.name}</span>
+                                                <Download size={12} className="text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
                                             </div>
                                         ))}
                                     </div>

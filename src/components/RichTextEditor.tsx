@@ -1,4 +1,4 @@
-import { useEditor, EditorContent } from '@tiptap/react'
+import { useEditor, EditorContent, Editor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
 import Underline from '@tiptap/extension-underline'
@@ -16,7 +16,7 @@ interface RichTextEditorProps {
     editable?: boolean;
 }
 
-const MenuBar = ({ editor }: { editor: any }) => {
+const MenuBar = ({ editor }: { editor: Editor | null }) => {
     if (!editor) {
         return null
     }
@@ -84,12 +84,7 @@ const MenuBar = ({ editor }: { editor: any }) => {
             action: () => editor.chain().focus().toggleBlockquote().run(),
             isActive: editor.isActive('blockquote'),
         },
-        // {
-        //     icon: <Code size={16} />,
-        //     title: 'Code Block',
-        //     action: () => editor.chain().focus().toggleCodeBlock().run(),
-        //     isActive: editor.isActive('codeBlock'),
-        // },
+
         { type: 'divider' },
         {
             icon: <Undo size={16} />,

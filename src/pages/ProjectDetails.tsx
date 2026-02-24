@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useProjects } from '../context/ProjectContext';
-import { ArrowLeft, FileText, File, Calendar, Plus, X, LayoutTemplate, ChevronRight } from 'lucide-react';
+import { supabase } from '../lib/supabase';
+import { ArrowLeft, FileText, File, Calendar, Plus, X, LayoutTemplate, ChevronRight, Download } from 'lucide-react';
 
 
 const TEMPLATES = [
@@ -16,6 +17,7 @@ export default function ProjectDetails() {
     const navigate = useNavigate();
     const { projects } = useProjects();
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+    const [downloading, setDownloading] = useState<string | null>(null);
 
     const project = projects.find(p => p.id === projectId);
 
@@ -25,6 +27,26 @@ export default function ProjectDetails() {
 
     const handleCreateDocument = (templateId: string) => {
         navigate(`/editor/${projectId}/${templateId}`);
+    };
+
+    const handleDownload = async (filePath: string) => {
+        try {
+            setDownloading(filePath);
+            const { data, error } = await supabase.storage
+                .from('project-files')
+                .createSignedUrl(filePath, 60); // Valid for 60 seconds
+
+            if (error) throw error;
+
+            if (data?.signedUrl) {
+                window.open(data.signedUrl, '_blank');
+            }
+        } catch (error) {
+            console.error('Error downloading file:', error);
+            alert('Failed to download file.');
+        } finally {
+            setDownloading(null);
+        }
     };
 
     return (
@@ -122,11 +144,20 @@ export default function ProjectDetails() {
                         {project.documents && project.documents.length > 0 ? (
                             <div className="space-y-2">
                                 {project.documents.map((doc, idx) => (
-                                    <div key={idx} className="flex items-center gap-3 p-2 bg-slate-50 rounded border border-slate-200 hover:border-slate-300 transition-all cursor-pointer group">
+                                    <div
+                                        key={idx}
+                                        onClick={() => handleDownload(doc.path)}
+                                        className="flex items-center gap-3 p-2 bg-slate-50 rounded border border-slate-200 hover:border-slate-300 hover:bg-slate-100 transition-all cursor-pointer group"
+                                    >
                                         <div className="w-6 h-6 rounded bg-white flex items-center justify-center border border-slate-200 text-slate-400 group-hover:text-slate-900 group-hover:border-slate-400">
-                                            <File size={12} />
+                                            {downloading === doc.path ? (
+                                                <div className="animate-spin h-3 w-3 border-2 border-slate-400 border-t-slate-900 rounded-full"></div>
+                                            ) : (
+                                                <File size={12} />
+                                            )}
                                         </div>
-                                        <span className="text-sm text-slate-700 truncate font-medium group-hover:text-slate-900">{doc}</span>
+                                        <span className="text-sm text-slate-700 truncate font-medium group-hover:text-slate-900 flex-1">{doc.name}</span>
+                                        <Download size={12} className="text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity" />
                                     </div>
                                 ))}
                             </div>

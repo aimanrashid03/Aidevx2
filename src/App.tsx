@@ -8,26 +8,29 @@ import DocumentRepository from './pages/DocumentRepository';
 import Editor from './pages/Editor';
 import Layout from './components/Layout';
 import { ProjectProvider } from './context/ProjectContext';
+import { AuthProvider } from './context/AuthContext';
 
 function App() {
   return (
-    <ProjectProvider>
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Login />} />
-          <Route element={<Layout />}>
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/projects/new" element={<AddProject />} />
-            <Route path="/projects/:projectId" element={<ProjectDetails />} />
+    <AuthProvider>
+      <ProjectProvider>
+        <BrowserRouter>
+          <Routes>
+            <Route path="/" element={<Login />} />
+            <Route element={<Layout />}>
+              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/projects/new" element={<AddProject />} />
+              <Route path="/projects/:projectId" element={<ProjectDetails />} />
 
-            <Route path="/documents" element={<DocumentRepository />} />
-            <Route path="/editor/:projectId/:templateId" element={<Editor />} />
-          </Route>
-          {/* Fallback */}
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </BrowserRouter>
-    </ProjectProvider>
+              <Route path="/documents" element={<DocumentRepository />} />
+              <Route path="/editor/:projectId/:templateId" element={<Editor />} />
+            </Route>
+            {/* Fallback */}
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </BrowserRouter>
+      </ProjectProvider>
+    </AuthProvider>
   )
 }
 

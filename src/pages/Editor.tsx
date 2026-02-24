@@ -10,13 +10,12 @@ import PizZip from 'pizzip';
 import Docxtemplater from 'docxtemplater';
 import { saveAs } from 'file-saver';
 import { renderAsync } from 'docx-preview';
+import { DOC_STRUCTURES } from '../constants/docs';
+import { useCallback } from 'react';
 
-const DOC_STRUCTURES: Record<string, string[]> = {
-    BRS: ['1. Executive Summary', '2. Project Scope', '3. Business Requirements', '4. Stakeholders', '5. Cost Benefit Analysis'],
-    URS: ['1. Project Name', '2. File Name', '3. Issuance Department', '4. Purpose', '5. Scope', '6. Intended audience', '7. References', '8. Standards'],
-    SRS: ['1. Introduction', '2. System Overview', '3. Functional Requirements', '4. Non-functional Requirements', '5. Interfaces'],
-    SDS: ['1. Architecture', '2. Database Design', '3. API Design', '4. Security Components', '5. Deployment View'],
-};
+// Removed local DOC_STRUCTURES definition in favor of import
+
+
 
 export default function Editor() {
     const { projectId, templateId } = useParams();
@@ -78,7 +77,7 @@ export default function Editor() {
         }
     };
 
-    const generateDocumentBlob = async () => {
+    const generateDocumentBlob = useCallback(async () => {
         if (docType !== 'URS') {
             alert('Only URS export is currently implemented with a template.');
             return null;
@@ -103,7 +102,7 @@ export default function Editor() {
                 return tmp.textContent || tmp.innerText || "";
             };
 
-            const dataMap: any = {
+            const dataMap: Record<string, string> = {
                 project_name: project?.name || 'Untitled Project',
                 doc_title: docTitle,
                 doc_type: docType,
@@ -125,7 +124,7 @@ export default function Editor() {
             alert('Failed to generate document. Please check the console for details.');
             return null;
         }
-    };
+    }, [docType, project?.name, docTitle, structure, sectionContent]);
 
     const handleDownload = async () => {
         const blob = await generateDocumentBlob();
@@ -135,7 +134,7 @@ export default function Editor() {
     };
 
     // Unified render function
-    const renderPreviewToElement = async (element: HTMLDivElement) => {
+    const renderPreviewToElement = useCallback(async (element: HTMLDivElement) => {
         element.innerHTML = '<div class="flex items-center justify-center h-40 text-slate-400">Loading Preview...</div>';
         const blob = await generateDocumentBlob();
         if (blob) {
@@ -153,34 +152,38 @@ export default function Editor() {
                 });
 
                 // Hack to "ignore" headers in preview - inject CSS to hide common header structures from docx-preview
-                const style = document.createElement('style');
-                style.innerHTML = `
-                    .docx-wrapper section > header { display: none !important; } 
-                    .docx-wrapper .header-content { display: none !important; }
-                    /* Ensure pages look like pages */
-                    .docx-wrapper { padding: 0 !important; background: transparent !important; }
-                    .docx-wrapper > section.docx { 
-                        box-shadow: none !important; 
-                        margin-bottom: 0 !important; 
-                        background: white !important;
-                        min-height: auto !important;
-                    }
-                `;
-                element.appendChild(style);
+                if (!element.querySelector('#preview-style')) {
+                    const style = document.createElement('style');
+                    style.id = 'preview-style';
+                    style.innerHTML = `
+                        .docx-wrapper section > header { display: none !important; } 
+                        .docx-wrapper .header-content { display: none !important; }
+                        /* Ensure pages look like pages */
+                        .docx-wrapper { padding: 0 !important; background: transparent !important; }
+                        .docx-wrapper > section.docx { 
+                            box-shadow: none !important; 
+                            margin-bottom: 0 !important; 
+                            background: white !important;
+                            min-height: auto !important;
+                        }
+                    `;
+                    element.appendChild(style);
+                }
 
             } catch (err) {
                 console.error("Preview render error:", err);
                 element.innerHTML = '<div class="text-red-500 p-4">Failed to render preview.</div>';
             }
         }
-    };
+    }, [generateDocumentBlob]);
 
+    // Effect to render preview when modals open
     // Effect to render preview when modals open
     useEffect(() => {
         if (showExport && previewContainerRef.current) {
             renderPreviewToElement(previewContainerRef.current);
         }
-    }, [showExport, sectionContent, docTitle]);
+    }, [showExport, renderPreviewToElement]);
 
     // Separate effect for the main preview modal
     const mainPreviewRef = useRef<HTMLDivElement>(null);
@@ -188,7 +191,7 @@ export default function Editor() {
         if (showPreview && mainPreviewRef.current) {
             renderPreviewToElement(mainPreviewRef.current);
         }
-    }, [showPreview, sectionContent, docTitle]);
+    }, [showPreview, renderPreviewToElement]);
 
 
     const scrollToSection = (index: number) => {
