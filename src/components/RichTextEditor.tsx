@@ -152,10 +152,10 @@ const RichTextEditor = ({ content, onChange, placeholder = 'Start typing...', ed
     // Generally Tiptap manages its own state, but if we switch sections (new content prop), we need to update
     useEffect(() => {
         if (editor && content !== editor.getHTML()) {
-            // Only update if the content is truly different to avoid cursor jumping
-            // A simple check is usually not enough for real-time collab, but for switching sections it's fine
-            // We'll trust the parent to only change `content` when switching sections
-            editor.commands.setContent(content)
+            // Only update if not currently focused to avoid destroying the caret position while typing
+            if (!editor.isFocused) {
+                editor.commands.setContent(content)
+            }
         }
     }, [content, editor])
 

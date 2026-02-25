@@ -6,7 +6,7 @@ export interface RequirementDoc {
     id: string;
     title: string;
     type: string; // 'BRS', 'URS', etc.
-    content: Record<number, string>; // Section content
+    content: Record<number, any[]>; // Section content (Array of structural blocks)
     lastModified: string;
     status: 'draft' | 'final';
 }

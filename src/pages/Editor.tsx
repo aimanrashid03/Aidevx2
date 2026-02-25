@@ -1,11 +1,13 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import {
     ArrowLeft, Save, Eye, ChevronRight, Sparkles, Bot, X, Printer,
-    FileText, Share2, Download, Mail, Link as LinkIcon, FileDown
+    FileText, Share2, Download, Mail, Link as LinkIcon, FileDown,
+    Info
 } from 'lucide-react';
 import { useProjects } from '../context/ProjectContext';
 import { useState, useEffect, useRef } from 'react';
 import RichTextEditor from '../components/RichTextEditor';
+import TableEditor from '../components/TableEditor';
 import PizZip from 'pizzip';
 import Docxtemplater from 'docxtemplater';
 import { saveAs } from 'file-saver';
@@ -30,30 +32,45 @@ export default function Editor() {
     const docType = existingDoc ? existingDoc.type : (templateId || 'BRS');
     const structure = DOC_STRUCTURES[docType] || DOC_STRUCTURES['BRS'];
 
-    // State for section content
-    const [sectionContent, setSectionContent] = useState<Record<number, string>>({});
+    // State for section content, now an array of blocks per section index
+    const [sectionContent, setSectionContent] = useState<Record<number, any[]>>({});
     const [docTitle, setDocTitle] = useState(existingDoc?.title || 'Untitled Document');
     const [showPreview, setShowPreview] = useState(false);
     const [showExport, setShowExport] = useState(false);
+    const [showHints, setShowHints] = useState(true);
     const [email, setEmail] = useState('');
     const previewContainerRef = useRef<HTMLDivElement>(null);
 
     // Initial content load
     useEffect(() => {
         if (existingDoc) {
-            setSectionContent(existingDoc.content);
+            // Migrate legacy flat string content to block array structure
+            const migratedState: Record<number, any[]> = {};
+            Object.entries(existingDoc.content).forEach(([idx, val]) => {
+                if (typeof val === 'string') {
+                    migratedState[Number(idx)] = [{ type: 'text', data: val }];
+                } else {
+                    migratedState[Number(idx)] = val;
+                }
+            });
+            setSectionContent(migratedState);
             setDocTitle(existingDoc.title);
         } else {
-            const initial: Record<number, string> = {};
-            structure.forEach((_, idx) => {
-                initial[idx] = "";
+            const initial: Record<number, any[]> = {};
+            structure.forEach((item, idx) => {
+                initial[idx] = typeof item === 'string' ? [] : (item.content ? JSON.parse(JSON.stringify(item.content)) : []);
             });
             setSectionContent(initial);
         }
     }, [existingDoc, structure]);
 
-    const handleContentChange = (index: number, value: string) => {
-        setSectionContent(prev => ({ ...prev, [index]: value }));
+    const handleContentChange = (sectionIdx: number, blockIdx: number, value: any) => {
+        setSectionContent(prev => {
+            const newSection = [...(prev[sectionIdx] || [])];
+            const existingBlock = newSection[blockIdx] || { type: 'text' };
+            newSection[blockIdx] = { ...existingBlock, data: value };
+            return { ...prev, [sectionIdx]: newSection };
+        });
     };
 
     const handleSave = () => {
@@ -93,13 +110,43 @@ export default function Editor() {
             const doc = new Docxtemplater(zip, {
                 paragraphLoop: true,
                 linebreaks: true,
+                nullGetter: function () {
+                    return "";
+                }
             });
 
-            // Clean HTML tags for now (MVP)
+            // Enhanced HTML to plaintext fallback formatter for Docxtemplater (MVP)
             const cleanContent = (html: string) => {
+                let text = html || "";
+
+                // Replace block elements with line breaks to preserve spacing
+                text = text.replace(/<(p|div|h[1-6])[^>]*>/gi, '\n');
+                text = text.replace(/<\/(p|div|h[1-6])>/gi, '\n');
+
+                // Replace explicit line breaks
+                text = text.replace(/<br\s*\/?>/gi, '\n');
+
+                // Handle lists (turn <li> into bullet points)
+                text = text.replace(/<li[^>]*>/gi, '• ');
+                text = text.replace(/<\/li>/gi, '\n');
+
+                // Apply Markdown-style formatting to preserve intent of bold/italic
+                text = text.replace(/<(b|strong)[^>]*>/gi, '**');
+                text = text.replace(/<\/(b|strong)>/gi, '**');
+                text = text.replace(/<(i|em)[^>]*>/gi, '_');
+                text = text.replace(/<\/(i|em)>/gi, '_');
+
+                // Let the browser handle standard HTML entity decoding (like &amp; &lt;)
                 const tmp = document.createElement("DIV");
-                tmp.innerHTML = html;
-                return tmp.textContent || tmp.innerText || "";
+                tmp.innerHTML = text;
+
+                // Retrieve the decoded text
+                let result = tmp.textContent || tmp.innerText || "";
+
+                // Clean up excessive newlines (max 2 consecutive)
+                result = result.replace(/\n{3,}/g, '\n\n').trim();
+
+                return result;
             };
 
             const dataMap: Record<string, string> = {
@@ -109,8 +156,42 @@ export default function Editor() {
                 date: new Date().toLocaleDateString(),
             };
 
-            structure.forEach((_, idx) => {
-                dataMap[`section_${idx}`] = cleanContent(sectionContent[idx] || '');
+            structure.forEach((item, idx) => {
+                const key = typeof item === 'string' ? `section_${idx}` : `section_${idx}`;
+
+                const blocks = sectionContent[idx] || [];
+
+                // Aggregate text
+                const textBlocks = blocks.filter(b => b.type === 'text');
+                dataMap[key] = textBlocks.map(b => cleanContent(b.data)).join('\n\n');
+
+                // Feed tables dynamically into docxtemplater arrays
+                const tableBlocks = blocks.filter(b => b.type === 'table');
+                tableBlocks.forEach((tb, tIdx) => {
+                    // For MVP, expose the very first table in a section as `table_X_0` for the template to loop
+                    const tableKey = `table_${idx}_${tIdx}`;
+                    const tableArray: any[] = [];
+
+                    // Build array of objects mapping column labels to cell values
+                    // E.g. { "FR ID": "PM-1.1", "Features": "The system..." }
+                    if (tb.data) {
+                        tb.data.forEach((row: string[]) => {
+                            const rowObj: Record<string, string> = {};
+                            if (tb.columns) {
+                                tb.columns.forEach((colName: string, cIdx: number) => {
+                                    // Sanitize colName for docxtemplater variables (alphanumeric+underscore)
+                                    let cleanColName = colName.replace(/[^a-zA-Z0-9_]/g, '');
+                                    // Prevent empty keys
+                                    if (!cleanColName) cleanColName = `col_${cIdx}`;
+                                    rowObj[cleanColName] = row[cIdx] || '';
+                                });
+                            }
+                            tableArray.push(rowObj);
+                        });
+                    }
+
+                    dataMap[tableKey] = tableArray as any;
+                });
             });
 
             doc.render(dataMap);
@@ -239,6 +320,14 @@ export default function Editor() {
                         <span className="md:inline hidden">Preview</span>
                     </button>
                     <button
+                        onClick={() => setShowHints(!showHints)}
+                        className={`flex items-center gap-2 px-2 py-1 ${showHints ? 'bg-sky-50 text-sky-700 border-sky-200 shadow-sm' : 'bg-white text-slate-600 border-transparent hover:bg-slate-100'} rounded transition-colors font-medium text-xs border`}
+                        title="Toggle Instructions"
+                    >
+                        <Info size={12} />
+                        <span className="md:inline hidden">Hints</span>
+                    </button>
+                    <button
                         onClick={() => setShowExport(true)}
                         className="flex items-center gap-2 px-2 py-1 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded transition-colors font-medium text-xs shadow-sm"
                     >
@@ -260,55 +349,155 @@ export default function Editor() {
                 <aside className="w-60 border-r border-slate-200 bg-white overflow-y-auto p-4 hidden md:block flex-shrink-0">
                     <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 px-2">Table of Contents</h3>
                     <nav className="space-y-0.5">
-                        {structure.map((item, idx) => (
-                            <button
-                                key={idx}
-                                onClick={() => scrollToSection(idx)}
-                                className="w-full text-left px-3 py-1.5 rounded text-xs text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors truncate font-medium"
-                            >
-                                {item}
-                            </button>
-                        ))}
+                        {structure.map((item, idx) => {
+                            const isString = typeof item === 'string';
+                            const title = isString ? item : item.title;
+                            const level = isString ? 1 : item.level;
+
+                            // Calculate padding based on header level (1-6)
+                            // Level 1 gets px-3, Level 2 gets px-6, Level 3 gets px-9, etc.
+                            const paddingLeft = isString ? '0.75rem' : `${0.75 + (level - 1) * 0.75}rem`;
+                            // Font weight and size decay slightly with depth for visual hierarchy
+                            const fontSize = level === 1 ? '0.75rem' : '0.7rem';
+                            const opacity = level === 1 ? '1' : `0.${9 - level}`;
+
+                            return (
+                                <button
+                                    key={idx}
+                                    onClick={() => scrollToSection(idx)}
+                                    className="w-full text-left py-1.5 rounded text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors truncate font-medium relative"
+                                    style={{
+                                        paddingLeft,
+                                        fontSize,
+                                        opacity
+                                    }}
+                                >
+                                    {/* Small visual indicator for nested items */}
+                                    {level > 1 && (
+                                        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[2px] h-3 bg-slate-200 rounded-r" style={{ marginLeft: `${0.25 + (level - 2) * 0.75}rem` }} />
+                                    )}
+
+                                    {title}
+                                </button>
+                            );
+                        })}
                     </nav>
                 </aside>
 
                 {/* Editor Area - Scrollable Container */}
                 <main className="flex-1 overflow-y-auto bg-slate-50/50 p-6">
                     <div className="max-w-4xl mx-auto space-y-6 pb-32">
-                        {structure.map((item, idx) => (
-                            <div
-                                key={idx}
-                                id={`section-${idx}`}
-                                className="bg-white shadow-sm border border-slate-200 rounded overflow-hidden scroll-mt-20 group hover:shadow-md transition-all"
-                            >
-                                <div className="p-6 pb-4 border-b border-slate-50 flex justify-between items-start bg-white">
-                                    <h2 className="text-lg font-bold font-sans text-slate-900 tracking-tight">
-                                        {item}
-                                    </h2>
+                        {structure.map((item, idx) => {
+                            const isString = typeof item === 'string';
+                            const title = isString ? item : item.title;
+                            const level = isString ? 1 : item.level;
 
-                                    {/* AI Tools Toolbar */}
-                                    <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <button className="flex items-center gap-1.5 px-2 py-1 bg-slate-100 text-slate-700 rounded text-[10px] font-bold uppercase tracking-wider hover:bg-slate-200 transition-colors border border-slate-200" title="Generate suggested content for this section">
-                                            <Sparkles size={12} />
-                                            <span>Auto-Gen</span>
-                                        </button>
-                                        <button className="flex items-center gap-1.5 px-2 py-1 bg-slate-900 text-white rounded text-[10px] font-bold uppercase tracking-wider hover:bg-slate-800 transition-colors" title="Open prompting assistant">
-                                            <Bot size={12} />
-                                            <span>Deep Prompt</span>
-                                        </button>
+                            return (
+                                <div
+                                    key={idx}
+                                    id={`section-${idx}`}
+                                    className="bg-white shadow-sm border border-slate-200 rounded overflow-hidden scroll-mt-20 group hover:shadow-md transition-all"
+                                >
+                                    <div className="p-4 pb-3 border-b border-slate-50 flex justify-between items-start bg-white">
+
+                                        {/* Dynamic Heading Size based on Level */}
+                                        {level === 1 && <h2 className="text-lg font-bold font-sans text-slate-900 tracking-tight">{title}</h2>}
+                                        {level === 2 && <h3 className="text-base font-bold font-sans text-slate-800 tracking-tight">{title}</h3>}
+                                        {level === 3 && <h4 className="text-sm font-bold font-sans text-slate-700 tracking-tight">{title}</h4>}
+                                        {level > 3 && <h5 className="text-xs font-bold font-sans text-slate-700 tracking-tight">{title}</h5>}
+
+                                        {/* AI Tools Toolbar */}
+                                        <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <button className="flex items-center gap-1 px-2 py-1 bg-slate-100 text-slate-700 rounded text-[9px] font-bold uppercase tracking-wider hover:bg-slate-200 transition-colors border border-slate-200" title="Generate suggested content for this section">
+                                                <Sparkles size={10} />
+                                                <span>Auto-Gen</span>
+                                            </button>
+                                            <button className="flex items-center gap-1 px-2 py-1 bg-slate-900 text-white rounded text-[9px] font-bold uppercase tracking-wider hover:bg-slate-800 transition-colors" title="Open prompting assistant">
+                                                <Bot size={10} />
+                                                <span>Deep Prompt</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div className="p-4 pt-3">
+                                        <div className="p-0 space-y-3">
+                                            {/* Render Instructions if they exist */}
+                                            {showHints && !isString && Array.isArray((item as any).instructions) && (item as any).instructions.length > 0 && (
+                                                <div className="bg-sky-50 border border-sky-100 rounded p-3 mb-3 flex gap-2 text-sky-800">
+                                                    <Info size={14} className="mt-0.5 flex-shrink-0" />
+                                                    <div className="text-xs space-y-1.5 font-medium leading-relaxed">
+                                                        {(item as any).instructions.map((instr: string, iIndex: number) => (
+                                                            <p key={iIndex}>{instr}</p>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Render Content Blocks */}
+                                            {(() => {
+                                                const currentBlocks = sectionContent[idx] || [];
+                                                const isDivider = ((title === '1.0 Introduction' || title === '2.0 Overview') && (!isString && (!(item as any).instructions || (item as any).instructions.length === 0)));
+
+                                                const blocksToRender = (currentBlocks.length === 0 && !isDivider)
+                                                    ? [{ type: 'text', data: '' }]
+                                                    : currentBlocks;
+
+                                                return (
+                                                    <>
+                                                        {blocksToRender.map((block, bIdx) => {
+                                                            if (block.type === 'text') {
+                                                                return (
+                                                                    <div key={`text-${bIdx}`} className="mb-3">
+                                                                        <RichTextEditor
+                                                                            content={block.data || ""}
+                                                                            onChange={(html) => handleContentChange(idx, bIdx, html)}
+                                                                            placeholder={currentBlocks.length === 0 ? `Start typing content for ${title}...` : `Start typing content...`}
+                                                                        />
+                                                                    </div>
+                                                                );
+                                                            } else if (block.type === 'table') {
+                                                                return (
+                                                                    <div key={`table-${bIdx}`} className="mb-3">
+                                                                        <TableEditor
+                                                                            columns={block.columns || []}
+                                                                            initialData={block.data || []}
+                                                                            onChange={(newData) => handleContentChange(idx, bIdx, newData)}
+                                                                        />
+                                                                    </div>
+                                                                );
+                                                            }
+                                                            return null;
+                                                        })}
+
+                                                        {currentBlocks.length === 0 && isDivider && (
+                                                            <div className="mb-3 flex flex-col items-center">
+                                                                <div className="relative flex py-3 items-center w-full group">
+                                                                    <div className="flex-grow border-t border-slate-200"></div>
+                                                                    <span className="flex-shrink mx-3 text-slate-300 text-[9px] font-bold uppercase tracking-widest bg-slate-50 px-2.5 py-0.5 rounded-full border border-slate-100">Section Divider</span>
+                                                                    <div className="flex-grow border-t border-slate-200"></div>
+
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            setSectionContent(prev => ({
+                                                                                ...prev,
+                                                                                [idx]: [{ type: 'text', data: '' }]
+                                                                            }));
+                                                                        }}
+                                                                        className="opacity-0 group-hover:opacity-100 transition-opacity absolute right-0 flex items-center gap-1.5 px-2 py-1 bg-white text-slate-500 rounded text-[9px] font-bold uppercase tracking-wider hover:text-slate-900 border border-slate-200 shadow-sm"
+                                                                    >
+                                                                        <Sparkles size={10} />
+                                                                        <span>Add Content</span>
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </>
+                                                );
+                                            })()}
+                                        </div>
                                     </div>
                                 </div>
-                                <div className="p-6 pt-4">
-                                    <div className="p-0">
-                                        <RichTextEditor
-                                            content={sectionContent[idx] || ""}
-                                            onChange={(html) => handleContentChange(idx, html)}
-                                            placeholder={`Start typing content for ${item}...`}
-                                        />
-                                    </div>
-                                </div>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 </main>
             </div>

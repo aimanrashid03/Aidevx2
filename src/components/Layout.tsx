@@ -5,7 +5,18 @@ import { useState } from 'react';
 
 export default function Layout() {
     const location = useLocation();
-    const [isCollapsed, setIsCollapsed] = useState(false);
+    const [isCollapsed, setIsCollapsed] = useState(() => {
+        const saved = localStorage.getItem('sidebarCollapsed');
+        return saved === 'true';
+    });
+
+    const toggleSidebar = () => {
+        setIsCollapsed(prev => {
+            const next = !prev;
+            localStorage.setItem('sidebarCollapsed', String(next));
+            return next;
+        });
+    };
 
     const navItems = [
         { label: 'Projects', path: '/dashboard', icon: LayoutDashboard },
@@ -29,7 +40,7 @@ export default function Layout() {
                 </div>
 
                 <button
-                    onClick={() => setIsCollapsed(!isCollapsed)}
+                    onClick={toggleSidebar}
                     className="absolute -right-3 top-16 bg-white border border-slate-200 rounded-full p-1 text-slate-500 hover:text-slate-900 hover:border-slate-300 shadow-sm z-[100] transition-all cursor-pointer"
                     aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
                 >

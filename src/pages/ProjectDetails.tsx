@@ -6,10 +6,10 @@ import { ArrowLeft, FileText, File, Calendar, Plus, X, LayoutTemplate, ChevronRi
 
 
 const TEMPLATES = [
-    { id: 'BRS', name: 'Business Requirement Spec', desc: 'High-level business goals and scope.' },
-    { id: 'URS', name: 'User Requirement Spec', desc: 'User needs and interaction flows.' },
-    { id: 'SRS', name: 'Software Requirement Spec', desc: 'Detailed functional and non-functional requirements.' },
-    { id: 'SDS', name: 'Software Design Spec', desc: 'Technical architecture and system design.' },
+    { id: 'BRS', name: 'Business Requirement Spec (BRS)', desc: 'High-level business goals and scope.' },
+    { id: 'URS', name: 'User Requirement Spec (URS)', desc: 'User needs and interaction flows.' },
+    { id: 'SRS', name: 'Software Requirement Spec (SRS)', desc: 'Detailed functional and non-functional requirements.' },
+    { id: 'SDS', name: 'Software Design Spec (SDS)', desc: 'Technical architecture and system design.' },
 ];
 
 export default function ProjectDetails() {
