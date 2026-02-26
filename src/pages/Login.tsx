@@ -47,9 +47,9 @@ export default function Login() {
     return (
         <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
             <div className="max-w-md w-full bg-white p-8 rounded-xl shadow-sm border border-slate-200">
-                <div className="text-center mb-8">
-                    <h1 className="text-3xl font-bold text-slate-900 tracking-tight font-sans">Aidevx</h1>
-                    <p className="text-slate-500 mt-2">{isSignUp ? 'Create a new account' : 'Sign in to your account'}</p>
+                <div className="text-center mb-8 flex flex-col items-center">
+                    <img src="/logo.png" alt="Aidevx Logo" className="h-[4.5rem] w-auto object-contain mb-3" />
+                    <p className="text-slate-500">{isSignUp ? 'Create a new account' : 'Sign in to your account'}</p>
                 </div>
 
                 {error && (

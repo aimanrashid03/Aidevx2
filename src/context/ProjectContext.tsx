@@ -6,7 +6,8 @@ export interface RequirementDoc {
     id: string;
     title: string;
     type: string; // 'BRS', 'URS', etc.
-    content: Record<number, any[]>; // Section content (Array of structural blocks)
+    content: Record<number, unknown[]>; // Section content (Array of structural blocks)
+    sectionStatuses?: Record<number, 'drafting' | 'complete'>;
     lastModified: string;
     status: 'draft' | 'final';
 }
@@ -26,6 +27,9 @@ interface ProjectContextType {
     loading: boolean;
     refreshProjects: () => Promise<void>;
     addProject: (project: Omit<Project, 'id' | 'createdAt' | 'requirementDocs'>) => Promise<string | null>;
+    updateProject: (projectId: string, updates: Partial<Pick<Project, 'name' | 'description' | 'notes'>>) => Promise<void>;
+    deleteProjectDocument: (path: string) => Promise<void>;
+    deleteRequirementDoc: (id: string, projectId: string) => Promise<void>;
     saveRequirementDoc: (projectId: string, doc: RequirementDoc) => Promise<void>;
 }
 
@@ -147,8 +151,66 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
         }
     };
 
+    const updateProject = async (projectId: string, updates: Partial<Pick<Project, 'name' | 'description' | 'notes'>>) => {
+        if (!user) return;
+        try {
+            const { error } = await supabase
+                .from('projects')
+                .update(updates)
+                .eq('id', projectId);
+
+            if (error) throw error;
+            await fetchProjects();
+        } catch (error) {
+            console.error('Error updating project:', error);
+            throw error;
+        }
+    };
+
+    const deleteProjectDocument = async (path: string) => {
+        if (!user) return;
+        try {
+            // Remove from storage
+            const { error: storageError } = await supabase.storage
+                .from('project-files')
+                .remove([path]);
+
+            if (storageError) throw storageError;
+
+            const { error: dbError } = await supabase
+                .from('project_documents')
+                .delete()
+                .eq('file_path', path);
+
+            if (dbError) throw dbError;
+
+            await fetchProjects();
+        } catch (error) {
+            console.error('Error deleting document:', error);
+            throw error;
+        }
+    };
+
+    const deleteRequirementDoc = async (id: string, projectId: string) => {
+        if (!user) return;
+        try {
+            const { error } = await supabase
+                .from('requirement_docs')
+                .delete()
+                .eq('id', id)
+                .eq('project_id', projectId);
+
+            if (error) throw error;
+
+            await fetchProjects();
+        } catch (error) {
+            console.error('Error deleting requirement document:', error);
+            throw error;
+        }
+    };
+
     return (
-        <ProjectContext.Provider value={{ projects, loading, refreshProjects: fetchProjects, addProject, saveRequirementDoc }}>
+        <ProjectContext.Provider value={{ projects, loading, refreshProjects: fetchProjects, addProject, updateProject, deleteProjectDocument, deleteRequirementDoc, saveRequirementDoc }}>
             {children}
         </ProjectContext.Provider>
     );
