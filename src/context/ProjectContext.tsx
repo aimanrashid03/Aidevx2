@@ -71,6 +71,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
             const { data: projectsData, error: projectsError } = await supabase
                 .from('projects')
                 .select('*')
+                .eq('user_id', user.id)
                 .order('created_at', { ascending: false });
 
             if (projectsError) throw projectsError;

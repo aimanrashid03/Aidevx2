@@ -98,12 +98,49 @@ serve(async (req) => {
                 status: 200
             })
 
+        } else if (action === 'update_user') {
+            const { user_id, full_name, email, password } = payload
+
+            // Update auth-layer fields (email, password) via admin API
+            const authUpdates: { email?: string; password?: string } = {}
+            if (email) authUpdates.email = email
+            if (password) authUpdates.password = password
+
+            if (Object.keys(authUpdates).length > 0) {
+                const { error } = await supabaseAdmin.auth.admin.updateUserById(user_id, authUpdates)
+                if (error) throw error
+            }
+
+            // Sync profile table (full_name and/or email)
+            const profileUpdates: { full_name?: string; email?: string } = {}
+            if (full_name !== undefined) profileUpdates.full_name = full_name
+            if (email !== undefined) profileUpdates.email = email
+
+            if (Object.keys(profileUpdates).length > 0) {
+                const { error } = await supabaseAdmin
+                    .from('profiles')
+                    .update(profileUpdates)
+                    .eq('id', user_id)
+                if (error) throw error
+            }
+
+            return new Response(JSON.stringify({ success: true }), {
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+                status: 200
+            })
+
         } else {
             throw new Error(`Unknown action: ${action}`)
         }
 
-    } catch (error) {
-        return new Response(JSON.stringify({ error: error.message }), {
+    } catch (err) {
+        const message =
+            err instanceof Error
+                ? err.message
+                : typeof err === 'object' && err !== null && 'message' in err
+                    ? String((err as { message: unknown }).message)
+                    : String(err)
+        return new Response(JSON.stringify({ error: message || 'Unknown error' }), {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
             status: 400,
         })

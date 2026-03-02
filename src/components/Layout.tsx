@@ -172,8 +172,8 @@ export default function Layout() {
                             <div className="text-sm font-medium text-slate-900 truncate">
                                 {profile.full_name || profile.email}
                             </div>
-                            <div className="text-xs text-slate-500 capitalize">
-                                {profile.role}
+                            <div className="text-xs text-slate-500">
+                                {profile.role === 'admin' ? 'Administrator' : 'User'}
                             </div>
                         </div>
                     )}
