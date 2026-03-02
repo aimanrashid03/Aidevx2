@@ -1,8 +1,9 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useProjects } from '../context/ProjectContext';
 import { supabase } from '../lib/supabase';
-import { ArrowLeft, FileText, File, Calendar, Plus, X, LayoutTemplate, ChevronRight, Download, Edit, Trash2, Check, CloudUpload, Clock, FileCheck, AlertCircle, LayoutDashboard, Folders } from 'lucide-react';
+import { ArrowLeft, FileText, File, Calendar, Plus, X, LayoutTemplate, ChevronRight, Download, Edit, Trash2, Check, CloudUpload, Clock, FileCheck, AlertCircle, LayoutDashboard, Folders, Users } from 'lucide-react';
 import { useRef, useState, DragEvent } from 'react';
+import ProjectMembers from '../components/ProjectMembers';
 import mammoth from 'mammoth';
 import * as pdfjsLib from 'pdfjs-dist';
 
@@ -33,7 +34,7 @@ export default function ProjectDetails() {
     const [downloading, setDownloading] = useState<string | null>(null);
     const [uploading, setUploading] = useState(false);
     const [isDragging, setIsDragging] = useState(false);
-    const [activeTab, setActiveTab] = useState<'overview' | 'documents'>('overview');
+    const [activeTab, setActiveTab] = useState<'overview' | 'documents' | 'members'>('overview');
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const project = projects.find(p => p.id === projectId);
@@ -324,6 +325,16 @@ export default function ProjectDetails() {
                         </span>
                     )}
                 </button>
+                <button
+                    onClick={() => setActiveTab('members')}
+                    className={`pb-3 text-sm font-bold transition-colors relative flex items-center gap-2 ${activeTab === 'members'
+                        ? 'text-slate-900 before:absolute before:bottom-0 before:left-0 before:w-full before:h-0.5 before:bg-slate-900'
+                        : 'text-slate-500 hover:text-slate-700'
+                        }`}
+                >
+                    <Users size={16} className={activeTab === 'members' ? 'text-slate-900' : 'text-slate-400'} />
+                    Members
+                </button>
             </div>
 
             <div className="space-y-5 animate-in fade-in duration-300">
@@ -578,6 +589,12 @@ export default function ProjectDetails() {
                                 </div>
                             </div>
                         </section>
+                    </div>
+                )}
+
+                {activeTab === 'members' && (
+                    <div className="max-w-2xl">
+                        <ProjectMembers projectId={project.id} />
                     </div>
                 )}
             </div>

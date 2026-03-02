@@ -2,19 +2,26 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
     ArrowLeft, Save, Eye, ChevronRight, Sparkles, Bot, X, Printer,
     FileText, Share2, Download, Mail, Link as LinkIcon, FileDown,
-    Info, CheckCircle2, CircleDashed
+    Info, CheckCircle2, CircleDashed, History, MessageSquare
 } from 'lucide-react';
-import { useProjects } from '../context/ProjectContext';
+import { useProjects, type DocVersion } from '../context/ProjectContext';
 import { useState, useEffect, useRef } from 'react';
+import VersionHistory from '../components/VersionHistory';
+import VersionViewer from '../components/VersionViewer';
+import CommentsSidebar from '../components/CommentsSidebar';
+import PresenceIndicator from '../components/PresenceIndicator';
 import RichTextEditor from '../components/RichTextEditor';
 import TableEditor from '../components/TableEditor';
-import PizZip from 'pizzip';
-import Docxtemplater from 'docxtemplater';
 import { saveAs } from 'file-saver';
 import { DOC_STRUCTURES } from '../constants/docs';
 import { useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { renderAsync } from 'docx-preview';
+import { buildDocx } from '../lib/export/docxBuilder';
+import { exportPreviewToPdf } from '../lib/export/pdfExport';
+import { useDocumentComments } from '../hooks/useDocumentComments';
+import { useDocumentPresence } from '../hooks/useDocumentPresence';
+import type { DocSection } from '../constants/urs_structure';
 
 // Removed local DOC_STRUCTURES definition in favor of import
 
@@ -23,7 +30,7 @@ import { renderAsync } from 'docx-preview';
 export default function Editor() {
     const { projectId, templateId } = useParams();
     const navigate = useNavigate();
-    const { projects, saveRequirementDoc } = useProjects();
+    const { projects, saveRequirementDoc, restoreVersion } = useProjects();
     const project = projects.find(p => p.id === projectId);
 
     // Determines if we are editing an existing doc (templateId is a doc ID) or creating new (templateId is a template type)
@@ -42,7 +49,22 @@ export default function Editor() {
     const [showHints, setShowHints] = useState(true);
     const [generatingSection, setGeneratingSection] = useState<number | null>(null);
     const [email, setEmail] = useState('');
+    const [docStatus, setDocStatus] = useState<'draft' | 'final'>(existingDoc?.status || 'draft');
+    const [showVersionHistory, setShowVersionHistory] = useState(false);
+    const [viewingVersion, setViewingVersion] = useState<DocVersion | null>(null);
+    const [showComments, setShowComments] = useState(false);
     const previewContainerRef = useRef<HTMLDivElement>(null);
+
+    // Collaboration hooks
+    const docId = existingDoc?.id;
+    const { comments, addComment, resolveComment, deleteComment, getCommentCountBySection } = useDocumentComments(docId, projectId);
+    const { otherUsers, totalViewers } = useDocumentPresence(docId);
+    const commentCounts = getCommentCountBySection();
+
+    // Build section titles for the comments sidebar
+    const sectionTitles = structure.map((item) =>
+        typeof item === 'string' ? item : (item as DocSection).title
+    );
 
     const handleAutoGen = async (sectionIdx: number, sectionTitle: string, instructions?: string[]) => {
         if (!projectId) return;
@@ -147,7 +169,7 @@ export default function Editor() {
             content: sectionContent,
             sectionStatuses: sectionStatuses,
             lastModified: new Date().toISOString(),
-            status: 'draft' as const
+            status: docStatus,
         };
 
         saveRequirementDoc(projectId, newDoc);
@@ -158,125 +180,56 @@ export default function Editor() {
         }
     };
 
+    const handleViewVersion = (version: DocVersion) => {
+        setViewingVersion(version);
+    };
+
+    const handleRestoreVersion = async (version: DocVersion) => {
+        if (!projectId) return;
+        if (!confirm(`Restore to version ${version.versionNumber}? Your current content will be saved as a new version.`)) return;
+
+        await restoreVersion(version, projectId);
+        // Reload the page to reflect restored content
+        window.location.reload();
+    };
+
     const generateDocumentBlob = useCallback(async () => {
-        if (docType !== 'URS') {
-            alert('Only URS export is currently implemented with a template.');
-            return null;
-        }
-
         try {
-            // Load the template
-            const response = await fetch('/templates/URS.docx');
-            if (!response.ok) throw new Error('Failed to load template');
-            const data = await response.arrayBuffer();
-            const zip = new PizZip(data);
-
-            const doc = new Docxtemplater(zip, {
-                paragraphLoop: true,
-                linebreaks: true,
-                nullGetter: function () {
-                    return "";
-                }
+            const blob = await buildDocx({
+                projectName: project?.name || 'Untitled Project',
+                docTitle,
+                docType,
+                structure,
+                sectionContent,
             });
-
-            // Enhanced HTML to plaintext fallback formatter for Docxtemplater (MVP)
-            const cleanContent = (html: string) => {
-                let text = html || "";
-
-                // Replace block elements with line breaks to preserve spacing
-                text = text.replace(/<(p|div|h[1-6])[^>]*>/gi, '\n');
-                text = text.replace(/<\/(p|div|h[1-6])>/gi, '\n');
-
-                // Replace explicit line breaks
-                text = text.replace(/<br\s*\/?>/gi, '\n');
-
-                // Handle lists (turn <li> into bullet points)
-                text = text.replace(/<li[^>]*>/gi, '• ');
-                text = text.replace(/<\/li>/gi, '\n');
-
-                // Apply Markdown-style formatting to preserve intent of bold/italic
-                text = text.replace(/<(b|strong)[^>]*>/gi, '**');
-                text = text.replace(/<\/(b|strong)>/gi, '**');
-                text = text.replace(/<(i|em)[^>]*>/gi, '_');
-                text = text.replace(/<\/(i|em)>/gi, '_');
-
-                // Let the browser handle standard HTML entity decoding (like &amp; &lt;)
-                const tmp = document.createElement("DIV");
-                tmp.innerHTML = text;
-
-                // Retrieve the decoded text
-                let result = tmp.textContent || tmp.innerText || "";
-
-                // Clean up excessive newlines (max 2 consecutive)
-                result = result.replace(/\n{3,}/g, '\n\n').trim();
-
-                return result;
-            };
-
-            const dataMap: Record<string, unknown> = {
-                project_name: project?.name || 'Untitled Project',
-                doc_title: docTitle,
-                doc_type: docType,
-                date: new Date().toLocaleDateString(),
-            };
-
-            structure.forEach((item, idx) => {
-                const key = typeof item === 'string' ? `section_${idx}` : `section_${idx}`;
-
-                const blocks = sectionContent[idx] || [];
-
-                // Aggregate text
-                const textBlocks = blocks.filter(b => b.type === 'text');
-                dataMap[key] = textBlocks.map(b => cleanContent((b.data as string) || "")).join('\n\n');
-
-                // Feed tables dynamically into docxtemplater arrays
-                const tableBlocks = blocks.filter(b => b.type === 'table');
-                tableBlocks.forEach((tb, tIdx) => {
-                    // For MVP, expose the very first table in a section as `table_X_0` for the template to loop
-                    const tableKey = `table_${idx}_${tIdx}`;
-                    const tableArray: Record<string, unknown>[] = [];
-
-                    // Build array of objects mapping column labels to cell values
-                    // E.g. { "FR ID": "PM-1.1", "Features": "The system..." }
-                    if (tb.data && Array.isArray(tb.data)) {
-                        tb.data.forEach((row: unknown) => {
-                            const rowArr = row as string[];
-                            const rowObj: Record<string, string> = {};
-                            if (tb.columns && Array.isArray(tb.columns)) {
-                                tb.columns.forEach((colName: unknown, cIdx: number) => {
-                                    // Sanitize colName for docxtemplater variables (alphanumeric+underscore)
-                                    let cleanColName = (colName as string).replace(/[^a-zA-Z0-9_]/g, '');
-                                    // Prevent empty keys
-                                    if (!cleanColName) cleanColName = `col_${cIdx}`;
-                                    rowObj[cleanColName] = rowArr[cIdx] || '';
-                                });
-                            }
-                            tableArray.push(rowObj);
-                        });
-                    }
-
-                    dataMap[tableKey] = tableArray;
-                });
-            });
-
-            doc.render(dataMap);
-
-            return doc.getZip().generate({
-                type: "blob",
-                mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            });
+            return blob;
         } catch (error) {
             console.error('Error generating document:', error);
             alert('Failed to generate document. Please check the console for details.');
             return null;
         }
-    }, [docType, project?.name, docTitle, structure, sectionContent]);
+    }, [project?.name, docTitle, docType, structure, sectionContent]);
 
     const handleDownload = async () => {
         const blob = await generateDocumentBlob();
         if (blob) {
             saveAs(blob, `${docTitle}.docx`);
         }
+    };
+
+    const handlePdfDownload = async () => {
+        // We need a rendered preview to capture. Use the export modal's preview container.
+        const container = previewContainerRef.current || mainPreviewRef.current;
+        if (!container) {
+            alert('Please open the preview first to generate a PDF.');
+            return;
+        }
+        // Ensure the preview is rendered
+        const sections = container.querySelectorAll('section.docx');
+        if (sections.length === 0 && !container.innerHTML.includes('docx')) {
+            await renderPreviewToElement(container);
+        }
+        await exportPreviewToPdf(container, `${docTitle}.pdf`);
     };
 
     // Unified render function
@@ -369,9 +322,23 @@ export default function Editor() {
                 </div>
 
                 <div className="flex items-center gap-2">
-                    <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 mr-2 md:inline hidden">
-                        {existingDoc ? 'Saved' : 'Unsaved'}
-                    </span>
+                    {/* Presence indicator */}
+                    <PresenceIndicator otherUsers={otherUsers} totalViewers={totalViewers} />
+
+                    {/* Status selector */}
+                    <select
+                        value={docStatus}
+                        onChange={(e) => setDocStatus(e.target.value as 'draft' | 'final')}
+                        className="text-[10px] uppercase font-bold tracking-wider border border-slate-200 rounded px-2 py-1 bg-white text-slate-600 focus:outline-none focus:ring-1 focus:ring-slate-400 cursor-pointer"
+                    >
+                        <option value="draft">Draft</option>
+                        <option value="final">Final</option>
+                    </select>
+                    {existingDoc && (
+                        <span className="text-[10px] uppercase font-bold tracking-wider text-slate-300 md:inline hidden">
+                            v{existingDoc.currentVersion || 1}
+                        </span>
+                    )}
                     <button
                         onClick={() => setShowPreview(true)}
                         className="flex items-center gap-2 px-2 py-1 text-slate-600 hover:bg-slate-100 rounded transition-colors font-medium text-xs border border-transparent hover:border-slate-200"
@@ -386,6 +353,29 @@ export default function Editor() {
                     >
                         <Info size={12} />
                         <span className="md:inline hidden">Hints</span>
+                    </button>
+                    {existingDoc && (
+                        <button
+                            onClick={() => setShowVersionHistory(!showVersionHistory)}
+                            className={`flex items-center gap-2 px-2 py-1 ${showVersionHistory ? 'bg-violet-50 text-violet-700 border-violet-200 shadow-sm' : 'bg-white text-slate-600 border-transparent hover:bg-slate-100'} rounded transition-colors font-medium text-xs border`}
+                            title="Version History"
+                        >
+                            <History size={12} />
+                            <span className="md:inline hidden">History</span>
+                        </button>
+                    )}
+                    <button
+                        onClick={() => { setShowComments(!showComments); if (!showComments) setShowVersionHistory(false); }}
+                        className={`flex items-center gap-2 px-2 py-1 ${showComments ? 'bg-blue-50 text-blue-700 border-blue-200 shadow-sm' : 'bg-white text-slate-600 border-transparent hover:bg-slate-100'} rounded transition-colors font-medium text-xs border relative`}
+                        title="Comments"
+                    >
+                        <MessageSquare size={12} />
+                        <span className="md:inline hidden">Comments</span>
+                        {comments.length > 0 && (
+                            <span className="absolute -top-1 -right-1 w-4 h-4 bg-blue-600 text-white text-[8px] font-bold rounded-full flex items-center justify-center">
+                                {comments.length}
+                            </span>
+                        )}
                     </button>
                     <button
                         onClick={() => setShowExport(true)}
@@ -445,15 +435,22 @@ export default function Editor() {
                                     title={title}
                                 >
                                     <span className="truncate pr-2">{title}</span>
-                                    {status === 'complete' && (
-                                        <CheckCircle2 size={12} className="text-emerald-500 shrink-0 opacity-100 transition-opacity" />
-                                    )}
-                                    {status === 'drafting' && (
-                                        <CircleDashed size={12} className="text-amber-500 shrink-0 opacity-100 transition-opacity" />
-                                    )}
-                                    {!status && (
-                                        <CircleDashed size={12} className="text-slate-300 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
-                                    )}
+                                    <span className="flex items-center gap-1 shrink-0">
+                                        {commentCounts[idx] > 0 && (
+                                            <span className="text-[9px] font-bold text-blue-500 bg-blue-50 rounded-full w-4 h-4 flex items-center justify-center">
+                                                {commentCounts[idx]}
+                                            </span>
+                                        )}
+                                        {status === 'complete' && (
+                                            <CheckCircle2 size={12} className="text-emerald-500 opacity-100 transition-opacity" />
+                                        )}
+                                        {status === 'drafting' && (
+                                            <CircleDashed size={12} className="text-amber-500 opacity-100 transition-opacity" />
+                                        )}
+                                        {!status && (
+                                            <CircleDashed size={12} className="text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                        )}
+                                    </span>
                                 </button>
                             );
                         })}
@@ -476,11 +473,21 @@ export default function Editor() {
                                 >
                                     {/* Dynamic Heading Size based on Level */}
                                     <div className="mb-2 flex flex-col md:flex-row md:items-start justify-between gap-2 group/header pb-1 border-b border-transparent hover:border-slate-100 transition-colors">
-                                        <div className="flex-1 min-w-0 pt-0.5">
+                                        <div className="flex-1 min-w-0 pt-0.5 flex items-center gap-2">
                                             {level === 1 && <h2 className="text-lg font-bold font-sans text-slate-900 tracking-tight truncate">{title}</h2>}
                                             {level === 2 && <h3 className="text-base font-bold font-sans text-slate-800 tracking-tight truncate">{title}</h3>}
                                             {level === 3 && <h4 className="text-sm font-bold font-sans text-slate-800 tracking-tight truncate">{title}</h4>}
                                             {level > 3 && <h5 className="text-[13px] font-bold font-sans text-slate-700 tracking-tight truncate">{title}</h5>}
+                                            {commentCounts[idx] > 0 && (
+                                                <button
+                                                    onClick={() => { setShowComments(true); setShowVersionHistory(false); }}
+                                                    className="shrink-0 flex items-center gap-1 px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded-full text-[10px] font-bold hover:bg-blue-100 transition-colors"
+                                                    title={`${commentCounts[idx]} comment${commentCounts[idx] !== 1 ? 's' : ''}`}
+                                                >
+                                                    <MessageSquare size={10} />
+                                                    {commentCounts[idx]}
+                                                </button>
+                                            )}
                                         </div>
 
                                         {/* Status Toggle */}
@@ -605,7 +612,44 @@ export default function Editor() {
                         })}
                     </div>
                 </main>
+
+                {/* Version History Sidebar */}
+                {showVersionHistory && existingDoc && projectId && (
+                    <aside className="w-64 bg-slate-50 border-l border-slate-200 flex flex-col overflow-hidden shrink-0 transition-all">
+                        <VersionHistory
+                            docId={existingDoc.id}
+                            projectId={projectId}
+                            currentVersion={existingDoc.currentVersion || 1}
+                            onViewVersion={handleViewVersion}
+                            onRestoreVersion={handleRestoreVersion}
+                        />
+                    </aside>
+                )}
+
+                {/* Comments Sidebar */}
+                {showComments && projectId && docId && (
+                    <aside className="w-72 bg-slate-50 border-l border-slate-200 flex flex-col overflow-hidden shrink-0 transition-all">
+                        <CommentsSidebar
+                            comments={comments}
+                            activeSectionIndex={null}
+                            onAddComment={addComment}
+                            onResolveComment={resolveComment}
+                            onDeleteComment={deleteComment}
+                            sectionTitles={sectionTitles}
+                        />
+                    </aside>
+                )}
             </div >
+
+            {/* Version Viewer Modal */}
+            {viewingVersion && (
+                <VersionViewer
+                    version={viewingVersion}
+                    docType={docType}
+                    onClose={() => setViewingVersion(null)}
+                    onRestore={handleRestoreVersion}
+                />
+            )}
 
             {/* Main Preview Modal */}
             {
@@ -686,7 +730,10 @@ export default function Editor() {
                                             Download As
                                         </h3>
                                         <div className="space-y-2">
-                                            <button className="flex items-center justify-between w-full p-2.5 border border-slate-200 rounded hover:border-slate-900 hover:bg-slate-50 transition-all text-left group">
+                                            <button
+                                                onClick={handlePdfDownload}
+                                                className="flex items-center justify-between w-full p-2.5 border border-slate-200 rounded hover:border-slate-900 hover:bg-slate-50 transition-all text-left group"
+                                            >
                                                 <div className="flex items-center gap-3">
                                                     <div className="w-8 h-8 bg-slate-100 text-slate-600 rounded flex items-center justify-center group-hover:bg-slate-900 group-hover:text-white transition-colors">
                                                         <FileDown size={16} />

@@ -10,6 +10,21 @@ export interface RequirementDoc {
     sectionStatuses?: Record<number, 'drafting' | 'complete'>;
     lastModified: string;
     status: 'draft' | 'final';
+    currentVersion?: number;
+}
+
+export interface DocVersion {
+    id: string;
+    docId: string;
+    projectId: string;
+    versionNumber: number;
+    content: Record<number, unknown[]>;
+    sectionStatuses?: Record<number, 'drafting' | 'complete'>;
+    title: string;
+    status: string;
+    createdBy: string;
+    createdAt: string;
+    changeSummary?: string;
 }
 
 export interface Project {
@@ -30,7 +45,9 @@ interface ProjectContextType {
     updateProject: (projectId: string, updates: Partial<Pick<Project, 'name' | 'description' | 'notes'>>) => Promise<void>;
     deleteProjectDocument: (path: string) => Promise<void>;
     deleteRequirementDoc: (id: string, projectId: string) => Promise<void>;
-    saveRequirementDoc: (projectId: string, doc: RequirementDoc) => Promise<void>;
+    saveRequirementDoc: (projectId: string, doc: RequirementDoc, changeSummary?: string) => Promise<void>;
+    fetchDocVersions: (docId: string, projectId: string) => Promise<DocVersion[]>;
+    restoreVersion: (version: DocVersion, projectId: string) => Promise<void>;
 }
 
 const ProjectContext = createContext<ProjectContextType | undefined>(undefined);
@@ -84,8 +101,10 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
                         title: d.title,
                         type: d.type,
                         content: d.content || {},
+                        sectionStatuses: d.section_statuses || undefined,
                         lastModified: d.last_modified,
-                        status: d.status as 'draft' | 'final'
+                        status: d.status as 'draft' | 'final',
+                        currentVersion: d.current_version || 1,
                     })) || []
                 };
             }));
@@ -128,10 +147,41 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
         }
     };
 
-    const saveRequirementDoc = async (projectId: string, doc: RequirementDoc) => {
+    const saveRequirementDoc = async (projectId: string, doc: RequirementDoc, changeSummary?: string) => {
         if (!user) return;
 
         try {
+            // 1. Check if doc already exists (for versioning snapshot)
+            const { data: existing } = await supabase
+                .from('requirement_docs')
+                .select('id, content, title, status, current_version, section_statuses')
+                .eq('id', doc.id)
+                .eq('project_id', projectId)
+                .single();
+
+            let nextVersion = 1;
+
+            if (existing) {
+                // 2. Snapshot current content into doc_versions
+                const currentVersion = existing.current_version || 1;
+                nextVersion = currentVersion + 1;
+
+                await supabase
+                    .from('doc_versions')
+                    .insert({
+                        doc_id: doc.id,
+                        project_id: projectId,
+                        version_number: currentVersion,
+                        content: existing.content || {},
+                        section_statuses: existing.section_statuses,
+                        title: existing.title,
+                        status: existing.status,
+                        created_by: user.id,
+                        change_summary: changeSummary || null,
+                    });
+            }
+
+            // 3. Upsert the current document with new content
             const { error } = await supabase
                 .from('requirement_docs')
                 .upsert({
@@ -140,7 +190,9 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
                     title: doc.title,
                     type: doc.type,
                     content: doc.content,
+                    section_statuses: doc.sectionStatuses || null,
                     status: doc.status,
+                    current_version: nextVersion,
                     last_modified: new Date().toISOString()
                 });
 
@@ -148,6 +200,67 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
             await fetchProjects();
         } catch (error) {
             console.error('Error saving document:', error);
+        }
+    };
+
+    const fetchDocVersions = async (docId: string, projectId: string): Promise<DocVersion[]> => {
+        try {
+            const { data, error } = await supabase
+                .from('doc_versions')
+                .select('*')
+                .eq('doc_id', docId)
+                .eq('project_id', projectId)
+                .order('version_number', { ascending: false });
+
+            if (error) throw error;
+
+            return (data || []).map(v => ({
+                id: v.id,
+                docId: v.doc_id,
+                projectId: v.project_id,
+                versionNumber: v.version_number,
+                content: v.content || {},
+                sectionStatuses: v.section_statuses || undefined,
+                title: v.title,
+                status: v.status,
+                createdBy: v.created_by,
+                createdAt: v.created_at,
+                changeSummary: v.change_summary,
+            }));
+        } catch (error) {
+            console.error('Error fetching versions:', error);
+            return [];
+        }
+    };
+
+    const restoreVersion = async (version: DocVersion, projectId: string) => {
+        if (!user) return;
+
+        try {
+            // Save current state as a version first, then overwrite with restored content
+            const restoredDoc: RequirementDoc = {
+                id: version.docId,
+                title: version.title,
+                type: '', // type doesn't change, we'll read it
+                content: version.content,
+                sectionStatuses: version.sectionStatuses,
+                lastModified: new Date().toISOString(),
+                status: 'draft',
+            };
+
+            // Get current doc type
+            const { data: current } = await supabase
+                .from('requirement_docs')
+                .select('type')
+                .eq('id', version.docId)
+                .eq('project_id', projectId)
+                .single();
+
+            restoredDoc.type = current?.type || 'BRS';
+
+            await saveRequirementDoc(projectId, restoredDoc, `Restored from version ${version.versionNumber}`);
+        } catch (error) {
+            console.error('Error restoring version:', error);
         }
     };
 
@@ -210,7 +323,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     };
 
     return (
-        <ProjectContext.Provider value={{ projects, loading, refreshProjects: fetchProjects, addProject, updateProject, deleteProjectDocument, deleteRequirementDoc, saveRequirementDoc }}>
+        <ProjectContext.Provider value={{ projects, loading, refreshProjects: fetchProjects, addProject, updateProject, deleteProjectDocument, deleteRequirementDoc, saveRequirementDoc, fetchDocVersions, restoreVersion }}>
             {children}
         </ProjectContext.Provider>
     );
