@@ -34,7 +34,7 @@ export default function Editor() {
     const structure = DOC_STRUCTURES[docType] || DOC_STRUCTURES['BRS'];
 
     // State for section content, now an array of blocks per section index
-    const [sectionContent, setSectionContent] = useState<Record<number, any[]>>({});
+    const [sectionContent, setSectionContent] = useState<Record<number, Record<string, unknown>[]>>({});
     const [sectionStatuses, setSectionStatuses] = useState<Record<number, 'drafting' | 'complete'>>({});
     const [docTitle, setDocTitle] = useState(existingDoc?.title || 'Untitled Document');
     const [showPreview, setShowPreview] = useState(false);
@@ -79,19 +79,19 @@ export default function Editor() {
     useEffect(() => {
         if (existingDoc) {
             // Migrate legacy flat string content to block array structure
-            const migratedState: Record<number, any[]> = {};
+            const migratedState: Record<number, Record<string, unknown>[]> = {};
             Object.entries(existingDoc.content).forEach(([idx, val]) => {
                 if (typeof val === 'string') {
                     migratedState[Number(idx)] = [{ type: 'text', data: val }];
                 } else {
-                    migratedState[Number(idx)] = val;
+                    migratedState[Number(idx)] = val as Record<string, unknown>[];
                 }
             });
             setSectionContent(migratedState);
             setSectionStatuses(existingDoc.sectionStatuses || {});
             setDocTitle(existingDoc.title);
         } else {
-            const initial: Record<number, any[]> = {};
+            const initial: Record<number, Record<string, unknown>[]> = {};
             const initialStatuses: Record<number, 'drafting' | 'complete'> = {};
             structure.forEach((item, idx) => {
                 initial[idx] = typeof item === 'string' ? [] : (item.content ? JSON.parse(JSON.stringify(item.content)) : []);
@@ -127,7 +127,7 @@ export default function Editor() {
         }
     };
 
-    const handleContentChange = (sectionIdx: number, blockIdx: number, value: any) => {
+    const handleContentChange = (sectionIdx: number, blockIdx: number, value: unknown) => {
         setSectionContent(prev => {
             const newSection = [...(prev[sectionIdx] || [])];
             const existingBlock = newSection[blockIdx] || { type: 'text' };
@@ -213,7 +213,7 @@ export default function Editor() {
                 return result;
             };
 
-            const dataMap: Record<string, string> = {
+            const dataMap: Record<string, unknown> = {
                 project_name: project?.name || 'Untitled Project',
                 doc_title: docTitle,
                 doc_type: docType,
@@ -227,34 +227,35 @@ export default function Editor() {
 
                 // Aggregate text
                 const textBlocks = blocks.filter(b => b.type === 'text');
-                dataMap[key] = textBlocks.map(b => cleanContent(b.data)).join('\n\n');
+                dataMap[key] = textBlocks.map(b => cleanContent((b.data as string) || "")).join('\n\n');
 
                 // Feed tables dynamically into docxtemplater arrays
                 const tableBlocks = blocks.filter(b => b.type === 'table');
                 tableBlocks.forEach((tb, tIdx) => {
                     // For MVP, expose the very first table in a section as `table_X_0` for the template to loop
                     const tableKey = `table_${idx}_${tIdx}`;
-                    const tableArray: any[] = [];
+                    const tableArray: Record<string, unknown>[] = [];
 
                     // Build array of objects mapping column labels to cell values
                     // E.g. { "FR ID": "PM-1.1", "Features": "The system..." }
-                    if (tb.data) {
-                        tb.data.forEach((row: string[]) => {
+                    if (tb.data && Array.isArray(tb.data)) {
+                        tb.data.forEach((row: unknown) => {
+                            const rowArr = row as string[];
                             const rowObj: Record<string, string> = {};
-                            if (tb.columns) {
-                                tb.columns.forEach((colName: string, cIdx: number) => {
+                            if (tb.columns && Array.isArray(tb.columns)) {
+                                tb.columns.forEach((colName: unknown, cIdx: number) => {
                                     // Sanitize colName for docxtemplater variables (alphanumeric+underscore)
-                                    let cleanColName = colName.replace(/[^a-zA-Z0-9_]/g, '');
+                                    let cleanColName = (colName as string).replace(/[^a-zA-Z0-9_]/g, '');
                                     // Prevent empty keys
                                     if (!cleanColName) cleanColName = `col_${cIdx}`;
-                                    rowObj[cleanColName] = row[cIdx] || '';
+                                    rowObj[cleanColName] = rowArr[cIdx] || '';
                                 });
                             }
                             tableArray.push(rowObj);
                         });
                     }
 
-                    dataMap[tableKey] = tableArray as any;
+                    dataMap[tableKey] = tableArray;
                 });
             });
 
@@ -506,11 +507,11 @@ export default function Editor() {
 
                                     <div className="space-y-3 border-l-[2px] border-transparent group-hover:border-slate-100 pl-3 py-0.5 -ml-3 transition-colors">
                                         {/* Render Instructions if they exist */}
-                                        {showHints && !isString && Array.isArray((item as any).instructions) && (item as any).instructions.length > 0 && (
+                                        {showHints && !isString && Array.isArray((item as { instructions?: string[] }).instructions) && (((item as { instructions?: string[] }).instructions)?.length ?? 0) > 0 && (
                                             <div className="bg-sky-50 border border-sky-100 rounded p-3 mb-3 flex gap-2 text-sky-800">
                                                 <Info size={14} className="mt-0.5 flex-shrink-0" />
                                                 <div className="text-xs space-y-1.5 font-medium leading-relaxed">
-                                                    {(item as any).instructions.map((instr: string, iIndex: number) => (
+                                                    {((item as { instructions?: string[] }).instructions || []).map((instr: string, iIndex: number) => (
                                                         <p key={iIndex}>{instr}</p>
                                                     ))}
                                                 </div>
@@ -520,7 +521,7 @@ export default function Editor() {
                                         {/* Render Content Blocks */}
                                         {(() => {
                                             const currentBlocks = sectionContent[idx] || [];
-                                            const isDivider = ((title === '1.0 Introduction' || title === '2.0 Overview') && (!isString && (!(item as any).instructions || (item as any).instructions.length === 0)));
+                                            const isDivider = ((title === '1.0 Introduction' || title === '2.0 Overview') && (!isString && (!(item as { instructions?: string[] }).instructions || (((item as { instructions?: string[] }).instructions)?.length ?? 0) === 0)));
 
                                             const blocksToRender = (currentBlocks.length === 0 && !isDivider)
                                                 ? [{ type: 'text', data: '' }]
@@ -533,7 +534,7 @@ export default function Editor() {
                                                             return (
                                                                 <div key={`text-${bIdx}`} className="mb-2">
                                                                     <RichTextEditor
-                                                                        content={block.data || ""}
+                                                                        content={(block.data as string) || ""}
                                                                         onChange={(html) => handleContentChange(idx, bIdx, html)}
                                                                         placeholder={currentBlocks.length === 0 ? `Start typing content for ${title}...` : `Start typing content...`}
                                                                     />
@@ -543,8 +544,8 @@ export default function Editor() {
                                                             return (
                                                                 <div key={`table-${bIdx}`} className="mb-2">
                                                                     <TableEditor
-                                                                        columns={block.columns || []}
-                                                                        initialData={block.data || []}
+                                                                        columns={(block.columns as string[]) || []}
+                                                                        initialData={(block.data as string[][]) || []}
                                                                         onChange={(newData) => handleContentChange(idx, bIdx, newData)}
                                                                     />
                                                                 </div>
@@ -573,7 +574,7 @@ export default function Editor() {
                                                     <div className="mt-2 flex opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity duration-200">
                                                         <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-100 rounded-md p-1">
                                                             <button
-                                                                onClick={() => handleAutoGen(idx, title, (item as any).instructions)}
+                                                                onClick={() => handleAutoGen(idx, title, ((item as { instructions?: string[] }).instructions || []))}
                                                                 disabled={generatingSection === idx}
                                                                 className="px-2 py-1 text-purple-600 hover:text-purple-800 hover:bg-purple-100 transition-colors rounded-sm disabled:opacity-50 flex items-center gap-1.5"
                                                                 title="Auto-Gen Section"

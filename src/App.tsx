@@ -3,6 +3,8 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import AddProject from './pages/AddProject';
 import ProjectDetails from './pages/ProjectDetails';
+import AdminDashboard from './pages/AdminDashboard';
+import AdminRoute from './components/AdminRoute';
 
 import DocumentRepository from './pages/DocumentRepository';
 import Editor from './pages/Editor';
@@ -24,6 +26,11 @@ function App() {
 
               <Route path="/documents" element={<DocumentRepository />} />
               <Route path="/editor/:projectId/:templateId" element={<Editor />} />
+
+              {/* Admin Routes */}
+              <Route element={<AdminRoute />}>
+                <Route path="/admin" element={<AdminDashboard />} />
+              </Route>
             </Route>
             {/* Fallback */}
             <Route path="*" element={<Navigate to="/" replace />} />

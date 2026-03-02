@@ -1,12 +1,22 @@
-import { Outlet, Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, LogOut, ChevronLeft, ChevronRight, FolderOpen, ChevronDown } from 'lucide-react';
+import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
+import { LayoutDashboard, LogOut, ChevronLeft, ChevronRight, FolderOpen, ChevronDown, ShieldAlert } from 'lucide-react';
 import clsx from 'clsx';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useProjects } from '../context/ProjectContext';
+import { useAuth } from '../context/AuthContext';
 
 export default function Layout() {
     const location = useLocation();
+    const navigate = useNavigate();
     const { projects } = useProjects();
+    const { profile, session, loading, signOut } = useAuth();
+
+    useEffect(() => {
+        if (!loading && !session) {
+            navigate('/', { replace: true });
+        }
+    }, [session, loading, navigate]);
+
     const [isCollapsed, setIsCollapsed] = useState(() => {
         const saved = localStorage.getItem('sidebarCollapsed');
         return saved === 'true';
@@ -21,6 +31,14 @@ export default function Layout() {
     };
 
     const [isProjectsExpanded, setIsProjectsExpanded] = useState(true);
+
+    if (loading || !session) {
+        return (
+            <div className="flex h-screen items-center justify-center bg-white">
+                <div className="w-8 h-8 border-4 border-slate-200 border-t-purple-700 rounded-full animate-spin flex-shrink-0"></div>
+            </div>
+        );
+    }
 
     return (
         <div className="flex h-screen bg-white font-sans text-slate-900">
@@ -125,20 +143,60 @@ export default function Layout() {
                             {!isCollapsed && <span className="whitespace-nowrap font-medium">Document Repository</span>}
                         </Link>
                     </div>
+
+                    {/* Admin Panel */}
+                    {profile?.role === 'admin' && (
+                        <div className="mt-4 pt-4 border-t border-slate-200">
+                            {!isCollapsed && <div className="px-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Admin</div>}
+                            <Link
+                                to="/admin"
+                                className={clsx(
+                                    "flex items-center gap-3 px-3 py-2 rounded-md transition-all border border-transparent overflow-hidden text-sm",
+                                    location.pathname.startsWith('/admin')
+                                        ? "bg-purple-50 text-purple-700 font-medium shadow-sm border-purple-100"
+                                        : "text-slate-600 hover:bg-slate-100 hover:text-purple-700 font-medium",
+                                    isCollapsed ? "justify-center px-0" : ""
+                                )}
+                                title="Admin Panel"
+                            >
+                                <ShieldAlert size={18} className={clsx("flex-shrink-0", location.pathname.startsWith('/admin') ? "text-purple-700" : "text-slate-400")} />
+                                {!isCollapsed && <span className="whitespace-nowrap">Admin Panel</span>}
+                            </Link>
+                        </div>
+                    )}
                 </nav>
 
-                <div className="p-2 border-t border-slate-200">
-                    <Link
-                        to="/"
+                <div className="border-t border-slate-200">
+                    {!isCollapsed && profile && (
+                        <div className="px-4 py-3 border-b border-slate-200 bg-slate-50 flex flex-col justify-center">
+                            <div className="text-sm font-medium text-slate-900 truncate">
+                                {profile.full_name || profile.email}
+                            </div>
+                            <div className="text-xs text-slate-500 capitalize">
+                                {profile.role}
+                            </div>
+                        </div>
+                    )}
+                    <button
+                        onClick={async (e) => {
+                            e.preventDefault();
+                            try {
+                                await signOut();
+                            } catch (err) {
+                                console.error('Sign out failed:', err);
+                            }
+                            // Do not manually navigate here. The useEffect above will detect
+                            // that the session is gone and navigate safely!
+                        }}
                         className={clsx(
-                            "flex items-center gap-3 px-3 py-2 text-slate-500 hover:text-slate-900 w-full rounded-md hover:bg-slate-100 transition-colors overflow-hidden text-sm",
+                            "flex items-center gap-3 px-3 py-3 text-slate-500 hover:text-slate-900 w-full hover:bg-slate-100 transition-colors overflow-hidden text-sm",
                             isCollapsed ? "justify-center" : ""
                         )}
                         title="Sign Out"
                     >
                         <LogOut size={18} className="flex-shrink-0" />
                         {!isCollapsed && <span className="font-medium whitespace-nowrap">Sign Out</span>}
-                    </Link>
+                    </button>
                 </div>
             </aside>
 

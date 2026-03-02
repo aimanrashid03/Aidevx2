@@ -3,7 +3,7 @@ export interface DocSection {
     title: string;
     level: number;
     instructions: string[];
-    content: any[];
+    content: Record<string, unknown>[];
 }
 
 export const URS_STRUCTURE: DocSection[] = [

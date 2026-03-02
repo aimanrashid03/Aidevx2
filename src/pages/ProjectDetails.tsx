@@ -2,7 +2,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useProjects } from '../context/ProjectContext';
 import { supabase } from '../lib/supabase';
 import { ArrowLeft, FileText, File, Calendar, Plus, X, LayoutTemplate, ChevronRight, Download, Edit, Trash2, Check, CloudUpload, Clock, FileCheck, AlertCircle, LayoutDashboard, Folders } from 'lucide-react';
-import { useRef, useState, useCallback, DragEvent } from 'react';
+import { useRef, useState, DragEvent } from 'react';
 import mammoth from 'mammoth';
 import * as pdfjsLib from 'pdfjs-dist';
 
@@ -41,9 +41,7 @@ export default function ProjectDetails() {
     const [isEditing, setIsEditing] = useState(false);
     const [editForm, setEditForm] = useState({ name: '', description: '', notes: '' });
 
-    if (!project) {
-        return <div className="p-8">Project not found</div>;
-    }
+
 
     const handleEditClick = () => {
         if (project) {
@@ -57,7 +55,7 @@ export default function ProjectDetails() {
         try {
             await updateProject(project.id, editForm);
             setIsEditing(false);
-        } catch (error) {
+        } catch {
             alert('Failed to update project details.');
         }
     };
@@ -67,7 +65,7 @@ export default function ProjectDetails() {
         if (window.confirm("Are you sure you want to delete this file?")) {
             try {
                 await deleteProjectDocument(path);
-            } catch (error) {
+            } catch {
                 alert('Failed to delete file.');
             }
         }
@@ -75,10 +73,11 @@ export default function ProjectDetails() {
 
     const handleDeleteRequirement = async (e: React.MouseEvent, id: string) => {
         e.stopPropagation();
+        if (!project) return;
         if (window.confirm("Are you sure you want to delete this requirement document?")) {
             try {
                 await deleteRequirementDoc(id, project.id);
-            } catch (error) {
+            } catch {
                 alert('Failed to delete requirement document.');
             }
         }
@@ -156,7 +155,7 @@ export default function ProjectDetails() {
                         const page = await pdfDocument.getPage(i);
                         const textContent = await page.getTextContent();
                         const pageText = textContent.items
-                            // @ts-ignore - pdfjs types can be tricky
+                            // @ts-expect-error - pdfjs types can be tricky
                             .map(item => item.str)
                             .join(' ');
                         fullText += pageText + '\n\n';
@@ -197,19 +196,19 @@ export default function ProjectDetails() {
         if (fileInputRef.current) fileInputRef.current.value = '';
     };
 
-    const handleDragOver = useCallback((e: DragEvent<HTMLDivElement>) => {
+    const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
         e.preventDefault();
         e.stopPropagation();
         setIsDragging(true);
-    }, []);
+    };
 
-    const handleDragLeave = useCallback((e: DragEvent<HTMLDivElement>) => {
+    const handleDragLeave = (e: DragEvent<HTMLDivElement>) => {
         e.preventDefault();
         e.stopPropagation();
         setIsDragging(false);
-    }, []);
+    };
 
-    const handleDrop = useCallback(async (e: DragEvent<HTMLDivElement>) => {
+    const handleDrop = async (e: DragEvent<HTMLDivElement>) => {
         e.preventDefault();
         e.stopPropagation();
         setIsDragging(false);
@@ -218,7 +217,11 @@ export default function ProjectDetails() {
             // For simplicity, just take the first file dropped
             await processFile(e.dataTransfer.files[0]);
         }
-    }, [project]);
+    };
+
+    if (!project) {
+        return <div className="p-8">Project not found</div>;
+    }
 
 
     return (

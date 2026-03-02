@@ -1,16 +1,20 @@
 import { useProjects } from '../context/ProjectContext';
+import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { FileText, Clock, Plus, ArrowRight } from 'lucide-react';
 
 export default function Dashboard() {
     const { projects } = useProjects();
+    const { profile } = useAuth();
     const navigate = useNavigate();
+
+    const displayName = profile?.full_name?.split(' ')[0] || profile?.email?.split('@')[0] || 'User';
 
     return (
         <div className="p-6 max-w-7xl mx-auto font-sans">
             <div className="flex justify-between items-center mb-6 pb-6 border-b border-slate-200">
                 <div>
-                    <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Projects</h1>
+                    <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Welcome back, {displayName}!</h1>
                     <p className="text-slate-500 mt-1 text-sm">All your projects, in one place.</p>
                 </div>
                 <button
