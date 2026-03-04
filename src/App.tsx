@@ -7,7 +7,7 @@ import AdminDashboard from './pages/AdminDashboard';
 import AdminRoute from './components/AdminRoute';
 
 import DocumentRepository from './pages/DocumentRepository';
-import Editor from './pages/Editor';
+import DocumentEditor from './pages/DocumentEditor';
 import Layout from './components/Layout';
 import { ProjectProvider } from './context/ProjectContext';
 import { AuthProvider } from './context/AuthContext';
@@ -25,7 +25,7 @@ function App() {
               <Route path="/projects/:projectId" element={<ProjectDetails />} />
 
               <Route path="/documents" element={<DocumentRepository />} />
-              <Route path="/editor/:projectId/:templateId" element={<Editor />} />
+              <Route path="/editor/:projectId/:templateId" element={<DocumentEditor />} />
 
               {/* Admin Routes */}
               <Route element={<AdminRoute />}>

@@ -1,9 +1,11 @@
-import { X, RotateCcw, Clock } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { X, RotateCcw, Clock, Loader2 } from 'lucide-react';
 import RichTextEditor from './RichTextEditor';
 import TableEditor from './TableEditor';
 import { DOC_STRUCTURES } from '../constants/docs';
 import type { DocVersion } from '../context/ProjectContext';
 import type { DocSection } from '../constants/urs_structure';
+import { supabase } from '../lib/supabase';
 
 interface VersionViewerProps {
     version: DocVersion;
@@ -14,6 +16,36 @@ interface VersionViewerProps {
 
 export default function VersionViewer({ version, docType, onClose, onRestore }: VersionViewerProps) {
     const structure = DOC_STRUCTURES[docType] || DOC_STRUCTURES['BRS'];
+
+    // ── OnlyOffice-format version: render DOCX via docx-preview ───────────────
+    const docxContainerRef = useRef<HTMLDivElement>(null);
+    const [docxLoading, setDocxLoading] = useState(false);
+    const [docxError, setDocxError] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (!version.storagePath || !docxContainerRef.current) return;
+
+        setDocxLoading(true);
+        setDocxError(null);
+
+        const bucketPath = version.storagePath.startsWith('documents/')
+            ? version.storagePath.slice('documents/'.length)
+            : version.storagePath;
+
+        supabase.storage.from('documents').download(bucketPath)
+            .then(async ({ data, error }) => {
+                if (error || !data) throw error ?? new Error('Download failed');
+                const { renderAsync } = await import('docx-preview');
+                if (docxContainerRef.current) {
+                    await renderAsync(data, docxContainerRef.current, undefined, {
+                        className: 'docx-preview-content',
+                        inWrapper: true,
+                    });
+                }
+            })
+            .catch(err => setDocxError((err as Error).message || 'Failed to load document'))
+            .finally(() => setDocxLoading(false));
+    }, [version.storagePath]);
 
     const formatDate = (dateStr: string) => {
         const date = new Date(dateStr);
@@ -69,52 +101,69 @@ export default function VersionViewer({ version, docType, onClose, onRestore }: 
                             You are viewing a read-only snapshot of version {version.versionNumber}. Click "Restore This Version" to revert to this content.
                         </div>
 
-                        {structure.map((item, idx) => {
-                            const isString = typeof item === 'string';
-                            const title = isString ? item : (item as DocSection).title;
-                            const level = isString ? 1 : (item as DocSection).level;
-
-                            const blocks = (version.content[idx] as Record<string, unknown>[]) || [];
-                            if (blocks.length === 0) return null;
-
-                            return (
-                                <div key={idx} className="scroll-mt-24">
-                                    <div className="mb-2 pb-1">
-                                        {level === 1 && <h2 className="text-lg font-bold text-slate-900 tracking-tight">{title}</h2>}
-                                        {level === 2 && <h3 className="text-base font-bold text-slate-800 tracking-tight">{title}</h3>}
-                                        {level === 3 && <h4 className="text-sm font-bold text-slate-800 tracking-tight">{title}</h4>}
-                                        {level > 3 && <h5 className="text-[13px] font-bold text-slate-700 tracking-tight">{title}</h5>}
+                        {/* ── Path A: OnlyOffice DOCX format (has storagePath) ── */}
+                        {version.storagePath ? (
+                            <>
+                                {docxLoading && (
+                                    <div className="flex items-center justify-center py-12">
+                                        <Loader2 size={20} className="animate-spin text-slate-400" />
+                                        <span className="ml-2 text-sm text-slate-400">Loading document…</span>
                                     </div>
+                                )}
+                                {docxError && (
+                                    <div className="text-sm text-red-500 py-4 text-center">{docxError}</div>
+                                )}
+                                <div ref={docxContainerRef} className="docx-preview-wrapper bg-white rounded shadow-sm" />
+                            </>
+                        ) : (
+                            /* ── Path B: Legacy block format ── */
+                            structure.map((item, idx) => {
+                                const isString = typeof item === 'string';
+                                const title = isString ? item : (item as DocSection).title;
+                                const level = isString ? 1 : (item as DocSection).level;
 
-                                    <div className="space-y-3 pl-3 border-l-2 border-slate-100">
-                                        {blocks.map((block, bIdx) => {
-                                            if (block.type === 'text') {
-                                                return (
-                                                    <div key={`text-${bIdx}`} className="mb-2">
-                                                        <RichTextEditor
-                                                            content={(block.data as string) || ''}
-                                                            onChange={() => {}}
-                                                            editable={false}
-                                                        />
-                                                    </div>
-                                                );
-                                            } else if (block.type === 'table') {
-                                                return (
-                                                    <div key={`table-${bIdx}`} className="mb-2 opacity-80">
-                                                        <TableEditor
-                                                            columns={(block.columns as string[]) || []}
-                                                            initialData={(block.data as string[][]) || []}
-                                                            onChange={() => {}}
-                                                        />
-                                                    </div>
-                                                );
-                                            }
-                                            return null;
-                                        })}
+                                const blocks = (version.content[idx] as Record<string, unknown>[]) || [];
+                                if (blocks.length === 0) return null;
+
+                                return (
+                                    <div key={idx} className="scroll-mt-24">
+                                        <div className="mb-2 pb-1">
+                                            {level === 1 && <h2 className="text-lg font-bold text-slate-900 tracking-tight">{title}</h2>}
+                                            {level === 2 && <h3 className="text-base font-bold text-slate-800 tracking-tight">{title}</h3>}
+                                            {level === 3 && <h4 className="text-sm font-bold text-slate-800 tracking-tight">{title}</h4>}
+                                            {level > 3 && <h5 className="text-[13px] font-bold text-slate-700 tracking-tight">{title}</h5>}
+                                        </div>
+
+                                        <div className="space-y-3 pl-3 border-l-2 border-slate-100">
+                                            {blocks.map((block, bIdx) => {
+                                                if (block.type === 'text') {
+                                                    return (
+                                                        <div key={`text-${bIdx}`} className="mb-2">
+                                                            <RichTextEditor
+                                                                content={(block.data as string) || ''}
+                                                                onChange={() => {}}
+                                                                editable={false}
+                                                            />
+                                                        </div>
+                                                    );
+                                                } else if (block.type === 'table') {
+                                                    return (
+                                                        <div key={`table-${bIdx}`} className="mb-2 opacity-80">
+                                                            <TableEditor
+                                                                columns={(block.columns as string[]) || []}
+                                                                initialData={(block.data as string[][]) || []}
+                                                                onChange={() => {}}
+                                                            />
+                                                        </div>
+                                                    );
+                                                }
+                                                return null;
+                                            })}
+                                        </div>
                                     </div>
-                                </div>
-                            );
-                        })}
+                                );
+                            })
+                        )}
                     </div>
                 </div>
             </div>

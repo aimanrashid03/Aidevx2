@@ -6,11 +6,14 @@ export interface RequirementDoc {
     id: string;
     title: string;
     type: string; // 'BRS', 'URS', etc.
-    content: Record<number, unknown[]>; // Section content (Array of structural blocks)
-    sectionStatuses?: Record<number, 'drafting' | 'complete'>;
+    content: Record<string, unknown[]>; // Section content (Array of structural blocks)
+    sectionStatuses?: Record<string, 'drafting' | 'complete'>;
     lastModified: string;
     status: 'draft' | 'final';
     currentVersion?: number;
+    // OnlyOffice storage fields
+    storagePath?: string | null;   // path in Supabase Storage: documents/{projectId}/{docId}/current.docx
+    documentKey?: string | null;   // cache-busting key for OnlyOffice, rotated on every save
 }
 
 export interface DocVersion {
@@ -18,13 +21,15 @@ export interface DocVersion {
     docId: string;
     projectId: string;
     versionNumber: number;
-    content: Record<number, unknown[]>;
-    sectionStatuses?: Record<number, 'drafting' | 'complete'>;
+    content: Record<string, unknown[]>;
+    sectionStatuses?: Record<string, 'drafting' | 'complete'>;
     title: string;
     status: string;
-    createdBy: string;
+    createdBy: string | null;
     createdAt: string;
     changeSummary?: string;
+    // OnlyOffice storage field
+    storagePath?: string | null;   // path to DOCX snapshot: documents/{projectId}/{docId}/v{n}.docx
 }
 
 export interface Project {
@@ -48,6 +53,7 @@ interface ProjectContextType {
     saveRequirementDoc: (projectId: string, doc: RequirementDoc, changeSummary?: string) => Promise<void>;
     fetchDocVersions: (docId: string, projectId: string) => Promise<DocVersion[]>;
     restoreVersion: (version: DocVersion, projectId: string) => Promise<void>;
+    restoreOnlyOfficeVersion: (version: DocVersion, projectId: string) => Promise<void>;
 }
 
 const ProjectContext = createContext<ProjectContextType | undefined>(undefined);
@@ -106,6 +112,8 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
                         lastModified: d.last_modified,
                         status: d.status as 'draft' | 'final',
                         currentVersion: d.current_version || 1,
+                        storagePath: d.storage_path || null,
+                        documentKey: d.document_key || null,
                     })) || []
                 };
             }));
@@ -227,6 +235,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
                 createdBy: v.created_by,
                 createdAt: v.created_at,
                 changeSummary: v.change_summary,
+                storagePath: v.storage_path || null,
             }));
         } catch (error) {
             console.error('Error fetching versions:', error);
@@ -262,6 +271,55 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
             await saveRequirementDoc(projectId, restoredDoc, `Restored from version ${version.versionNumber}`);
         } catch (error) {
             console.error('Error restoring version:', error);
+        }
+    };
+
+    const restoreOnlyOfficeVersion = async (version: DocVersion, projectId: string) => {
+        if (!user || !version.storagePath) return;
+
+        try {
+            const currentPath = `documents/${projectId}/${version.docId}/current.docx`;
+
+            // Download the version snapshot DOCX
+            const versionRelPath = version.storagePath.startsWith('documents/')
+                ? version.storagePath.slice('documents/'.length)
+                : version.storagePath;
+
+            const { data: versionFile, error: downloadErr } = await supabase.storage
+                .from('documents')
+                .download(versionRelPath);
+
+            if (downloadErr || !versionFile) throw new Error('Could not download version file');
+
+            // Upload it as the new current.docx
+            const { error: uploadErr } = await supabase.storage
+                .from('documents')
+                .upload(currentPath.slice('documents/'.length), versionFile, {
+                    contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                    upsert: true,
+                });
+
+            if (uploadErr) throw uploadErr;
+
+            // Rotate the document key so OnlyOffice reloads
+            const newKey = `${version.docId}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+            const { error: dbErr } = await supabase
+                .from('requirement_docs')
+                .update({
+                    storage_path: currentPath,
+                    document_key: newKey,
+                    last_modified: new Date().toISOString(),
+                })
+                .eq('id', version.docId)
+                .eq('project_id', projectId);
+
+            if (dbErr) throw dbErr;
+
+            await fetchProjects();
+        } catch (error) {
+            console.error('Error restoring OnlyOffice version:', error);
+            throw error;
         }
     };
 
@@ -324,7 +382,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     };
 
     return (
-        <ProjectContext.Provider value={{ projects, loading, refreshProjects: fetchProjects, addProject, updateProject, deleteProjectDocument, deleteRequirementDoc, saveRequirementDoc, fetchDocVersions, restoreVersion }}>
+        <ProjectContext.Provider value={{ projects, loading, refreshProjects: fetchProjects, addProject, updateProject, deleteProjectDocument, deleteRequirementDoc, saveRequirementDoc, fetchDocVersions, restoreVersion, restoreOnlyOfficeVersion }}>
             {children}
         </ProjectContext.Provider>
     );

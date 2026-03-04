@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "functions": "supabase functions serve --no-verify-jwt --env-file supabase/.env.local",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview"

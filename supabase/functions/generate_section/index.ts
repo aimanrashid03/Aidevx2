@@ -70,12 +70,12 @@ serve(async (req) => {
             ? matchedChunks.map((chunk: any) => chunk.content).join('\n\n')
             : "No relevant project documents provided or found."
 
-        // 3. Generate section content
+        // 3. Generate section content (streamed)
         const systemPrompt = `You are an expert technical writer drafting a requirement specification document.
-Your task is to write the section titled "${sectionTitle}".
+Your task is to write the content for the section titled "${sectionTitle}".
 Use the provided Project Context below as your source of truth. Do not hallucinate information outside of this context, but you may infer standard technical practices where necessary.
-If the context does not contain enough information, provide a generic standard template text that fits the section, but explicitly bracket elements that need to be filled in like [Customer Name].
-Be professional, structured, and write using formatting appropriate for an official document (HTML with <p>, <ul>, <li>, <strong> etc. if needed, or structured markdown which will be parsed). However, the editor supports basic HTML tags like <p>, <strong>, <em>, <ul>, <li>. Return ONLY the content for the section, ready to be dropped into the editor.`
+If the context does not contain enough information, provide generic standard template text that fits the section, and bracket any placeholders like [Customer Name] or [System Name].
+Write in plain text paragraphs only. Do not use HTML tags, markdown symbols, or any special formatting characters. Separate paragraphs with a blank line. Return ONLY the section content, ready to be pasted into a document editor.`
 
         const userPrompt = `Section Title: ${sectionTitle}
 Section Instructions: ${instructions || 'No specific instructions. Write standard content appropriate for this section type.'}
@@ -91,28 +91,31 @@ ${contextText}
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                model: 'gpt-4o', // or gpt-3.5-turbo if 4 is not needed
+                model: 'gpt-4o',
                 messages: [
                     { role: 'system', content: systemPrompt },
                     { role: 'user', content: userPrompt }
                 ],
                 temperature: 0.4,
+                stream: true,
             }),
         })
 
-        if (!completionResponse.ok) {
-            const err = await completionResponse.text();
+        if (!completionResponse.ok || !completionResponse.body) {
+            const err = await completionResponse.text()
             console.error('OpenAI Error:', err)
             throw new Error('Failed to generate content')
         }
 
-        const completionData = await completionResponse.json()
-        const generatedContent = completionData.choices[0].message.content
-
-        return new Response(
-            JSON.stringify({ success: true, content: generatedContent }),
-            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        )
+        // Pipe the OpenAI SSE stream directly to the client
+        return new Response(completionResponse.body, {
+            headers: {
+                ...corsHeaders,
+                'Content-Type': 'text/event-stream',
+                'Cache-Control': 'no-cache',
+                'X-Accel-Buffering': 'no',
+            },
+        })
     } catch (error) {
         console.error('Error:', error)
         return new Response(
