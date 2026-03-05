@@ -1,75 +1,116 @@
-# Aidevx
+# Aidevx2
 
-Aidevx is a modern, web-based project management and document-creation tool designed to streamline requirements engineering. It allows teams to create, edit, preview, and export standard requirement documents (BRS, URS, etc.) seamlessly.
+Web-based requirements engineering tool. Create, edit, and export standard requirement documents (BRS, URS, SRS, SDS) with versioning, comments, collaboration, and AI-assisted generation.
 
-## ✨ Features
+## Tech Stack
 
-- **Project Management:** Organize documents by projects with dedicated workspaces.
-- **Rich Text Editing:** Advanced block-based editor powered by Tiptap for drafting requirement sections.
-- **Document Previews:** Native in-browser `.docx` preview engine without generating external files first.
-- **Export & Share:** Instantly export documents to Word (`.docx`) using templated generation.
-- **Modern Interface:** A sleek, fully responsive UI built with React, Tailwind CSS, and Lucide React icons.
-- **Backend Ready:** Pre-configured to work with a Supabase PostgreSQL backend for authentication and database management.
+- **Frontend:** React 19 + TypeScript + Vite
+- **Styling:** Tailwind CSS + Lucide React
+- **Document Editor:** ONLYOFFICE Document Server (self-hosted via Docker)
+- **Backend / Database:** Supabase (Postgres + Auth + Storage + Edge Functions)
+- **AI:** OpenAI via Supabase Edge Functions (streaming SSE)
+- **Export:** docx generation via `docx` library
 
-## 🛠 Tech Stack
+## Prerequisites
 
-- **Frontend Framework:** React 19 + TypeScript
-- **Build Tool:** Vite
-- **Styling:** Tailwind CSS + Autoprefixer
-- **Editor:** Tiptap (ProseMirror based)
-- **Document Generation:** docxtemplater, PizZip, file-saver, docx-preview
-- **Backend / Database:** Supabase
-- **Routing:** React Router v7
-- **Fonts:** Public Sans & Source Sans Pro
+| Tool | Version | Install |
+|------|---------|---------|
+| Node.js | 20+ | https://nodejs.org |
+| Docker Desktop | latest | https://docker.com/products/docker-desktop |
+| Supabase CLI | latest | `npm i -g supabase` |
+| Deno | 2.x | https://deno.com (required for `supabase functions serve`) |
 
-## 🚀 Getting Started
+## Local Setup
 
-### Prerequisites
-
-Ensure you have [Node.js](https://nodejs.org/) installed along with `npm` (or your preferred package manager). You will also need the [Supabase CLI](https://supabase.com/docs/guides/cli) installed if you wish to run the backend locally.
-
-### Installation
-
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/aimanrashid03/Aidevx2.git
-   cd Aidevx2
-   ```
-
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-
-3. Set up environment variables:
-   Create a `.env.local` file in the root directory and add your Supabase credentials:
-   ```env
-   VITE_SUPABASE_URL=your_supabase_url
-   VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
-   ```
-
-4. Run the local Supabase environment (optional):
-   ```bash
-   npx supabase start
-   ```
-
-5. Start the development server:
-   ```bash
-   npm run dev
-   ```
-
-6. Open your browser and navigate to `http://localhost:5173`.
-
-## 📦 Build for Production
-
-To create a production-ready build:
+### 1. Clone and install dependencies
 
 ```bash
-npm run build
+git clone https://github.com/aimanrashid03/Aidevx2.git
+cd Aidevx2
+npm install
 ```
 
-This will run TypeScript checks and output the optimized bundle into the `dist/` directory.
+### 2. Configure environment variables
 
-## 📜 License
+```bash
+cp .env.example .env
+```
 
-This project is proprietary. All rights reserved.
+The `.env` file ships with local Supabase defaults pre-filled. You only need to change values if you're connecting to a cloud Supabase project.
+
+### 3. Configure edge function secrets
+
+```bash
+cp supabase/.env.local.example supabase/.env.local
+```
+
+Edit `supabase/.env.local` and add your **OpenAI API key**. This is required for the AI generate feature.
+
+### 4. Start local Supabase
+
+```bash
+supabase start
+```
+
+This starts a local Postgres database, Auth, Storage, and Kong API gateway inside Docker. On first run it pulls ~2 GB of images.
+
+### 5. Start OnlyOffice Document Server
+
+```bash
+docker compose up -d
+```
+
+OnlyOffice will be available at http://localhost:8080. Wait ~30 seconds for it to become healthy before opening documents.
+
+> **Note:** OnlyOffice and Supabase must be on the same Docker network so the callback works. The `docker-compose.yml` already configures this via the `supabase_net` external network.
+
+### 6. Start the dev server
+
+```bash
+npm run dev
+```
+
+App runs at http://localhost:5173.
+
+### 7. (Optional) Serve edge functions locally
+
+```bash
+npm run functions
+```
+
+Starts the Supabase Edge Functions runtime locally. Required if you want AI generation to work without deploying to the cloud.
+
+---
+
+## How It Works
+
+1. Documents are stored as native `.docx` files in **Supabase Storage** (`documents` bucket).
+2. The **OnlyOffice editor** loads the `.docx` directly from a public Supabase Storage URL.
+3. When a user saves, OnlyOffice POSTs the updated file to the **`onlyoffice_callback`** edge function, which writes the new `.docx` back to Storage.
+4. The **AI generate** feature calls the **`generate_section`** edge function, which streams OpenAI completions as SSE directly into the editor.
+
+---
+
+## Available Scripts
+
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Start Vite dev server |
+| `npm run build` | TypeScript check + production build |
+| `npm run functions` | Serve edge functions locally |
+| `npm run preview` | Preview production build |
+
+---
+
+## Deployment Notes
+
+- Set `JWT_ENABLED=true` and `ONLYOFFICE_JWT_SECRET` in `docker-compose.yml` for production.
+- Run `supabase db push` to apply database migrations to your cloud project.
+- Run `supabase functions deploy onlyoffice_callback generate_section` to deploy edge functions.
+- Set `ONLYOFFICE_CALLBACK_SECRET` and `SUPABASE_SERVICE_ROLE_KEY` as Supabase secrets for production.
+
+---
+
+## License
+
+Proprietary. All rights reserved.
