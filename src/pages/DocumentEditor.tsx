@@ -30,7 +30,7 @@ export default function DocumentEditor() {
     const { projectId, templateId } = useParams()
     const navigate = useNavigate()
     const { user, profile } = useAuth()
-    const { projects, restoreVersion, restoreOnlyOfficeVersion, refreshProjects } = useProjects()
+    const { projects, loading: projectsLoading, restoreVersion, restoreOnlyOfficeVersion, refreshProjects } = useProjects()
     const project = projects.find(p => p.id === projectId)
 
     const existingDoc = project?.requirementDocs.find(d => d.id === templateId)
@@ -50,6 +50,7 @@ export default function DocumentEditor() {
     const [isInitializing, setIsInitializing] = useState(false)
     const [initError, setInitError] = useState<string | null>(null)
     const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
+    const [isEditorReady, setIsEditorReady] = useState(false)
 
     // TOC populated by mammoth parse on doc load
     const [tocSections, setTocSections] = useState<DocHeading[]>([])
@@ -68,6 +69,10 @@ export default function DocumentEditor() {
     const docIdRef = useRef<string | null>(existingDoc?.id ?? null)
     // prevents React StrictMode double-fire from creating duplicate docs
     const initKeyRef = useRef<string | null>(null)
+    // tracks previous documentKey to detect rotations (for TOC re-extract)
+    const prevDocumentKeyRef = useRef<string | null>(null)
+    // ref for export dropdown click-outside detection
+    const exportDropdownRef = useRef<HTMLDivElement>(null)
 
     // ─── Collaboration hooks ────────────────────────────────────────────────────
 
@@ -175,6 +180,13 @@ export default function DocumentEditor() {
         const pid = projectId
         if (!pid) return
 
+        // Only doc-type templateIds (BRS, URS, SRS, SDS) represent genuinely new documents.
+        // Any other templateId is an existing doc ID — don't proceed until existingDoc is
+        // resolved from the project context. Without this, a reload would see existingDoc as
+        // undefined (projects not yet fetched), treat it as new, and create a phantom entry.
+        const isDocType = templateId && ['BRS', 'URS', 'SRS', 'SDS'].includes(templateId)
+        if (!isDocType && !existingDoc) return
+
         const did = existingDoc?.id ?? `req-${Date.now()}`
 
         // Deduplicate: React StrictMode fires effects twice with no cleanup.
@@ -194,7 +206,7 @@ export default function DocumentEditor() {
 
         loadDocumentState(existingDoc, pid, did, title, type, pname)
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [existingDoc?.id, projectId])
+    }, [existingDoc?.id, projectId, projectsLoading])
 
     // Sync document_key when OnlyOffice callback rotates it (other tabs, or after save)
     useEffect(() => {
@@ -203,6 +215,39 @@ export default function DocumentEditor() {
             setDocumentKey(existingDoc.documentKey)
         }
     }, [existingDoc?.documentKey, hasUnsavedChanges, documentKey])
+
+    // Reset editor-ready flag whenever documentKey changes (OO remounts on save/restore)
+    useEffect(() => { if (documentKey) setIsEditorReady(false) }, [documentKey])
+
+    // Re-parse TOC headings when documentKey rotates (OO callback saved new content)
+    useEffect(() => {
+        if (!documentKey || !docPublicUrl) return
+        if (prevDocumentKeyRef.current === null) {
+            prevDocumentKeyRef.current = documentKey
+            return // skip initial set — loadDocumentState already extracted
+        }
+        if (prevDocumentKeyRef.current === documentKey) return
+        prevDocumentKeyRef.current = documentKey
+        extractSectionsFromDocx(docPublicUrl).then(setTocSections).catch(() => {})
+    }, [documentKey, docPublicUrl])
+
+    // Close export dropdown on outside click
+    useEffect(() => {
+        if (!showExport) return
+        const handler = (e: MouseEvent) => {
+            if (exportDropdownRef.current && !exportDropdownRef.current.contains(e.target as Node))
+                setShowExport(false)
+        }
+        document.addEventListener('mousedown', handler)
+        return () => document.removeEventListener('mousedown', handler)
+    }, [showExport])
+
+    // Write Supabase config + projectId to sessionStorage for the OO AI plugin
+    useEffect(() => {
+        sessionStorage.setItem('aidevx_supabase_url', import.meta.env.VITE_SUPABASE_URL as string)
+        sessionStorage.setItem('aidevx_anon_key', import.meta.env.VITE_SUPABASE_ANON_KEY as string)
+        if (projectId) sessionStorage.setItem('aidevx_project_id', projectId)
+    }, [projectId])
 
     // ─── OnlyOffice config ────────────────────────────────────────────────────
 
@@ -235,6 +280,7 @@ export default function DocumentEditor() {
             mode: viewingVersion ? 'view' : 'edit',
             userId: user?.id ?? 'anonymous',
             userDisplayName: profile?.full_name || user?.email || 'User',
+            pluginBaseUrl: window.location.origin,
         })
     }, [docPublicUrl, documentKey, docTitle, viewingVersion, projectId, user?.id, profile?.full_name])
 
@@ -259,12 +305,18 @@ export default function DocumentEditor() {
         })
     }, [projectId])
 
+    const handleRefreshToc = useCallback(() => {
+        if (!docPublicUrl) return
+        extractSectionsFromDocx(docPublicUrl).then(setTocSections).catch(() => {})
+    }, [docPublicUrl])
+
     // ─── Export ──────────────────────────────────────────────────────────────
 
     const handleDownload = () => {
         if (!docPublicUrl) return
         const a = document.createElement('a')
-        a.href = docPublicUrl
+        // Cache-buster so the browser fetches the latest saved DOCX, not a cached copy
+        a.href = docPublicUrl.includes('?') ? `${docPublicUrl}&t=${Date.now()}` : `${docPublicUrl}?t=${Date.now()}`
         a.download = `${docTitle.replace(/\s+/g, '_')}.docx`
         document.body.appendChild(a)
         a.click()
@@ -284,6 +336,7 @@ export default function DocumentEditor() {
         if (!confirm(`Restore to version ${version.versionNumber}? Current content will be kept as a version.`)) return
         if (version.storagePath) {
             await restoreOnlyOfficeVersion(version, projectId)
+            setViewingVersion(null)
         } else {
             await restoreVersion(version, projectId)
             window.location.reload()
@@ -348,14 +401,14 @@ export default function DocumentEditor() {
                     </button>
 
                     <button
-                        onClick={() => setShowVersionHistory(v => !v)}
+                        onClick={() => { setShowVersionHistory(v => !v); setShowComments(false); setAiPanelSection(null) }}
                         className={`p-1.5 rounded hover:bg-slate-100 text-slate-500 ${showVersionHistory ? 'bg-slate-100' : ''}`}
                         title="Version History"
                     >
                         <History size={15} />
                     </button>
                     <button
-                        onClick={() => setShowComments(v => !v)}
+                        onClick={() => { setShowComments(v => !v); setShowVersionHistory(false); setAiPanelSection(null) }}
                         className={`p-1.5 rounded hover:bg-slate-100 text-slate-500 ${showComments ? 'bg-slate-100' : ''}`}
                         title="Comments"
                     >
@@ -372,7 +425,7 @@ export default function DocumentEditor() {
 
                 {/* Export dropdown */}
                 {showExport && (
-                    <div className="absolute right-3 top-12 bg-white border border-slate-200 rounded-lg shadow-lg z-30 w-44 py-1">
+                    <div ref={exportDropdownRef} className="absolute right-3 top-12 bg-white border border-slate-200 rounded-lg shadow-lg z-30 w-44 py-1">
                         <button
                             onClick={handleDownload}
                             disabled={!docPublicUrl}
@@ -400,8 +453,13 @@ export default function DocumentEditor() {
                         sectionStatuses={sectionStatuses}
                         commentCounts={commentCounts}
                         onToggleStatus={toggleSectionStatus}
-                        onAutoGen={(sectionId, title) => setAiPanelSection({ sectionId, title })}
-                        generatingSectionId={null}
+                        onAutoGen={(sectionId, title) => {
+                            setAiPanelSection({ sectionId, title })
+                            setShowVersionHistory(false)
+                            setShowComments(false)
+                        }}
+                        generatingSectionId={aiPanelSection?.sectionId ?? null}
+                        onRefresh={handleRefreshToc}
                     />
                 </aside>
 
@@ -437,14 +495,25 @@ export default function DocumentEditor() {
                     )}
 
                     {onlyOfficeConfig && !initError && (
-                        <OnlyOfficeEditor
-                            ref={editorRef}
-                            config={onlyOfficeConfig}
-                            serverUrl={serverUrl}
-                            onDocumentStateChange={setHasUnsavedChanges}
-                            onError={err => console.error('OnlyOffice error:', err.errorCode, err.errorDescription)}
-                            className="flex-1"
-                        />
+                        <div className="relative flex-1 overflow-hidden flex flex-col">
+                            {!isEditorReady && !isInitializing && (
+                                <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-10 pointer-events-none">
+                                    <div className="flex flex-col items-center gap-2">
+                                        <Loader2 size={20} className="animate-spin text-slate-400" />
+                                        <span className="text-xs text-slate-500">Loading editor…</span>
+                                    </div>
+                                </div>
+                            )}
+                            <OnlyOfficeEditor
+                                ref={editorRef}
+                                config={onlyOfficeConfig}
+                                serverUrl={serverUrl}
+                                onDocumentReady={() => setIsEditorReady(true)}
+                                onDocumentStateChange={setHasUnsavedChanges}
+                                onError={err => console.error('OnlyOffice error:', err.errorCode, err.errorDescription)}
+                                className="flex-1"
+                            />
+                        </div>
                     )}
                 </main>
 
@@ -458,7 +527,7 @@ export default function DocumentEditor() {
                 )}
 
                 {/* Right panel — version history / comments */}
-                {(showVersionHistory || showComments) && !aiPanelSection && (
+                {(showVersionHistory || showComments) && (
                     <aside className="w-72 bg-white border-l border-slate-200 flex flex-col shrink-0 overflow-hidden z-10">
                         {showVersionHistory && docId && (
                             <VersionHistory

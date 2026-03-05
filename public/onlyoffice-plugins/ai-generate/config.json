@@ -1,0 +1,18 @@
+{
+    "name": "AI Generate",
+    "nameLocale": {},
+    "guid": "asc.aidevx2-ai-generate-v1",
+    "version": "1.0.0",
+    "minVersion": "7.0.0",
+    "url": "index.html",
+    "icons": [],
+    "isViewer": false,
+    "isSystem": false,
+    "EditorsSupport": ["word"],
+    "isInsideMode": true,
+    "initDataType": "none",
+    "initData": "",
+    "buttons": [
+        { "text": "Insert", "primary": true }
+    ]
+}

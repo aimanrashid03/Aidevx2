@@ -25,7 +25,11 @@ function slugify(text: string): string {
  * and returns a flat list of DocHeading objects for the TOC.
  */
 export async function extractSectionsFromDocx(publicUrl: string): Promise<DocHeading[]> {
-    const response = await fetch(publicUrl);
+    // Append a cache-buster so browsers/CDN don't return stale DOCX after a save
+    const cacheBustUrl = publicUrl.includes('?')
+        ? `${publicUrl}&t=${Date.now()}`
+        : `${publicUrl}?t=${Date.now()}`;
+    const response = await fetch(cacheBustUrl);
     if (!response.ok) throw new Error(`Could not fetch DOCX: ${response.status}`);
     const arrayBuffer = await response.arrayBuffer();
 

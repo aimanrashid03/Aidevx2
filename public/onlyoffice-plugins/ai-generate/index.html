@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI Generate</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            font-size: 12px;
+            background: #f8fafc;
+            color: #334155;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* ── Header ── */
+        .header {
+            background: #1e293b;
+            color: #f1f5f9;
+            padding: 10px 12px 8px;
+            shrink: 0;
+        }
+        .header-title {
+            font-size: 13px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .spark-icon { color: #a78bfa; }
+        .header-sub {
+            font-size: 10px;
+            color: #94a3b8;
+            margin-top: 2px;
+        }
+
+        /* ── Body ── */
+        .body {
+            flex: 1;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            padding: 10px 10px 0;
+            gap: 8px;
+        }
+
+        /* Section input row */
+        .input-row {
+            display: flex;
+            gap: 6px;
+        }
+        .section-input {
+            flex: 1;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            padding: 5px 8px;
+            font-size: 12px;
+            background: #fff;
+            color: #1e293b;
+            outline: none;
+        }
+        .section-input:focus { border-color: #818cf8; box-shadow: 0 0 0 2px #e0e7ff; }
+
+        /* Buttons */
+        .btn {
+            border: none;
+            border-radius: 6px;
+            padding: 5px 10px;
+            font-size: 11px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: opacity 0.15s, background 0.15s;
+            white-space: nowrap;
+        }
+        .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+        .btn-violet { background: #7c3aed; color: #fff; }
+        .btn-violet:hover:not(:disabled) { background: #6d28d9; }
+        .btn-slate { background: #e2e8f0; color: #475569; }
+        .btn-slate:hover:not(:disabled) { background: #cbd5e1; }
+
+        /* Output area */
+        .output-wrap {
+            flex: 1;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .output-label {
+            font-size: 10px;
+            font-weight: 600;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .output-textarea {
+            flex: 1;
+            resize: none;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            padding: 8px;
+            font-family: 'Segoe UI', sans-serif;
+            font-size: 12px;
+            line-height: 1.6;
+            background: #fff;
+            color: #1e293b;
+            outline: none;
+            overflow-y: auto;
+        }
+        .output-textarea:focus { border-color: #818cf8; }
+
+        /* Status bar */
+        .status {
+            font-size: 10px;
+            color: #94a3b8;
+            height: 16px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .status.error { color: #ef4444; }
+        .spinner {
+            width: 10px; height: 10px;
+            border: 2px solid #cbd5e1;
+            border-top-color: #7c3aed;
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+            display: inline-block;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Footer */
+        .footer {
+            padding: 8px 10px;
+            display: flex;
+            gap: 6px;
+            border-top: 1px solid #e2e8f0;
+            background: #f8fafc;
+            shrink: 0;
+        }
+        .footer-hint {
+            font-size: 10px;
+            color: #94a3b8;
+            padding: 0 10px 8px;
+            line-height: 1.4;
+        }
+
+        /* Config warning */
+        .config-warn {
+            background: #fef3c7;
+            border: 1px solid #fcd34d;
+            border-radius: 6px;
+            padding: 8px 10px;
+            font-size: 11px;
+            color: #92400e;
+        }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <div class="header-title">
+        <span class="spark-icon">✦</span> AI Generate
+    </div>
+    <div class="header-sub" id="project-label">Initializing…</div>
+</div>
+
+<div class="body">
+    <div id="config-warn" class="config-warn" style="display:none">
+        ⚠ Editor not connected yet. Open a document first.
+    </div>
+
+    <div class="input-row">
+        <input
+            id="section-input"
+            class="section-input"
+            type="text"
+            placeholder="Section title to generate…"
+            autocomplete="off"
+        />
+        <button id="btn-generate" class="btn btn-violet" disabled>Generate</button>
+    </div>
+
+    <div class="output-wrap">
+        <span class="output-label">Generated content</span>
+        <textarea
+            id="output"
+            class="output-textarea"
+            placeholder="Generated text will appear here…"
+            spellcheck="false"
+        ></textarea>
+    </div>
+
+    <div class="status" id="status"></div>
+</div>
+
+<div class="footer">
+    <button id="btn-regen" class="btn btn-slate" disabled>↺ Regenerate</button>
+    <button id="btn-insert" class="btn btn-violet" disabled>Insert at cursor</button>
+</div>
+<div class="footer-hint">
+    Click <strong>Insert at cursor</strong> to place the generated text at your cursor position in the document.
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────────
+let supabaseUrl  = '';
+let anonKey      = '';
+let projectId    = '';
+let abortCtrl    = null;
+let accumulatedText = '';
+let isGenerating = false;
+
+// ── DOM ────────────────────────────────────────────────────────────────────────
+const elProjectLabel = document.getElementById('project-label');
+const elConfigWarn   = document.getElementById('config-warn');
+const elSectionInput = document.getElementById('section-input');
+const elOutput       = document.getElementById('output');
+const elStatus       = document.getElementById('status');
+const btnGenerate    = document.getElementById('btn-generate');
+const btnRegen       = document.getElementById('btn-regen');
+const btnInsert      = document.getElementById('btn-insert');
+
+// ── Helpers ────────────────────────────────────────────────────────────────────
+function setStatus(msg, isErr) {
+    elStatus.className = 'status' + (isErr ? ' error' : '');
+    elStatus.innerHTML = msg ? (isErr ? msg : '<span class="spinner"></span> ' + msg) : '';
+}
+
+function setGenerating(v) {
+    isGenerating = v;
+    btnGenerate.disabled = v;
+    btnRegen.disabled = v || !accumulatedText;
+    btnInsert.disabled = v || !accumulatedText;
+    elSectionInput.disabled = v;
+}
+
+// ── Init: read config from sessionStorage ─────────────────────────────────────
+function initConfig() {
+    supabaseUrl = sessionStorage.getItem('aidevx_supabase_url') || '';
+    anonKey     = sessionStorage.getItem('aidevx_anon_key')     || '';
+    projectId   = sessionStorage.getItem('aidevx_project_id')   || '';
+
+    if (!supabaseUrl || !anonKey || !projectId) {
+        elConfigWarn.style.display = 'block';
+        elProjectLabel.textContent = 'Not connected';
+        setStatus('', false);
+        return false;
+    }
+
+    elConfigWarn.style.display = 'none';
+    elProjectLabel.textContent = 'Project: ' + projectId.slice(0, 8) + '…';
+    btnGenerate.disabled = false;
+    return true;
+}
+
+// ── Generate (SSE streaming) ───────────────────────────────────────────────────
+async function generate() {
+    if (!initConfig()) return;
+
+    const sectionTitle = elSectionInput.value.trim();
+    if (!sectionTitle) {
+        elSectionInput.focus();
+        return;
+    }
+
+    if (abortCtrl) abortCtrl.abort();
+    abortCtrl = new AbortController();
+
+    accumulatedText = '';
+    elOutput.value  = '';
+    btnInsert.disabled = true;
+    btnRegen.disabled  = true;
+    setGenerating(true);
+    setStatus('Generating…', false);
+
+    try {
+        const res = await fetch(
+            supabaseUrl + '/functions/v1/generate_section',
+            {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + anonKey,
+                    'apikey': anonKey,
+                },
+                body: JSON.stringify({ projectId, sectionTitle }),
+                signal: abortCtrl.signal,
+            }
+        );
+
+        if (!res.ok || !res.body) {
+            const errText = await res.text().catch(() => res.statusText);
+            throw new Error(errText || 'Request failed');
+        }
+
+        const reader  = res.body.getReader();
+        const decoder = new TextDecoder();
+        let   buffer  = '';
+
+        while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+
+            const lines = buffer.split('\n');
+            buffer = lines.pop(); // keep incomplete line
+
+            for (const line of lines) {
+                const trimmed = line.trim();
+                if (!trimmed || !trimmed.startsWith('data:')) continue;
+                const jsonStr = trimmed.slice(5).trim();
+                if (jsonStr === '[DONE]') break;
+                try {
+                    const parsed = JSON.parse(jsonStr);
+                    const token  = parsed?.choices?.[0]?.delta?.content;
+                    if (token) {
+                        accumulatedText += token;
+                        elOutput.value   = accumulatedText;
+                        elOutput.scrollTop = elOutput.scrollHeight;
+                    }
+                } catch { /* ignore malformed SSE lines */ }
+            }
+        }
+
+        setStatus('', false);
+    } catch (err) {
+        if (err && err.name === 'AbortError') {
+            setStatus('', false);
+        } else {
+            setStatus((err && err.message) || 'Generation failed', true);
+        }
+    } finally {
+        setGenerating(false);
+        btnRegen.disabled  = !accumulatedText;
+        btnInsert.disabled = !accumulatedText;
+    }
+}
+
+// ── Insert into document ───────────────────────────────────────────────────────
+function insertIntoDoc() {
+    if (!accumulatedText) return;
+
+    // Convert plain text to simple paragraphs for PasteHtml
+    const paragraphs = accumulatedText
+        .split(/\n\n+/)
+        .map(p => p.replace(/\n/g, ' ').trim())
+        .filter(Boolean)
+        .map(p => '<p>' + escapeHtml(p) + '</p>')
+        .join('');
+
+    const html = paragraphs || '<p>' + escapeHtml(accumulatedText) + '</p>';
+
+    window.Asc.plugin.executeMethod('PasteHtml', [html], function() {
+        setStatus('Inserted!', false);
+        setTimeout(() => setStatus('', false), 2000);
+    });
+}
+
+function escapeHtml(str) {
+    return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+// ── Button listeners ───────────────────────────────────────────────────────────
+btnGenerate.addEventListener('click', generate);
+btnRegen.addEventListener('click',   generate);
+btnInsert.addEventListener('click',  insertIntoDoc);
+
+elSectionInput.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') generate();
+});
+
+// ── OnlyOffice plugin lifecycle ────────────────────────────────────────────────
+window.Asc = window.Asc || {};
+window.Asc.plugin = window.Asc.plugin || {};
+
+window.Asc.plugin.init = function() {
+    // Re-read sessionStorage every time the plugin panel opens
+    // (the React app may have set it after the plugin first loaded)
+    initConfig();
+};
+
+// Called when the user clicks a plugin button (our "Insert" button in OO chrome)
+window.Asc.plugin.button = function(id) {
+    if (id === 0) insertIntoDoc(); // button index 0 = "Insert" (primary)
+};
+
+// Attempt init immediately in case sessionStorage is already populated
+initConfig();
+</script>
+</body>
+</html>

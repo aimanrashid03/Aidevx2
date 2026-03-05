@@ -3,7 +3,6 @@ import { buildDocx } from '../export/docxBuilder';
 import { buildUrsDocxTemplate, buildUrsSectionConfig } from '../export/ursDocxTemplate';
 import { tiptapJsonToDocxChildren } from '../../tiptap/converters/tiptapToDocx';
 import { migrateToTiptap } from '../../tiptap/converters/legacyToTiptap';
-import { structureToTiptapDoc } from '../../tiptap/converters/ursStructureToTiptap';
 import { DOC_STRUCTURES } from '../../constants/docs';
 import { Document, Packer } from 'docx';
 import type { RequirementDoc } from '../../context/ProjectContext';
@@ -64,6 +63,15 @@ export function getDocPublicUrl(storagePath: string): string {
     return supabase.storage.from('documents').getPublicUrl(bucketPath).data.publicUrl;
 }
 
+// ─── Template registry ────────────────────────────────────────────────────────
+
+/**
+ * Doc types that use a pre-built .docx file as their starting template.
+ * To add a new type: place public/templates/{TYPE}.docx and add the type here.
+ * e.g. new Set(['URS', 'BRS', 'SRS', 'SDS'])
+ */
+const FILE_TEMPLATE_TYPES = new Set<string>(['URS']);
+
 // ─── DOCX generation ──────────────────────────────────────────────────────────
 
 /**
@@ -92,15 +100,12 @@ export async function initializeDocxForDoc(
     let blob: Blob;
 
     if (!doc) {
-        // ── Case 1: Brand-new document — generate from structure ──────────────
-        if (docType === 'URS') {
-            // URS: use cover page template + structure-based body
-            const tiptapDoc = structureToTiptapDoc(structure as DocSection[]);
-            const bodyChildren = await tiptapJsonToDocxChildren(tiptapDoc.doc);
-            const ursOpts = await buildUrsDocxTemplate(projectName, docTitle);
-            const section = buildUrsSectionConfig(ursOpts, bodyChildren);
-            const wordDoc = new Document({ sections: [section] });
-            blob = await Packer.toBlob(wordDoc);
+        // ── Case 1: Brand-new document ────────────────────────────────────────
+        if (FILE_TEMPLATE_TYPES.has(docType)) {
+            // Use pre-built .docx template from public/templates/{TYPE}.docx
+            const res = await fetch(`/templates/${docType}.docx`);
+            if (!res.ok) throw new Error(`Template not found: /templates/${docType}.docx`);
+            blob = await res.blob();
         } else {
             blob = await buildDocx({
                 projectName,
@@ -175,6 +180,8 @@ interface OnlyOfficeConfigParams {
     mode: 'edit' | 'view';
     userId: string;
     userDisplayName: string;
+    /** Origin of the React app (window.location.origin) — used to locate the AI plugin config. */
+    pluginBaseUrl: string;
 }
 
 /**
@@ -206,10 +213,16 @@ export function getOnlyOfficeConfig(params: OnlyOfficeConfigParams): object {
             },
             customization: {
                 autosave: true,
-                forcesave: false,
+                forcesave: true,
                 compactToolbar: false,
                 hideRightMenu: true,
                 toolbarNoTabs: false,
+            },
+            plugins: {
+                autostart: ['asc.aidevx2-ai-generate-v1'],
+                pluginsData: [
+                    `${params.pluginBaseUrl}/onlyoffice-plugins/ai-generate/config.json`,
+                ],
             },
         },
     };

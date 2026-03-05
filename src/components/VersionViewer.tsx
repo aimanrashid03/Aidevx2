@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import { X, RotateCcw, Clock, Loader2 } from 'lucide-react';
-import RichTextEditor from './RichTextEditor';
 import TableEditor from './TableEditor';
 import { DOC_STRUCTURES } from '../constants/docs';
 import type { DocVersion } from '../context/ProjectContext';
@@ -139,10 +138,9 @@ export default function VersionViewer({ version, docType, onClose, onRestore }: 
                                                 if (block.type === 'text') {
                                                     return (
                                                         <div key={`text-${bIdx}`} className="mb-2">
-                                                            <RichTextEditor
-                                                                content={(block.data as string) || ''}
-                                                                onChange={() => {}}
-                                                                editable={false}
+                                                            <div
+                                                                className="prose prose-sm max-w-none text-slate-700"
+                                                                dangerouslySetInnerHTML={{ __html: (block.data as string) || '' }}
                                                             />
                                                         </div>
                                                     );

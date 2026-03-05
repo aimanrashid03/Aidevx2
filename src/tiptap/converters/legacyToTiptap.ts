@@ -1,7 +1,11 @@
 import type { JSONContent } from '@tiptap/core'
 import type { DocSection } from '../../constants/urs_structure'
 import { htmlStringToTiptapNodes } from './htmlStringToTiptapNodes'
-import type { TiptapDocContent } from './ursStructureToTiptap'
+
+export interface TiptapDocContent {
+    __format: 'tiptap-v1'
+    doc: JSONContent
+}
 
 /**
  * Returns true if the content object is in the old block-based format

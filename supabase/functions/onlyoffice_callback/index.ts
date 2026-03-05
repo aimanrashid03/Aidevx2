@@ -55,9 +55,9 @@ serve(async (req: Request) => {
         }
 
         const body = await req.json()
-        const { status, url: docUrl } = body
+        const { status, url: docUrl, key: callbackKey } = body
 
-        console.log(`OnlyOffice callback: docId=${docId} projectId=${projectId} status=${status}`)
+        console.log(`OnlyOffice callback: docId=${docId} projectId=${projectId} status=${status} key=${callbackKey}`)
 
         // Only process save-ready statuses
         if (status !== 2 && status !== 6) {
@@ -84,13 +84,24 @@ serve(async (req: Request) => {
         // ── Step 1: Fetch current document record ─────────────────────────────
         const { data: currentDoc, error: fetchErr } = await supabaseAdmin
             .from('requirement_docs')
-            .select('id, current_version, storage_path, title, status, section_statuses')
+            .select('id, current_version, storage_path, document_key, title, status, section_statuses')
             .eq('id', docId)
             .eq('project_id', projectId)
             .single()
 
         if (fetchErr || !currentDoc) {
             console.error('OnlyOffice callback: document not found', fetchErr)
+            return new Response(JSON.stringify({ error: 0 }), {
+                status: 200,
+                headers: { 'Content-Type': 'application/json', ...corsHeaders },
+            })
+        }
+
+        // ── Idempotency: skip stale callbacks ─────────────────────────────────
+        // OO sends the document key it was editing. If the DB key has already been
+        // rotated (by a concurrent callback or restore), this is a duplicate — skip it.
+        if (callbackKey && currentDoc.document_key && callbackKey !== currentDoc.document_key) {
+            console.log(`OnlyOffice callback: stale key (got=${callbackKey} db=${currentDoc.document_key}), skipping`)
             return new Response(JSON.stringify({ error: 0 }), {
                 status: 200,
                 headers: { 'Content-Type': 'application/json', ...corsHeaders },
@@ -138,7 +149,12 @@ serve(async (req: Request) => {
         }
 
         // ── Step 3: Download the updated DOCX from OnlyOffice ─────────────────
-        const docxResponse = await fetch(docUrl)
+        // OO provides a localhost URL (e.g. http://localhost:8080/cache/...) which
+        // is unreachable from the Edge Runtime Docker container. Rewrite to
+        // host.docker.internal so it routes through the host's port mapping.
+        const ooDocUrl = docUrl.replace('http://localhost:8080', 'http://host.docker.internal:8080')
+        console.log(`OnlyOffice callback: fetching DOCX from ${ooDocUrl}`)
+        const docxResponse = await fetch(ooDocUrl)
         if (!docxResponse.ok) {
             throw new Error(`Failed to download DOCX from OnlyOffice: ${docxResponse.status}`)
         }
