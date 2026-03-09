@@ -216,16 +216,6 @@ export function getOnlyOfficeConfig(params: OnlyOfficeConfigParams): object {
                 hideRightMenu: true,
                 toolbarNoTabs: false,
             },
-            plugins: {
-                autostart: [
-                    'asc.{9DC93CDB-B576-4F0C-B55E-FCC9C48DD007}',
-                    'asc.aidevx2-ai-generate-v1',
-                ],
-                pluginsData: [
-                    `${import.meta.env.VITE_ONLYOFFICE_SERVER_URL || 'http://localhost:8080'}/sdkjs-plugins/{9DC93CDB-B576-4F0C-B55E-FCC9C48DD007}/config.json`,
-                    `${import.meta.env.VITE_ONLYOFFICE_SERVER_URL || 'http://localhost:8080'}/sdkjs-plugins/asc.aidevx2-ai-generate-v1/config.json`,
-                ],
-            },
         },
     };
 }

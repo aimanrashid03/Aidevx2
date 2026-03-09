@@ -234,15 +234,6 @@ export default function DocumentEditor() {
         return () => document.removeEventListener('mousedown', handler)
     }, [showExport])
 
-    // Write Supabase config + projectId to cookies for the OO AI plugin
-    // Cookies are shared across ports on the same hostname (unlike sessionStorage)
-    useEffect(() => {
-        const url = import.meta.env.VITE_SUPABASE_URL as string
-        const key = import.meta.env.VITE_SUPABASE_ANON_KEY as string
-        document.cookie = `aidevx_supabase_url=${encodeURIComponent(url)}; path=/; SameSite=Lax`
-        document.cookie = `aidevx_anon_key=${encodeURIComponent(key)}; path=/; SameSite=Lax`
-        if (projectId) document.cookie = `aidevx_project_id=${encodeURIComponent(projectId)}; path=/; SameSite=Lax`
-    }, [projectId])
 
     // ─── OnlyOffice config ────────────────────────────────────────────────────
 
@@ -472,7 +463,7 @@ export default function DocumentEditor() {
                 {projectId && !showVersionHistory && !showComments && (
                     <AIGeneratePanel
                         projectId={projectId}
-                        onInsert={(text) => editorRef.current?.pasteText(text)}
+                        onInsert={(html) => editorRef.current?.pasteHtml(html)}
                     />
                 )}
 

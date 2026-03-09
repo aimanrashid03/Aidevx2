@@ -1,11 +1,15 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import "https://deno.land/x/xhr@0.1.0/mod.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.38.0'
+import { getEmbeddingConfig } from '../_shared/llmConfig.ts'
+import { chunkText } from '../_shared/chunker.ts'
 
 const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
+
+const BATCH_SIZE = 20  // Max chunks per embedding API call
 
 serve(async (req) => {
     if (req.method === 'OPTIONS') {
@@ -24,59 +28,89 @@ serve(async (req) => {
             Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
         )
 
-        const openAiKey = Deno.env.get('OPENAI_API_KEY')
-        if (!openAiKey) {
-            throw new Error('OPENAI_API_KEY is not set')
+        const embeddingConfig = getEmbeddingConfig()
+        if (!embeddingConfig.apiKey) {
+            throw new Error('No embedding API key configured (set EMBEDDING_API_KEY or OPENAI_API_KEY)')
         }
 
-        // Split content into chunks (simple chunking by paragraph for now)
-        const chunks = content.split('\n\n').filter((chunk: string) => chunk.trim().length > 0)
+        // ── 1. Delete existing chunks for this document (dedup on re-upload) ──
+        const { error: deleteError } = await supabaseAdmin
+            .from('document_chunks')
+            .delete()
+            .eq('project_id', projectId)
+            .eq('document_path', documentPath)
 
-        console.log(`Processing ${chunks.length} chunks for document: ${documentPath}`);
+        if (deleteError) {
+            console.error('Delete error (non-fatal):', deleteError)
+        }
 
-        for (const chunk of chunks) {
-            if (chunk.trim().length < 10) continue; // Skip very small chunks
+        // ── 2. Smart chunking ──────────────────────────────────────────────────
+        const chunks = chunkText(content, documentPath)
+        console.log(`Processing ${chunks.length} chunks for document: ${documentPath}`)
 
-            // Get embedding from OpenAI
-            const embeddingResponse = await fetch('https://api.openai.com/v1/embeddings', {
+        if (chunks.length === 0) {
+            return new Response(
+                JSON.stringify({ success: true, message: 'No chunks extracted.' }),
+                { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            )
+        }
+
+        // ── 3. Batch embed + insert ────────────────────────────────────────────
+        for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
+            const batch = chunks.slice(i, i + BATCH_SIZE)
+            const inputs = batch.map(c => c.content)
+
+            const embeddingResponse = await fetch(`${embeddingConfig.baseUrl}/embeddings`, {
                 method: 'POST',
                 headers: {
-                    'Authorization': `Bearer ${openAiKey}`,
+                    'Authorization': `Bearer ${embeddingConfig.apiKey}`,
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
-                    model: 'text-embedding-3-small',
-                    input: chunk,
+                    model: embeddingConfig.model,
+                    input: inputs,
+                    ...(embeddingConfig.dimensions !== 1536 ? { dimensions: embeddingConfig.dimensions } : {}),
                 }),
             })
 
             if (!embeddingResponse.ok) {
                 const err = await embeddingResponse.text()
-                console.error('OpenAI Error:', err)
-                throw new Error('Failed to generate embedding')
+                console.error('Embedding API Error:', err)
+                throw new Error('Failed to generate embeddings')
             }
 
             const embeddingData = await embeddingResponse.json()
-            const embedding = embeddingData.data[0].embedding
+            const embeddings: number[][] = embeddingData.data
+                .sort((a: { index: number }, b: { index: number }) => a.index - b.index)
+                .map((e: { embedding: number[] }) => e.embedding)
 
-            // Insert into database
-            const { error } = await supabaseAdmin
+            const rows = batch.map((chunk, j) => ({
+                project_id: projectId,
+                document_path: documentPath,
+                content: chunk.content,
+                embedding: embeddings[j],
+                metadata: chunk.metadata,
+                embedding_model: embeddingConfig.model,
+                chunk_index: chunk.metadata.chunkIndex,
+            }))
+
+            const { error: insertError } = await supabaseAdmin
                 .from('document_chunks')
-                .insert({
-                    project_id: projectId,
-                    document_path: documentPath,
-                    content: chunk,
-                    embedding: embedding,
-                })
+                .insert(rows)
 
-            if (error) {
-                console.error('Supabase Error:', error)
-                throw new Error('Failed to insert chunk')
+            if (insertError) {
+                console.error('Supabase insert error:', insertError)
+                throw new Error('Failed to insert chunks')
             }
         }
 
         return new Response(
-            JSON.stringify({ success: true, message: `Successfully processed ${chunks.length} chunks.` }),
+            JSON.stringify({
+                success: true,
+                message: `Successfully processed ${chunks.length} chunks.`,
+                chunks: chunks.length,
+                model: embeddingConfig.model,
+            }),
             { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         )
     } catch (error) {

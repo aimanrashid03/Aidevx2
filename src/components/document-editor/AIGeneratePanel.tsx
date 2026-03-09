@@ -1,18 +1,47 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { Sparkles, Loader2, Copy, Check, MessageSquare, Zap, Send, Trash2, CornerDownLeft } from 'lucide-react'
+import {
+    Sparkles, Loader2, Copy, Check, MessageSquare, Zap, Send,
+    Trash2, CornerDownLeft, ChevronDown, ChevronRight, FileText, Code,
+} from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 
 interface ChatMessage {
     role: 'user' | 'assistant'
-    content: string
+    content: string  // HTML string for assistant, plain text for user
+}
+
+interface ProjectDocument {
+    id: string
+    name: string
+    file_path: string
 }
 
 interface AIGeneratePanelProps {
     projectId: string
     /** Pre-fill the section title (set when user clicks sparkle in TOC) */
     prefillTitle?: string
-    /** Called with plain text to paste at cursor in OO */
-    onInsert?: (text: string) => void
+    /** Called with HTML to paste at cursor in OO */
+    onInsert?: (html: string) => void
+}
+
+// Minimal HTML sanitiser — keep only safe formatting tags
+function sanitizeHtml(html: string): string {
+    const allowed = new Set([
+        'p', 'ul', 'ol', 'li', 'h3', 'table', 'thead', 'tbody', 'tr', 'th', 'td',
+        'strong', 'em', 'br',
+    ])
+    // Use DOMParser to strip disallowed tags while keeping their text content
+    const doc = new DOMParser().parseFromString(html, 'text/html')
+    function clean(node: Node): string {
+        if (node.nodeType === Node.TEXT_NODE) return node.textContent ?? ''
+        if (node.nodeType !== Node.ELEMENT_NODE) return ''
+        const el = node as Element
+        const tag = el.tagName.toLowerCase()
+        const children = Array.from(el.childNodes).map(clean).join('')
+        if (!allowed.has(tag)) return children
+        return `<${tag}>${children}</${tag}>`
+    }
+    return Array.from(doc.body.childNodes).map(clean).join('')
 }
 
 export default function AIGeneratePanel({ projectId, prefillTitle, onInsert }: AIGeneratePanelProps) {
@@ -21,12 +50,18 @@ export default function AIGeneratePanel({ projectId, prefillTitle, onInsert }: A
     // ── Generate tab state ──────────────────────────────────────────────────
     const [sectionTitle, setSectionTitle] = useState('')
     const [instructions, setInstructions] = useState('')
-    const [generatedText, setGeneratedText] = useState('')
+    const [generatedHtml, setGeneratedHtml] = useState('')
     const [isGenerating, setIsGenerating] = useState(false)
     const [genError, setGenError] = useState<string | null>(null)
     const [copied, setCopied] = useState(false)
+    const [viewSource, setViewSource] = useState(false)
+    const [genSources, setGenSources] = useState<string[]>([])
     const genAbortRef = useRef<AbortController | null>(null)
-    const genTextareaRef = useRef<HTMLTextAreaElement>(null)
+
+    // ── Document selector state ─────────────────────────────────────────────
+    const [projectDocs, setProjectDocs] = useState<ProjectDocument[]>([])
+    const [selectedDocPaths, setSelectedDocPaths] = useState<Set<string>>(new Set())
+    const [docsExpanded, setDocsExpanded] = useState(false)
 
     // ── Chat tab state ──────────────────────────────────────────────────────
     const [chatHistory, setChatHistory] = useState<ChatMessage[]>([])
@@ -49,6 +84,18 @@ export default function AIGeneratePanel({ projectId, prefillTitle, onInsert }: A
         chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' })
     }, [chatHistory, isChatting])
 
+    // Load project documents for the context selector
+    useEffect(() => {
+        if (!projectId) return
+        supabase
+            .from('project_documents')
+            .select('id, name, file_path')
+            .eq('project_id', projectId)
+            .then(({ data }) => {
+                if (data) setProjectDocs(data as ProjectDocument[])
+            })
+    }, [projectId])
+
     // ── Helpers ─────────────────────────────────────────────────────────────
     const getAuthHeaders = useCallback(async () => {
         const { data: { session } } = await supabase.auth.getSession()
@@ -64,6 +111,7 @@ export default function AIGeneratePanel({ projectId, prefillTitle, onInsert }: A
         body: object,
         signal: AbortSignal,
         onToken: (token: string) => void,
+        onSources?: (sources: string[]) => void,
     ) {
         const headers = await getAuthHeaders()
         const res = await fetch(
@@ -79,7 +127,27 @@ export default function AIGeneratePanel({ projectId, prefillTitle, onInsert }: A
         let buf = ''
         while (true) {
             const { done, value } = await reader.read()
-            if (done) break
+            if (done) {
+                // Flush any remaining data in the buffer
+                if (buf.trim()) {
+                    const line = buf.trim()
+                    if (line.startsWith('data: ')) {
+                        const data = line.slice(6).trim()
+                        if (data !== '[DONE]') {
+                            try {
+                                const parsed = JSON.parse(data)
+                                if (parsed?.type === 'sources') {
+                                    onSources?.(parsed.sources ?? [])
+                                } else {
+                                    const token: string = parsed?.choices?.[0]?.delta?.content ?? ''
+                                    if (token) onToken(token)
+                                }
+                            } catch { /* ignore malformed */ }
+                        }
+                    }
+                }
+                break
+            }
             buf += decoder.decode(value, { stream: true })
             const lines = buf.split('\n')
             buf = lines.pop() ?? ''
@@ -88,7 +156,13 @@ export default function AIGeneratePanel({ projectId, prefillTitle, onInsert }: A
                 const data = line.slice(6).trim()
                 if (data === '[DONE]') return
                 try {
-                    const token: string = JSON.parse(data)?.choices?.[0]?.delta?.content ?? ''
+                    const parsed = JSON.parse(data)
+                    // Custom sources event
+                    if (parsed?.type === 'sources') {
+                        onSources?.(parsed.sources ?? [])
+                        continue
+                    }
+                    const token: string = parsed?.choices?.[0]?.delta?.content ?? ''
                     if (token) onToken(token)
                 } catch { /* ignore malformed */ }
             }
@@ -103,21 +177,33 @@ export default function AIGeneratePanel({ projectId, prefillTitle, onInsert }: A
         genAbortRef.current = ctrl
 
         setIsGenerating(true)
-        setGeneratedText('')
+        setGeneratedHtml('')
         setGenError(null)
         setCopied(false)
+        setGenSources([])
+        setViewSource(false)
+
+        const selectedPaths = selectedDocPaths.size > 0
+            ? projectDocs
+                .filter(d => selectedDocPaths.has(d.id))
+                .map(d => d.file_path)
+            : undefined
 
         try {
             let acc = ''
             await streamSSE(
-                { projectId, sectionTitle: sectionTitle.trim(), instructions: instructions.trim() || undefined },
+                {
+                    projectId,
+                    sectionTitle: sectionTitle.trim(),
+                    instructions: instructions.trim() || undefined,
+                    selectedDocumentPaths: selectedPaths,
+                },
                 ctrl.signal,
                 (token) => {
                     acc += token
-                    setGeneratedText(acc)
-                    if (genTextareaRef.current)
-                        genTextareaRef.current.scrollTop = genTextareaRef.current.scrollHeight
-                }
+                    setGeneratedHtml(acc)
+                },
+                (sources) => setGenSources(sources),
             )
         } catch (err) {
             if ((err as Error).name !== 'AbortError')
@@ -125,21 +211,19 @@ export default function AIGeneratePanel({ projectId, prefillTitle, onInsert }: A
         } finally {
             setIsGenerating(false)
         }
-    }, [sectionTitle, instructions, projectId])
+    }, [sectionTitle, instructions, projectId, selectedDocPaths, projectDocs])
 
     const handleCopy = async () => {
         try {
-            await navigator.clipboard.writeText(generatedText)
+            await navigator.clipboard.writeText(generatedHtml)
             setCopied(true)
             setTimeout(() => setCopied(false), 2000)
-        } catch {
-            genTextareaRef.current?.select()
-        }
+        } catch { /* ignore */ }
     }
 
     const handleInsert = () => {
-        if (!generatedText) return
-        onInsert?.(generatedText)
+        if (!generatedHtml) return
+        onInsert?.(sanitizeHtml(generatedHtml))
     }
 
     // ── Chat ────────────────────────────────────────────────────────────────
@@ -177,11 +261,12 @@ export default function AIGeneratePanel({ projectId, prefillTitle, onInsert }: A
                         next[next.length - 1] = { role: 'assistant', content: assistantAcc }
                         return next
                     })
-                }
+                },
             )
         } catch (err) {
+            // Always remove the empty placeholder assistant message
+            setChatHistory(prev => prev.slice(0, -1))
             if ((err as Error).name !== 'AbortError') {
-                setChatHistory(prev => prev.slice(0, -1)) // remove empty assistant msg
                 setChatError((err as Error).message || 'Chat failed')
             }
         } finally {
@@ -194,6 +279,15 @@ export default function AIGeneratePanel({ projectId, prefillTitle, onInsert }: A
         setChatHistory([])
         setChatError(null)
         setIsChatting(false)
+    }
+
+    const toggleDoc = (id: string) => {
+        setSelectedDocPaths(prev => {
+            const next = new Set(prev)
+            if (next.has(id)) next.delete(id)
+            else next.add(id)
+            return next
+        })
     }
 
     const tabCls = (t: typeof tab) =>
@@ -225,6 +319,7 @@ export default function AIGeneratePanel({ projectId, prefillTitle, onInsert }: A
             {tab === 'generate' && (
                 <div className="flex flex-col flex-1 overflow-hidden">
                     <div className="flex flex-col gap-2.5 p-3 border-b border-slate-100 shrink-0">
+                        {/* Section title */}
                         <div>
                             <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide block mb-1">
                                 Section title
@@ -238,6 +333,8 @@ export default function AIGeneratePanel({ projectId, prefillTitle, onInsert }: A
                                 className="w-full resize-none text-[12px] text-slate-700 bg-slate-50 border border-slate-200 rounded px-2 py-1.5 outline-none focus:border-violet-300 focus:ring-1 focus:ring-violet-100"
                             />
                         </div>
+
+                        {/* Instructions */}
                         <div>
                             <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide block mb-1">
                                 Instructions <span className="font-normal normal-case">(optional)</span>
@@ -250,6 +347,57 @@ export default function AIGeneratePanel({ projectId, prefillTitle, onInsert }: A
                                 className="w-full resize-none text-[12px] text-slate-700 bg-slate-50 border border-slate-200 rounded px-2 py-1.5 outline-none focus:border-violet-300 focus:ring-1 focus:ring-violet-100"
                             />
                         </div>
+
+                        {/* Context document selector */}
+                        {projectDocs.length > 0 && (
+                            <div>
+                                <button
+                                    onClick={() => setDocsExpanded(v => !v)}
+                                    className="flex items-center gap-1 text-[10px] font-semibold text-slate-500 uppercase tracking-wide hover:text-slate-700 transition-colors w-full"
+                                >
+                                    {docsExpanded ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+                                    Context Documents
+                                    {selectedDocPaths.size > 0 && (
+                                        <span className="ml-auto normal-case font-normal text-violet-600">
+                                            {selectedDocPaths.size} selected
+                                        </span>
+                                    )}
+                                </button>
+                                {docsExpanded && (
+                                    <div className="mt-1.5 flex flex-col gap-1">
+                                        {projectDocs.map(doc => (
+                                            <label
+                                                key={doc.id}
+                                                className="flex items-center gap-2 cursor-pointer group"
+                                            >
+                                                <input
+                                                    type="checkbox"
+                                                    checked={selectedDocPaths.has(doc.id)}
+                                                    onChange={() => toggleDoc(doc.id)}
+                                                    className="accent-violet-600 shrink-0"
+                                                />
+                                                <FileText size={10} className="text-slate-400 shrink-0" />
+                                                <span
+                                                    className="text-[11px] text-slate-600 truncate group-hover:text-slate-800"
+                                                    title={doc.name}
+                                                >
+                                                    {doc.name}
+                                                </span>
+                                            </label>
+                                        ))}
+                                        {selectedDocPaths.size > 0 && (
+                                            <button
+                                                onClick={() => setSelectedDocPaths(new Set())}
+                                                className="text-[10px] text-slate-400 hover:text-slate-600 text-left mt-0.5"
+                                            >
+                                                Clear selection (use all)
+                                            </button>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
                         <button
                             onClick={generate}
                             disabled={isGenerating || !sectionTitle.trim()}
@@ -260,19 +408,69 @@ export default function AIGeneratePanel({ projectId, prefillTitle, onInsert }: A
                         </button>
                     </div>
 
-                    {/* Output */}
+                    {/* Output area */}
                     <div className="flex-1 flex flex-col overflow-hidden p-3 gap-2">
-                        <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide shrink-0">
-                            Generated content
-                        </label>
-                        <textarea
-                            ref={genTextareaRef}
-                            value={generatedText}
-                            onChange={e => setGeneratedText(e.target.value)}
-                            readOnly={isGenerating}
-                            placeholder={isGenerating ? 'Generating…' : 'Generated text will appear here'}
-                            className="flex-1 resize-none text-[12px] text-slate-700 bg-slate-50 border border-slate-200 rounded p-2 outline-none focus:border-violet-300 focus:ring-1 focus:ring-violet-100 leading-relaxed"
-                        />
+                        {/* Output label + view-source toggle */}
+                        <div className="flex items-center justify-between shrink-0">
+                            <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">
+                                Generated content
+                            </label>
+                            {generatedHtml && (
+                                <button
+                                    onClick={() => setViewSource(v => !v)}
+                                    className="flex items-center gap-1 text-[10px] text-slate-400 hover:text-slate-600 transition-colors"
+                                    title={viewSource ? 'Show preview' : 'View HTML source'}
+                                >
+                                    <Code size={10} />
+                                    {viewSource ? 'Preview' : 'Source'}
+                                </button>
+                            )}
+                        </div>
+
+                        {/* Rendered HTML preview or raw source */}
+                        <div className="flex-1 overflow-y-auto rounded border border-slate-200 bg-slate-50">
+                            {viewSource ? (
+                                <textarea
+                                    value={generatedHtml}
+                                    onChange={e => setGeneratedHtml(e.target.value)}
+                                    className="w-full h-full resize-none text-[11px] font-mono text-slate-600 bg-slate-50 p-2 outline-none leading-relaxed"
+                                />
+                            ) : (
+                                <div
+                                    className={`p-2 text-[12px] text-slate-700 leading-relaxed prose prose-sm max-w-none
+                                        [&_h3]:text-[12px] [&_h3]:font-semibold [&_h3]:mt-2 [&_h3]:mb-1
+                                        [&_p]:mb-2 [&_ul]:pl-4 [&_ol]:pl-4 [&_li]:mb-0.5
+                                        [&_table]:w-full [&_table]:border-collapse [&_table]:text-[11px]
+                                        [&_th]:border [&_th]:border-slate-300 [&_th]:bg-slate-100 [&_th]:px-1.5 [&_th]:py-1 [&_th]:text-left
+                                        [&_td]:border [&_td]:border-slate-200 [&_td]:px-1.5 [&_td]:py-1
+                                        ${!generatedHtml ? 'text-slate-400 italic' : ''}`}
+                                    // Safe: we sanitize before insert, preview is read-only
+                                    dangerouslySetInnerHTML={{
+                                        __html: generatedHtml || (isGenerating ? '' : 'Generated content will appear here'),
+                                    }}
+                                />
+                            )}
+                        </div>
+
+                        {/* Source pills */}
+                        {genSources.length > 0 && (
+                            <div className="shrink-0">
+                                <p className="text-[10px] text-slate-400 mb-1">Sources used:</p>
+                                <div className="flex flex-wrap gap-1">
+                                    {genSources.map(src => (
+                                        <span
+                                            key={src}
+                                            className="inline-flex items-center gap-1 text-[10px] bg-violet-50 text-violet-700 border border-violet-200 rounded px-1.5 py-0.5"
+                                            title={src}
+                                        >
+                                            <FileText size={9} />
+                                            <span className="max-w-[120px] truncate">{src}</span>
+                                        </span>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
                         {genError && <p className="text-[11px] text-red-500 shrink-0">{genError}</p>}
                     </div>
 
@@ -287,7 +485,7 @@ export default function AIGeneratePanel({ projectId, prefillTitle, onInsert }: A
                         </button>
                         <button
                             onClick={handleCopy}
-                            disabled={!generatedText || isGenerating}
+                            disabled={!generatedHtml || isGenerating}
                             className="flex items-center justify-center gap-1 px-3 text-[11px] py-1.5 rounded border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-50 transition-colors"
                         >
                             {copied ? <Check size={11} /> : <Copy size={11} />}
@@ -296,7 +494,7 @@ export default function AIGeneratePanel({ projectId, prefillTitle, onInsert }: A
                         {onInsert && (
                             <button
                                 onClick={handleInsert}
-                                disabled={!generatedText || isGenerating}
+                                disabled={!generatedHtml || isGenerating}
                                 className="flex items-center justify-center gap-1 px-3 text-[11px] py-1.5 rounded bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50 transition-colors"
                                 title="Insert at cursor in document"
                             >
@@ -319,17 +517,28 @@ export default function AIGeneratePanel({ projectId, prefillTitle, onInsert }: A
                             </div>
                         )}
                         {chatHistory.map((msg, i) => (
-                            <div
-                                key={i}
-                                className={`text-[12px] leading-relaxed rounded-lg px-3 py-2 max-w-[90%] ${
-                                    msg.role === 'user'
-                                        ? 'self-end bg-violet-600 text-white rounded-br-sm'
-                                        : 'self-start bg-slate-100 text-slate-700 rounded-bl-sm'
-                                }`}
-                            >
-                                {msg.content || (msg.role === 'assistant' && isChatting && i === chatHistory.length - 1
-                                    ? <span className="opacity-60">Thinking…</span>
-                                    : null
+                            <div key={i} className={`flex flex-col gap-1 max-w-[92%] ${msg.role === 'user' ? 'self-end items-end' : 'self-start items-start'}`}>
+                                <div
+                                    className={`text-[12px] leading-relaxed rounded-lg px-3 py-2 ${
+                                        msg.role === 'user'
+                                            ? 'bg-violet-600 text-white rounded-br-sm'
+                                            : 'bg-slate-100 text-slate-700 rounded-bl-sm prose prose-sm max-w-none [&_h3]:text-[12px] [&_h3]:font-semibold [&_p]:mb-1 [&_ul]:pl-4 [&_li]:mb-0.5 [&_table]:text-[11px] [&_td]:border [&_td]:border-slate-200 [&_td]:px-1 [&_th]:border [&_th]:border-slate-300 [&_th]:px-1'
+                                    }`}
+                                    // Assistant content is HTML from LLM; user content is plain text
+                                    {...(msg.role === 'assistant'
+                                        ? { dangerouslySetInnerHTML: { __html: msg.content || (isChatting && i === chatHistory.length - 1 ? '<span style="opacity:0.6">Thinking…</span>' : '') } }
+                                        : { children: msg.content }
+                                    )}
+                                />
+                                {/* Insert button for assistant messages */}
+                                {msg.role === 'assistant' && msg.content && onInsert && (
+                                    <button
+                                        onClick={() => onInsert(sanitizeHtml(msg.content))}
+                                        className="flex items-center gap-1 text-[10px] text-violet-600 hover:text-violet-800 transition-colors"
+                                        title="Insert into document"
+                                    >
+                                        <CornerDownLeft size={10} /> Insert
+                                    </button>
                                 )}
                             </div>
                         ))}
