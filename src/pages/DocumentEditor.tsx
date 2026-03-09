@@ -13,7 +13,6 @@ import VersionHistory from '../components/VersionHistory'
 import VersionViewer from '../components/VersionViewer'
 import CommentsSidebar from '../components/CommentsSidebar'
 import PresenceIndicator from '../components/PresenceIndicator'
-import SectionTOC from '../components/document-editor/SectionTOC'
 import OnlyOfficeEditor, { type OnlyOfficeEditorHandle } from '../components/document-editor/OnlyOfficeEditor'
 import AIGeneratePanel from '../components/document-editor/AIGeneratePanel'
 import {
@@ -42,8 +41,6 @@ export default function DocumentEditor() {
 
     const [docTitle, setDocTitle] = useState(existingDoc?.title || 'Untitled Document')
     const [docStatus, setDocStatus] = useState<'draft' | 'final'>(existingDoc?.status || 'draft')
-    const [sectionStatuses, setSectionStatuses] = useState<Record<string, 'drafting' | 'complete'>>({})
-
     // OnlyOffice document state
     const [docPublicUrl, setDocPublicUrl] = useState<string | null>(null)
     const [documentKey, setDocumentKey] = useState<string | null>(null)
@@ -54,9 +51,6 @@ export default function DocumentEditor() {
 
     // TOC populated by mammoth parse on doc load
     const [tocSections, setTocSections] = useState<DocHeading[]>([])
-
-    // AI generate panel
-    const [aiPanelSection, setAiPanelSection] = useState<{ sectionId: string; title: string } | null>(null)
 
     // Sidebar toggles
     const [showVersionHistory, setShowVersionHistory] = useState(false)
@@ -115,7 +109,6 @@ export default function DocumentEditor() {
                 const url = getDocPublicUrl(doc.storagePath)
                 setDocPublicUrl(url)
                 setDocumentKey(doc.documentKey)
-                setSectionStatuses((doc.sectionStatuses || {}) as Record<string, 'drafting' | 'complete'>)
                 extractSectionsFromDocx(url)
                     .then(setTocSections)
                     .catch(() => setTocSections([]))
@@ -155,7 +148,6 @@ export default function DocumentEditor() {
 
             setDocPublicUrl(publicUrl)
             setDocumentKey(newKey)
-            setSectionStatuses((doc?.sectionStatuses || {}) as Record<string, 'drafting' | 'complete'>)
 
             if (isNewDoc) {
                 navigate(`/editor/${pid}/${did}`, { replace: true })
@@ -242,11 +234,14 @@ export default function DocumentEditor() {
         return () => document.removeEventListener('mousedown', handler)
     }, [showExport])
 
-    // Write Supabase config + projectId to sessionStorage for the OO AI plugin
+    // Write Supabase config + projectId to cookies for the OO AI plugin
+    // Cookies are shared across ports on the same hostname (unlike sessionStorage)
     useEffect(() => {
-        sessionStorage.setItem('aidevx_supabase_url', import.meta.env.VITE_SUPABASE_URL as string)
-        sessionStorage.setItem('aidevx_anon_key', import.meta.env.VITE_SUPABASE_ANON_KEY as string)
-        if (projectId) sessionStorage.setItem('aidevx_project_id', projectId)
+        const url = import.meta.env.VITE_SUPABASE_URL as string
+        const key = import.meta.env.VITE_SUPABASE_ANON_KEY as string
+        document.cookie = `aidevx_supabase_url=${encodeURIComponent(url)}; path=/; SameSite=Lax`
+        document.cookie = `aidevx_anon_key=${encodeURIComponent(key)}; path=/; SameSite=Lax`
+        if (projectId) document.cookie = `aidevx_project_id=${encodeURIComponent(projectId)}; path=/; SameSite=Lax`
     }, [projectId])
 
     // ─── OnlyOffice config ────────────────────────────────────────────────────
@@ -280,35 +275,8 @@ export default function DocumentEditor() {
             mode: viewingVersion ? 'view' : 'edit',
             userId: user?.id ?? 'anonymous',
             userDisplayName: profile?.full_name || user?.email || 'User',
-            pluginBaseUrl: window.location.origin,
         })
     }, [docPublicUrl, documentKey, docTitle, viewingVersion, projectId, user?.id, profile?.full_name])
-
-    // ─── Section status ──────────────────────────────────────────────────────
-
-    const toggleSectionStatus = useCallback((sectionId: string) => {
-        setSectionStatuses(prev => {
-            const current = prev[sectionId]
-            const nextStatus = !current ? 'drafting' : current === 'drafting' ? 'complete' : undefined
-            const updated = { ...prev }
-            if (nextStatus) updated[sectionId] = nextStatus
-            else delete updated[sectionId]
-            const did = docIdRef.current
-            if (did && projectId) {
-                supabase.from('requirement_docs')
-                    .update({ section_statuses: updated })
-                    .eq('id', did)
-                    .eq('project_id', projectId)
-                    .then(() => {})
-            }
-            return updated
-        })
-    }, [projectId])
-
-    const handleRefreshToc = useCallback(() => {
-        if (!docPublicUrl) return
-        extractSectionsFromDocx(docPublicUrl).then(setTocSections).catch(() => {})
-    }, [docPublicUrl])
 
     // ─── Export ──────────────────────────────────────────────────────────────
 
@@ -401,14 +369,14 @@ export default function DocumentEditor() {
                     </button>
 
                     <button
-                        onClick={() => { setShowVersionHistory(v => !v); setShowComments(false); setAiPanelSection(null) }}
+                        onClick={() => { setShowVersionHistory(v => !v); setShowComments(false) }}
                         className={`p-1.5 rounded hover:bg-slate-100 text-slate-500 ${showVersionHistory ? 'bg-slate-100' : ''}`}
                         title="Version History"
                     >
                         <History size={15} />
                     </button>
                     <button
-                        onClick={() => { setShowComments(v => !v); setShowVersionHistory(false); setAiPanelSection(null) }}
+                        onClick={() => { setShowComments(v => !v); setShowVersionHistory(false) }}
                         className={`p-1.5 rounded hover:bg-slate-100 text-slate-500 ${showComments ? 'bg-slate-100' : ''}`}
                         title="Comments"
                     >
@@ -445,23 +413,6 @@ export default function DocumentEditor() {
 
             {/* ── Body ── */}
             <div className="flex flex-1 min-h-0 relative">
-
-                {/* Left sidebar — Section TOC */}
-                <aside className="w-52 bg-white border-r border-slate-200 flex flex-col shrink-0 overflow-hidden">
-                    <SectionTOC
-                        sections={tocSections}
-                        sectionStatuses={sectionStatuses}
-                        commentCounts={commentCounts}
-                        onToggleStatus={toggleSectionStatus}
-                        onAutoGen={(sectionId, title) => {
-                            setAiPanelSection({ sectionId, title })
-                            setShowVersionHistory(false)
-                            setShowComments(false)
-                        }}
-                        generatingSectionId={aiPanelSection?.sectionId ?? null}
-                        onRefresh={handleRefreshToc}
-                    />
-                </aside>
 
                 {/* Main canvas — OnlyOffice Editor */}
                 <main className="flex-1 overflow-hidden flex flex-col relative">
@@ -517,12 +468,11 @@ export default function DocumentEditor() {
                     )}
                 </main>
 
-                {/* AI Generate Panel (slide-in from right) */}
-                {aiPanelSection && projectId && (
+                {/* AI Assistant Panel — always visible on the right */}
+                {projectId && !showVersionHistory && !showComments && (
                     <AIGeneratePanel
-                        sectionTitle={aiPanelSection.title}
                         projectId={projectId}
-                        onClose={() => setAiPanelSection(null)}
+                        onInsert={(text) => editorRef.current?.pasteText(text)}
                     />
                 )}
 

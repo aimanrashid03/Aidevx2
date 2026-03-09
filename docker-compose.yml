@@ -21,6 +21,8 @@ services:
       - onlyoffice_data:/var/www/onlyoffice/Data
       - onlyoffice_log:/var/log/onlyoffice
       - onlyoffice_fonts:/usr/share/fonts/truetype/custom
+      - ./public/onlyoffice-plugins/openai:/var/www/onlyoffice/documentserver/sdkjs-plugins/{9DC93CDB-B576-4F0C-B55E-FCC9C48DD007}:ro
+      - ./public/onlyoffice-plugins/ai-generate:/var/www/onlyoffice/documentserver/sdkjs-plugins/asc.aidevx2-ai-generate-v1:ro
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost/healthcheck"]
       interval: 30s

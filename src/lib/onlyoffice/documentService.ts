@@ -180,8 +180,6 @@ interface OnlyOfficeConfigParams {
     mode: 'edit' | 'view';
     userId: string;
     userDisplayName: string;
-    /** Origin of the React app (window.location.origin) — used to locate the AI plugin config. */
-    pluginBaseUrl: string;
 }
 
 /**
@@ -219,9 +217,13 @@ export function getOnlyOfficeConfig(params: OnlyOfficeConfigParams): object {
                 toolbarNoTabs: false,
             },
             plugins: {
-                autostart: ['asc.aidevx2-ai-generate-v1'],
+                autostart: [
+                    'asc.{9DC93CDB-B576-4F0C-B55E-FCC9C48DD007}',
+                    'asc.aidevx2-ai-generate-v1',
+                ],
                 pluginsData: [
-                    `${params.pluginBaseUrl}/onlyoffice-plugins/ai-generate/config.json`,
+                    `${import.meta.env.VITE_ONLYOFFICE_SERVER_URL || 'http://localhost:8080'}/sdkjs-plugins/{9DC93CDB-B576-4F0C-B55E-FCC9C48DD007}/config.json`,
+                    `${import.meta.env.VITE_ONLYOFFICE_SERVER_URL || 'http://localhost:8080'}/sdkjs-plugins/asc.aidevx2-ai-generate-v1/config.json`,
                 ],
             },
         },

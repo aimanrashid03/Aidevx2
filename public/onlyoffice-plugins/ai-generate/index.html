@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AI Generate</title>
+    <title>AI Assistant</title>
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -20,10 +20,10 @@
 
         /* ── Header ── */
         .header {
-            background: #1e293b;
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
             color: #f1f5f9;
-            padding: 10px 12px 8px;
-            shrink: 0;
+            padding: 10px 12px 0;
+            flex-shrink: 0;
         }
         .header-title {
             font-size: 13px;
@@ -31,16 +31,49 @@
             display: flex;
             align-items: center;
             gap: 6px;
+            padding-bottom: 10px;
         }
-        .spark-icon { color: #a78bfa; }
-        .header-sub {
-            font-size: 10px;
+        .spark-icon { color: #a78bfa; font-size: 14px; }
+
+        /* ── Tabs ── */
+        .tabs {
+            display: flex;
+            gap: 2px;
+        }
+        .tab {
+            flex: 1;
+            padding: 6px 0;
+            text-align: center;
+            font-size: 11px;
+            font-weight: 500;
             color: #94a3b8;
-            margin-top: 2px;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: color 0.15s, border-color 0.15s;
+            user-select: none;
+        }
+        .tab.active {
+            color: #a78bfa;
+            border-bottom-color: #a78bfa;
         }
 
-        /* ── Body ── */
-        .body {
+        /* ── Panels ── */
+        .panel { display: none; flex-direction: column; flex: 1; overflow: hidden; }
+        .panel.active { display: flex; }
+
+        /* ── Config warning ── */
+        .config-warn {
+            margin: 8px 10px 0;
+            background: #fef3c7;
+            border: 1px solid #fcd34d;
+            border-radius: 6px;
+            padding: 7px 10px;
+            font-size: 11px;
+            color: #92400e;
+        }
+
+        /* ── Generate panel ── */
+        .gen-body {
             flex: 1;
             overflow: hidden;
             display: flex;
@@ -49,54 +82,35 @@
             gap: 8px;
         }
 
-        /* Section input row */
-        .input-row {
-            display: flex;
-            gap: 6px;
+        .field-label {
+            font-size: 10px;
+            font-weight: 600;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 3px;
         }
+
         .section-input {
-            flex: 1;
+            width: 100%;
             border: 1px solid #cbd5e1;
             border-radius: 6px;
-            padding: 5px 8px;
+            padding: 6px 8px;
             font-size: 12px;
             background: #fff;
             color: #1e293b;
             outline: none;
+            resize: none;
+            font-family: inherit;
         }
         .section-input:focus { border-color: #818cf8; box-shadow: 0 0 0 2px #e0e7ff; }
 
-        /* Buttons */
-        .btn {
-            border: none;
-            border-radius: 6px;
-            padding: 5px 10px;
-            font-size: 11px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: opacity 0.15s, background 0.15s;
-            white-space: nowrap;
-        }
-        .btn:disabled { opacity: 0.45; cursor: not-allowed; }
-        .btn-violet { background: #7c3aed; color: #fff; }
-        .btn-violet:hover:not(:disabled) { background: #6d28d9; }
-        .btn-slate { background: #e2e8f0; color: #475569; }
-        .btn-slate:hover:not(:disabled) { background: #cbd5e1; }
-
-        /* Output area */
         .output-wrap {
             flex: 1;
             overflow: hidden;
             display: flex;
             flex-direction: column;
             gap: 4px;
-        }
-        .output-label {
-            font-size: 10px;
-            font-weight: 600;
-            color: #94a3b8;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
         }
         .output-textarea {
             flex: 1;
@@ -113,15 +127,122 @@
             overflow-y: auto;
         }
         .output-textarea:focus { border-color: #818cf8; }
+        .output-placeholder {
+            color: #94a3b8;
+            font-style: italic;
+        }
 
-        /* Status bar */
+        /* ── Chat panel ── */
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .msg {
+            max-width: 90%;
+            padding: 7px 10px;
+            border-radius: 10px;
+            font-size: 12px;
+            line-height: 1.5;
+            word-break: break-word;
+        }
+        .msg.user {
+            align-self: flex-end;
+            background: #7c3aed;
+            color: #fff;
+            border-bottom-right-radius: 3px;
+        }
+        .msg.assistant {
+            align-self: flex-start;
+            background: #fff;
+            border: 1px solid #e2e8f0;
+            color: #1e293b;
+            border-bottom-left-radius: 3px;
+        }
+        .msg.assistant.streaming { border-color: #818cf8; }
+        .chat-empty {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #94a3b8;
+            font-size: 11px;
+            text-align: center;
+            padding: 20px;
+        }
+        .chat-input-row {
+            display: flex;
+            gap: 6px;
+            padding: 8px 10px;
+            border-top: 1px solid #e2e8f0;
+            background: #f8fafc;
+            flex-shrink: 0;
+        }
+        .chat-input {
+            flex: 1;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            padding: 6px 8px;
+            font-size: 12px;
+            background: #fff;
+            color: #1e293b;
+            outline: none;
+            resize: none;
+            font-family: inherit;
+            min-height: 32px;
+            max-height: 80px;
+        }
+        .chat-input:focus { border-color: #818cf8; box-shadow: 0 0 0 2px #e0e7ff; }
+
+        /* ── Buttons ── */
+        .btn {
+            border: none;
+            border-radius: 6px;
+            padding: 5px 10px;
+            font-size: 11px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: opacity 0.15s, background 0.15s;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+        .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .btn-violet { background: #7c3aed; color: #fff; }
+        .btn-violet:hover:not(:disabled) { background: #6d28d9; }
+        .btn-slate { background: #e2e8f0; color: #475569; }
+        .btn-slate:hover:not(:disabled) { background: #cbd5e1; }
+        .btn-icon { padding: 5px 8px; font-size: 14px; }
+
+        /* ── Footer (generate panel) ── */
+        .gen-footer {
+            padding: 8px 10px;
+            display: flex;
+            gap: 6px;
+            border-top: 1px solid #e2e8f0;
+            background: #f8fafc;
+            flex-shrink: 0;
+            align-items: center;
+        }
+        .gen-footer-hint {
+            flex: 1;
+            font-size: 10px;
+            color: #94a3b8;
+            line-height: 1.3;
+        }
+
+        /* ── Status bar ── */
         .status {
             font-size: 10px;
             color: #94a3b8;
-            height: 16px;
+            min-height: 16px;
             display: flex;
             align-items: center;
             gap: 5px;
+            padding: 2px 10px 4px;
+            flex-shrink: 0;
         }
         .status.error { color: #ef4444; }
         .spinner {
@@ -131,80 +252,102 @@
             border-radius: 50%;
             animation: spin 0.7s linear infinite;
             display: inline-block;
+            flex-shrink: 0;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
 
-        /* Footer */
-        .footer {
-            padding: 8px 10px;
-            display: flex;
-            gap: 6px;
-            border-top: 1px solid #e2e8f0;
-            background: #f8fafc;
-            shrink: 0;
-        }
-        .footer-hint {
-            font-size: 10px;
-            color: #94a3b8;
-            padding: 0 10px 8px;
-            line-height: 1.4;
-        }
-
-        /* Config warning */
-        .config-warn {
-            background: #fef3c7;
-            border: 1px solid #fcd34d;
-            border-radius: 6px;
-            padding: 8px 10px;
-            font-size: 11px;
-            color: #92400e;
-        }
+        /* ── Scrollbar ── */
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
     </style>
 </head>
 <body>
 
 <div class="header">
     <div class="header-title">
-        <span class="spark-icon">✦</span> AI Generate
+        <span class="spark-icon">✦</span> AI Assistant
     </div>
-    <div class="header-sub" id="project-label">Initializing…</div>
+    <div class="tabs">
+        <div class="tab active" id="tab-gen" onclick="switchTab('gen')">⚡ Generate</div>
+        <div class="tab" id="tab-chat" onclick="switchTab('chat')">💬 Chat</div>
+    </div>
 </div>
 
-<div class="body">
-    <div id="config-warn" class="config-warn" style="display:none">
-        ⚠ Editor not connected yet. Open a document first.
+<!-- ── GENERATE PANEL ── -->
+<div class="panel active" id="panel-gen">
+    <div id="gen-config-warn" class="config-warn" style="display:none">
+        ⚠ Open a document through the app first to enable AI generation.
     </div>
 
-    <div class="input-row">
-        <input
-            id="section-input"
-            class="section-input"
-            type="text"
-            placeholder="Section title to generate…"
-            autocomplete="off"
-        />
+    <div class="gen-body">
+        <div>
+            <div class="field-label">Section title</div>
+            <textarea
+                id="section-input"
+                class="section-input"
+                rows="2"
+                placeholder="e.g. System Requirements, Risk Assessment…"
+                autocomplete="off"
+            ></textarea>
+        </div>
+
+        <div>
+            <div class="field-label">Additional instructions <span style="font-weight:400;text-transform:none">(optional)</span></div>
+            <textarea
+                id="instructions-input"
+                class="section-input"
+                rows="2"
+                placeholder="e.g. Focus on scalability, use bullet points…"
+                autocomplete="off"
+            ></textarea>
+        </div>
+
+        <div class="output-wrap">
+            <div class="field-label">Generated content</div>
+            <textarea
+                id="output"
+                class="output-textarea"
+                placeholder="Generated text will appear here…"
+                spellcheck="false"
+            ></textarea>
+        </div>
+    </div>
+
+    <div class="status" id="gen-status"></div>
+
+    <div class="gen-footer">
+        <button id="btn-regen" class="btn btn-slate" disabled>↺</button>
         <button id="btn-generate" class="btn btn-violet" disabled>Generate</button>
+        <button id="btn-insert" class="btn btn-violet" disabled>Insert ↵</button>
+    </div>
+</div>
+
+<!-- ── CHAT PANEL ── -->
+<div class="panel" id="panel-chat">
+    <div id="chat-config-warn" class="config-warn" style="display:none">
+        ⚠ Open a document through the app first to enable chat.
     </div>
 
-    <div class="output-wrap">
-        <span class="output-label">Generated content</span>
+    <div class="chat-messages" id="chat-messages">
+        <div class="chat-empty" id="chat-empty">
+            Ask anything about your document,<br>request rewrites, or get help drafting content.
+        </div>
+    </div>
+
+    <div class="status" id="chat-status"></div>
+
+    <div class="chat-input-row">
         <textarea
-            id="output"
-            class="output-textarea"
-            placeholder="Generated text will appear here…"
-            spellcheck="false"
+            id="chat-input"
+            class="chat-input"
+            placeholder="Ask AI anything…"
+            rows="1"
+            autocomplete="off"
         ></textarea>
+        <button id="btn-chat-clear" class="btn btn-slate btn-icon" title="Clear chat">🗑</button>
+        <button id="btn-chat-send" class="btn btn-violet btn-icon" disabled>➤</button>
     </div>
-
-    <div class="status" id="status"></div>
-</div>
-
-<div class="footer">
-    <button id="btn-regen" class="btn btn-slate" disabled>↺ Regenerate</button>
-    <button id="btn-insert" class="btn btn-violet" disabled>Insert at cursor</button>
-</div>
-<div class="footer-hint">
-    Click <strong>Insert at cursor</strong> to place the generated text at your cursor position in the document.
 </div>
 
 <script>
@@ -215,69 +358,97 @@ let projectId    = '';
 let abortCtrl    = null;
 let accumulatedText = '';
 let isGenerating = false;
+let chatHistory  = [];   // [{role, content}]
+let isChatting   = false;
+let chatAbort    = null;
+let activeTab    = 'gen';
+
+// ── Helpers ─────────────────────────────────────────────────────────────────────
+function getCookie(name) {
+    const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
+    return match ? decodeURIComponent(match[2]) : '';
+}
+
+function escapeHtml(str) {
+    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Tab switching ─────────────────────────────────────────────────────────────
+function switchTab(tab) {
+    activeTab = tab;
+    document.getElementById('tab-gen').classList.toggle('active', tab === 'gen');
+    document.getElementById('tab-chat').classList.toggle('active', tab === 'chat');
+    document.getElementById('panel-gen').classList.toggle('active', tab === 'gen');
+    document.getElementById('panel-chat').classList.toggle('active', tab === 'chat');
+}
+
+// ── Config: read from cookies ─────────────────────────────────────────────────
+function initConfig() {
+    supabaseUrl = getCookie('aidevx_supabase_url');
+    anonKey     = getCookie('aidevx_anon_key');
+    projectId   = getCookie('aidevx_project_id');
+
+    const ok = !!(supabaseUrl && anonKey && projectId);
+
+    document.getElementById('gen-config-warn').style.display  = ok ? 'none' : 'block';
+    document.getElementById('chat-config-warn').style.display = ok ? 'none' : 'block';
+    elBtnGenerate.disabled  = !ok;
+    elBtnChatSend.disabled  = !ok;
+    return ok;
+}
 
 // ── DOM ────────────────────────────────────────────────────────────────────────
-const elProjectLabel = document.getElementById('project-label');
-const elConfigWarn   = document.getElementById('config-warn');
-const elSectionInput = document.getElementById('section-input');
-const elOutput       = document.getElementById('output');
-const elStatus       = document.getElementById('status');
-const btnGenerate    = document.getElementById('btn-generate');
-const btnRegen       = document.getElementById('btn-regen');
-const btnInsert      = document.getElementById('btn-insert');
+const elSectionInput     = document.getElementById('section-input');
+const elInstructionsInput= document.getElementById('instructions-input');
+const elOutput           = document.getElementById('output');
+const elGenStatus        = document.getElementById('gen-status');
+const elBtnGenerate      = document.getElementById('btn-generate');
+const elBtnRegen         = document.getElementById('btn-regen');
+const elBtnInsert        = document.getElementById('btn-insert');
+const elChatMessages     = document.getElementById('chat-messages');
+const elChatEmpty        = document.getElementById('chat-empty');
+const elChatInput        = document.getElementById('chat-input');
+const elChatStatus       = document.getElementById('chat-status');
+const elBtnChatSend      = document.getElementById('btn-chat-send');
+const elBtnChatClear     = document.getElementById('btn-chat-clear');
 
-// ── Helpers ────────────────────────────────────────────────────────────────────
-function setStatus(msg, isErr) {
-    elStatus.className = 'status' + (isErr ? ' error' : '');
-    elStatus.innerHTML = msg ? (isErr ? msg : '<span class="spinner"></span> ' + msg) : '';
+// ── Status helpers ─────────────────────────────────────────────────────────────
+function setGenStatus(msg, isErr) {
+    elGenStatus.className = 'status' + (isErr ? ' error' : '');
+    elGenStatus.innerHTML = msg
+        ? (isErr ? msg : '<span class="spinner"></span> ' + msg)
+        : '';
+}
+function setChatStatus(msg, isErr) {
+    elChatStatus.className = 'status' + (isErr ? ' error' : '');
+    elChatStatus.innerHTML = msg
+        ? (isErr ? msg : '<span class="spinner"></span> ' + msg)
+        : '';
 }
 
+// ── Generate (RAG via Supabase edge function) ──────────────────────────────────
 function setGenerating(v) {
     isGenerating = v;
-    btnGenerate.disabled = v;
-    btnRegen.disabled = v || !accumulatedText;
-    btnInsert.disabled = v || !accumulatedText;
+    elBtnGenerate.disabled = v;
+    elBtnRegen.disabled = v || !accumulatedText;
+    elBtnInsert.disabled = v || !accumulatedText;
     elSectionInput.disabled = v;
+    elInstructionsInput.disabled = v;
 }
 
-// ── Init: read config from sessionStorage ─────────────────────────────────────
-function initConfig() {
-    supabaseUrl = sessionStorage.getItem('aidevx_supabase_url') || '';
-    anonKey     = sessionStorage.getItem('aidevx_anon_key')     || '';
-    projectId   = sessionStorage.getItem('aidevx_project_id')   || '';
-
-    if (!supabaseUrl || !anonKey || !projectId) {
-        elConfigWarn.style.display = 'block';
-        elProjectLabel.textContent = 'Not connected';
-        setStatus('', false);
-        return false;
-    }
-
-    elConfigWarn.style.display = 'none';
-    elProjectLabel.textContent = 'Project: ' + projectId.slice(0, 8) + '…';
-    btnGenerate.disabled = false;
-    return true;
-}
-
-// ── Generate (SSE streaming) ───────────────────────────────────────────────────
 async function generate() {
     if (!initConfig()) return;
 
     const sectionTitle = elSectionInput.value.trim();
-    if (!sectionTitle) {
-        elSectionInput.focus();
-        return;
-    }
+    if (!sectionTitle) { elSectionInput.focus(); return; }
 
     if (abortCtrl) abortCtrl.abort();
     abortCtrl = new AbortController();
 
     accumulatedText = '';
-    elOutput.value  = '';
-    btnInsert.disabled = true;
-    btnRegen.disabled  = true;
+    elOutput.value = '';
     setGenerating(true);
-    setStatus('Generating…', false);
+    setGenStatus('Generating with RAG…', false);
 
     try {
         const res = await fetch(
@@ -289,94 +460,200 @@ async function generate() {
                     'Authorization': 'Bearer ' + anonKey,
                     'apikey': anonKey,
                 },
-                body: JSON.stringify({ projectId, sectionTitle }),
+                body: JSON.stringify({
+                    projectId,
+                    sectionTitle,
+                    instructions: elInstructionsInput.value.trim() || undefined,
+                }),
                 signal: abortCtrl.signal,
             }
         );
 
         if (!res.ok || !res.body) {
-            const errText = await res.text().catch(() => res.statusText);
-            throw new Error(errText || 'Request failed');
+            const err = await res.text().catch(() => res.statusText);
+            throw new Error(err || 'Request failed');
         }
 
         const reader  = res.body.getReader();
         const decoder = new TextDecoder();
-        let   buffer  = '';
+        let buffer = '';
 
         while (true) {
             const { value, done } = await reader.read();
             if (done) break;
             buffer += decoder.decode(value, { stream: true });
-
             const lines = buffer.split('\n');
-            buffer = lines.pop(); // keep incomplete line
-
+            buffer = lines.pop();
             for (const line of lines) {
-                const trimmed = line.trim();
-                if (!trimmed || !trimmed.startsWith('data:')) continue;
-                const jsonStr = trimmed.slice(5).trim();
-                if (jsonStr === '[DONE]') break;
+                const t = line.trim();
+                if (!t || !t.startsWith('data:')) continue;
+                const j = t.slice(5).trim();
+                if (j === '[DONE]') break;
                 try {
-                    const parsed = JSON.parse(jsonStr);
-                    const token  = parsed?.choices?.[0]?.delta?.content;
+                    const token = JSON.parse(j)?.choices?.[0]?.delta?.content;
                     if (token) {
                         accumulatedText += token;
-                        elOutput.value   = accumulatedText;
+                        elOutput.value = accumulatedText;
                         elOutput.scrollTop = elOutput.scrollHeight;
                     }
-                } catch { /* ignore malformed SSE lines */ }
+                } catch { /* ignore malformed */ }
             }
         }
-
-        setStatus('', false);
+        setGenStatus('', false);
     } catch (err) {
-        if (err && err.name === 'AbortError') {
-            setStatus('', false);
+        if (err?.name !== 'AbortError') {
+            setGenStatus(err?.message || 'Generation failed', true);
         } else {
-            setStatus((err && err.message) || 'Generation failed', true);
+            setGenStatus('', false);
         }
     } finally {
         setGenerating(false);
-        btnRegen.disabled  = !accumulatedText;
-        btnInsert.disabled = !accumulatedText;
+        elBtnRegen.disabled = !accumulatedText;
+        elBtnInsert.disabled = !accumulatedText;
     }
 }
 
-// ── Insert into document ───────────────────────────────────────────────────────
 function insertIntoDoc() {
     if (!accumulatedText) return;
-
-    // Convert plain text to simple paragraphs for PasteHtml
     const paragraphs = accumulatedText
         .split(/\n\n+/)
         .map(p => p.replace(/\n/g, ' ').trim())
         .filter(Boolean)
         .map(p => '<p>' + escapeHtml(p) + '</p>')
         .join('');
-
     const html = paragraphs || '<p>' + escapeHtml(accumulatedText) + '</p>';
-
     window.Asc.plugin.executeMethod('PasteHtml', [html], function() {
-        setStatus('Inserted!', false);
-        setTimeout(() => setStatus('', false), 2000);
+        setGenStatus('Inserted!', false);
+        setTimeout(() => setGenStatus('', false), 2000);
     });
 }
 
-function escapeHtml(str) {
-    return str
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
+// ── Chat (direct to Supabase AI or use same endpoint without projectId restriction) ──
+function appendMessage(role, content, streaming) {
+    elChatEmpty.style.display = 'none';
+    const div = document.createElement('div');
+    div.className = 'msg ' + role + (streaming ? ' streaming' : '');
+    div.dataset.role = role;
+    div.textContent = content;
+    elChatMessages.appendChild(div);
+    elChatMessages.scrollTop = elChatMessages.scrollHeight;
+    return div;
 }
 
-// ── Button listeners ───────────────────────────────────────────────────────────
-btnGenerate.addEventListener('click', generate);
-btnRegen.addEventListener('click',   generate);
-btnInsert.addEventListener('click',  insertIntoDoc);
+async function sendChat() {
+    if (!initConfig()) return;
+    const text = elChatInput.value.trim();
+    if (!text || isChatting) return;
+
+    elChatInput.value = '';
+    elChatInput.style.height = '32px';
+    appendMessage('user', text);
+    chatHistory.push({ role: 'user', content: text });
+
+    if (chatAbort) chatAbort.abort();
+    chatAbort = new AbortController();
+    isChatting = true;
+    elBtnChatSend.disabled = true;
+    setChatStatus('Thinking…', false);
+
+    const assistantDiv = appendMessage('assistant', '', true);
+    let assistantText = '';
+
+    try {
+        // Use generate_section with sectionTitle = user message, no projectId required
+        // Fall back to a simple chat-style call through the same edge function
+        const res = await fetch(
+            supabaseUrl + '/functions/v1/generate_section',
+            {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + anonKey,
+                    'apikey': anonKey,
+                },
+                body: JSON.stringify({
+                    projectId: projectId || 'chat',
+                    sectionTitle: text,
+                    chatMode: true,
+                    chatHistory: chatHistory.slice(-10),
+                }),
+                signal: chatAbort.signal,
+            }
+        );
+
+        if (!res.ok || !res.body) {
+            const err = await res.text().catch(() => res.statusText);
+            throw new Error(err || 'Chat request failed');
+        }
+
+        const reader  = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = '';
+
+        while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            buf += decoder.decode(value, { stream: true });
+            const lines = buf.split('\n');
+            buf = lines.pop();
+            for (const line of lines) {
+                const t = line.trim();
+                if (!t || !t.startsWith('data:')) continue;
+                const j = t.slice(5).trim();
+                if (j === '[DONE]') break;
+                try {
+                    const token = JSON.parse(j)?.choices?.[0]?.delta?.content;
+                    if (token) {
+                        assistantText += token;
+                        assistantDiv.textContent = assistantText;
+                        elChatMessages.scrollTop = elChatMessages.scrollHeight;
+                    }
+                } catch { /* ignore */ }
+            }
+        }
+
+        assistantDiv.classList.remove('streaming');
+        chatHistory.push({ role: 'assistant', content: assistantText });
+        setChatStatus('', false);
+    } catch (err) {
+        assistantDiv.remove();
+        chatHistory.pop(); // remove user message from history
+        if (err?.name !== 'AbortError') {
+            setChatStatus(err?.message || 'Chat failed', true);
+        } else {
+            setChatStatus('', false);
+        }
+    } finally {
+        isChatting = false;
+        elBtnChatSend.disabled = false;
+    }
+}
+
+function clearChat() {
+    chatHistory = [];
+    elChatMessages.innerHTML = '';
+    elChatMessages.appendChild(elChatEmpty);
+    elChatEmpty.style.display = '';
+    setChatStatus('', false);
+}
+
+// ── Event listeners ───────────────────────────────────────────────────────────
+elBtnGenerate.addEventListener('click', generate);
+elBtnRegen.addEventListener('click', generate);
+elBtnInsert.addEventListener('click', insertIntoDoc);
+elBtnChatSend.addEventListener('click', sendChat);
+elBtnChatClear.addEventListener('click', clearChat);
 
 elSectionInput.addEventListener('keydown', function(e) {
-    if (e.key === 'Enter') generate();
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); generate(); }
+});
+elChatInput.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
+});
+// Auto-resize chat input
+elChatInput.addEventListener('input', function() {
+    this.style.height = '32px';
+    this.style.height = Math.min(this.scrollHeight, 80) + 'px';
 });
 
 // ── OnlyOffice plugin lifecycle ────────────────────────────────────────────────
@@ -384,17 +661,14 @@ window.Asc = window.Asc || {};
 window.Asc.plugin = window.Asc.plugin || {};
 
 window.Asc.plugin.init = function() {
-    // Re-read sessionStorage every time the plugin panel opens
-    // (the React app may have set it after the plugin first loaded)
     initConfig();
 };
 
-// Called when the user clicks a plugin button (our "Insert" button in OO chrome)
 window.Asc.plugin.button = function(id) {
-    if (id === 0) insertIntoDoc(); // button index 0 = "Insert" (primary)
+    if (id === 0) insertIntoDoc();
 };
 
-// Attempt init immediately in case sessionStorage is already populated
+// Init on load
 initConfig();
 </script>
 </body>

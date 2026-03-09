@@ -22,6 +22,7 @@ declare global {
 export interface OnlyOfficeEditorHandle {
     downloadAs(format: 'pdf' | 'docx'): void;
     forceSave(): void;
+    pasteText(text: string): void;
 }
 
 // ─── Props ────────────────────────────────────────────────────────────────────
@@ -58,6 +59,15 @@ const OnlyOfficeEditor = forwardRef<OnlyOfficeEditorHandle, OnlyOfficeEditorProp
             },
             forceSave() {
                 instanceRef.current?.forceSave();
+            },
+            pasteText(text: string) {
+                try {
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    const connector = (instanceRef.current as any)?.createConnector?.();
+                    if (connector) {
+                        connector.executeMethod('PasteText', [text]);
+                    }
+                } catch { /* ignore if connector unavailable */ }
             },
         }));
 
