@@ -8,6 +8,20 @@ const corsHeaders = {
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+interface TableSchema {
+    columns: string[]
+    exampleData?: string[][]
+}
+
+interface SectionContext {
+    instructions?: string[]
+    expectedFormat?: 'text' | 'table' | 'mixed' | 'diagram'
+    tableSchemas?: TableSchema[]
+    parentSection?: string | null
+    siblingTitles?: string[]
+    diagramHint?: string | null
+}
+
 serve(async (req) => {
     if (req.method === 'OPTIONS') {
         return new Response('ok', { headers: corsHeaders })
@@ -21,6 +35,21 @@ serve(async (req) => {
             chatMode,
             chatHistory,
             selectedDocumentPaths,
+            contentType = 'text',
+            diagramFormat = 'mermaid',
+            docType = 'BRS',
+            sectionContext,
+        }: {
+            projectId: string
+            sectionTitle: string
+            instructions?: string
+            chatMode?: boolean
+            chatHistory?: { role: string; content: string }[]
+            selectedDocumentPaths?: string[]
+            contentType?: 'text' | 'table' | 'diagram'
+            diagramFormat?: 'mermaid' | 'drawio'
+            docType?: string
+            sectionContext?: SectionContext
         } = await req.json()
 
         if (!projectId || !sectionTitle) {
@@ -40,57 +69,82 @@ serve(async (req) => {
             throw new Error('No LLM API key configured (set LLM_API_KEY or OPENAI_API_KEY)')
         }
 
-        // ── 1. Embed the query ────────────────────────────────────────────────
-        const query = chatMode
-            ? sectionTitle  // in chat mode, sectionTitle is the user's message
-            : `Context needed for section: ${sectionTitle}. Instructions: ${instructions || 'None'}`
-
-        const embeddingResponse = await fetch(`${embeddingConfig.baseUrl}/embeddings`, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${embeddingConfig.apiKey}`,
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                model: embeddingConfig.model,
-                input: query,
-                ...(embeddingConfig.dimensions !== 1536 ? { dimensions: embeddingConfig.dimensions } : {}),
-            }),
-        })
-
-        if (!embeddingResponse.ok) {
-            throw new Error('Failed to generate query embedding')
+        // ── Helper: embed a single query ──────────────────────────────────────
+        async function embedQuery(query: string): Promise<number[]> {
+            const res = await fetch(`${embeddingConfig.baseUrl}/embeddings`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${embeddingConfig.apiKey}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    model: embeddingConfig.model,
+                    input: query,
+                    ...(embeddingConfig.dimensions !== 1536 ? { dimensions: embeddingConfig.dimensions } : {}),
+                }),
+            })
+            if (!res.ok) throw new Error('Failed to generate query embedding')
+            const data = await res.json()
+            return data.data[0].embedding
         }
 
-        const embeddingData = await embeddingResponse.json()
-        const queryEmbedding = embeddingData.data[0].embedding
-
-        // ── 2. Search for relevant chunks ─────────────────────────────────────
-        const rpcName = selectedDocumentPaths?.length
-            ? 'match_document_chunks_filtered'
-            : 'match_document_chunks'
-
-        const rpcArgs: Record<string, unknown> = {
-            query_embedding: queryEmbedding,
-            match_threshold: ragConfig.matchThreshold,
-            match_count: ragConfig.matchCount,
-            p_project_id: projectId,
+        // ── Helper: search chunks with a given embedding ──────────────────────
+        async function searchChunks(embedding: number[]): Promise<{ id: string; content: string; document_path: string; similarity: number; metadata: Record<string, string> | null }[]> {
+            const rpcName = selectedDocumentPaths?.length
+                ? 'match_document_chunks_filtered'
+                : 'match_document_chunks'
+            const rpcArgs: Record<string, unknown> = {
+                query_embedding: embedding,
+                match_threshold: ragConfig.matchThreshold,
+                match_count: ragConfig.matchCount,
+                p_project_id: projectId,
+            }
+            if (selectedDocumentPaths?.length) {
+                rpcArgs.p_document_paths = selectedDocumentPaths
+            }
+            const { data, error } = await supabaseAdmin.rpc(rpcName, rpcArgs)
+            if (error) { console.error('Match error:', error); return [] }
+            return data ?? []
         }
-        if (selectedDocumentPaths?.length) {
-            rpcArgs.p_document_paths = selectedDocumentPaths
-        }
 
-        const { data: matchedChunks, error: matchError } = await supabaseAdmin
-            .rpc(rpcName, rpcArgs)
+        // ── 1. Build multi-query embeddings ───────────────────────────────────
+        // Query 1: section title + user instructions
+        const query1 = chatMode
+            ? sectionTitle
+            : `Context needed for ${docType} section: ${sectionTitle}. ${instructions || ''}`
 
-        if (matchError) {
-            console.error('Match error:', matchError)
-            throw new Error('Failed to find relevant documents')
+        // Query 2: section context keywords (template guidance)
+        const templateInstructions = sectionContext?.instructions?.join(' ').slice(0, 300) || ''
+        const parentSection = sectionContext?.parentSection || ''
+        const query2 = chatMode ? '' : `${docType} ${parentSection} ${sectionTitle} ${templateInstructions}`
+
+        // Emit status event first (pre-stream before we have a readable yet, buffer it)
+        const encoder = new TextEncoder()
+        const statusEvent = encoder.encode(`data: ${JSON.stringify({ type: 'status', message: 'Searching documents…' })}\n\n`)
+
+        // ── 2. Parallel embedding + search ────────────────────────────────────
+        const embedPromises = chatMode
+            ? [embedQuery(query1)]
+            : [embedQuery(query1), embedQuery(query2)]
+
+        const embeddings = await Promise.all(embedPromises)
+        const searchResults = await Promise.all(embeddings.map(e => searchChunks(e)))
+
+        // Merge + deduplicate chunks by id, keeping highest similarity
+        const chunkMap = new Map<string, typeof searchResults[0][0]>()
+        for (const results of searchResults) {
+            for (const chunk of results) {
+                const existing = chunkMap.get(chunk.id)
+                if (!existing || chunk.similarity > existing.similarity) {
+                    chunkMap.set(chunk.id, chunk)
+                }
+            }
         }
+        const matchedChunks = [...chunkMap.values()].sort((a, b) => b.similarity - a.similarity)
 
         // ── 3. Build context with source attribution ───────────────────────────
         const sourceMap = new Map<string, string[]>()
-        for (const chunk of (matchedChunks ?? [])) {
+        for (const chunk of matchedChunks) {
             const source: string =
                 (chunk.metadata as Record<string, string> | null)?.fileName
                 || chunk.document_path.split('/').pop()
@@ -113,7 +167,7 @@ serve(async (req) => {
 
         const sources = [...sourceMap.keys()]
 
-        // ── 4. Build prompt ───────────────────────────────────────────────────
+        // ── 4. Build prompt based on mode + content type ──────────────────────
         let messages: { role: string; content: string }[]
 
         if (chatMode) {
@@ -122,18 +176,15 @@ serve(async (req) => {
 You have access to the user's uploaded project documents as context below.
 Answer questions, help draft content, summarize documents, and assist with technical writing.
 When referencing information from the project context, mention which source document it comes from.
-Format responses as clean HTML using only: <p>, <ul>, <ol>, <li>, <h3>, <table>, <tr>, <th>, <td>, <strong>, <em>.
+Format responses as clean HTML using only: <p>, <ul>, <ol>, <li>, <h3>, <table>, <thead>, <tbody>, <tr>, <th>, <td>, <strong>, <em>.
 Do NOT use markdown, <html>, <head>, <body>, or <style> tags.
 
 --- PROJECT CONTEXT ---
 ${contextText}
 -----------------------`
 
-            const history: { role: string; content: string }[] = Array.isArray(chatHistory)
-                ? chatHistory.slice(-10).map((m: { role: string; content: string }) => ({
-                    role: m.role,
-                    content: m.content,
-                }))
+            const history = Array.isArray(chatHistory)
+                ? chatHistory.slice(-10).map((m) => ({ role: m.role, content: m.content }))
                 : []
 
             messages = [
@@ -142,25 +193,134 @@ ${contextText}
                 { role: 'user', content: sectionTitle },
             ]
         } else {
-            const systemPrompt =
-                `You are an expert technical writer drafting a requirement specification document.
+            // Build template guidance block
+            const guidanceLines: string[] = []
+            if (sectionContext?.instructions?.length) {
+                guidanceLines.push('TEMPLATE GUIDANCE:')
+                sectionContext.instructions.forEach(inst => guidanceLines.push(`  - ${inst}`))
+            }
+            if (sectionContext?.parentSection) {
+                guidanceLines.push(`PARENT SECTION: ${sectionContext.parentSection}`)
+            }
+            if (sectionContext?.siblingTitles?.length) {
+                guidanceLines.push(`RELATED SECTIONS: ${sectionContext.siblingTitles.slice(0, 5).join(', ')}`)
+            }
+            const guidanceBlock = guidanceLines.length > 0 ? '\n' + guidanceLines.join('\n') + '\n' : ''
+
+            let systemPrompt: string
+            let userPrompt: string
+
+            if (contentType === 'table') {
+                // ── Table mode ──
+                const schema = sectionContext?.tableSchemas?.[0]
+                const columnList = schema?.columns?.join(', ') || 'appropriate columns for this section'
+                const exampleRow = schema?.exampleData?.[0]?.join(' | ') || ''
+
+                systemPrompt =
+                    `You are an expert technical writer drafting a ${docType} requirements document.
+Your task is to generate a data table for the section titled "${sectionTitle}".
+${guidanceBlock}
+RULES:
+- Output a complete HTML <table> with <thead> and <tbody>
+- Use EXACTLY these column headers: ${columnList}
+${exampleRow ? `- Example row format: ${exampleRow}` : ''}
+- Populate rows using facts from the Project Context below
+- If context is insufficient, add rows with [placeholder] values
+- Add a caption as <p><strong>Table: ${sectionTitle}</strong></p> before the table
+- Use ONLY these HTML tags: <p>, <table>, <thead>, <tbody>, <tr>, <th>, <td>, <strong>, <em>
+- Do NOT use markdown or any other tags`
+
+                userPrompt =
+                    `Section: ${sectionTitle}
+Additional instructions: ${instructions || 'None'}
+
+--- PROJECT CONTEXT ---
+${contextText}
+-----------------------`
+
+            } else if (contentType === 'diagram') {
+                // ── Diagram mode ──
+                const diagramHint = sectionContext?.diagramHint || 'process flow'
+
+                if (diagramFormat === 'mermaid') {
+                    systemPrompt =
+                        `You are an expert technical writer and diagram designer for ${docType} documents.
+Your task is to generate a Mermaid diagram for the section titled "${sectionTitle}".
+${guidanceBlock}
+The diagram should represent: ${diagramHint}
+
+RULES:
+- Output ONLY valid Mermaid syntax wrapped in: <pre class="mermaid">YOUR_MERMAID_CODE</pre>
+- Choose the most appropriate diagram type:
+  * flowchart TD or LR — for process flows, decision trees
+  * sequenceDiagram — for system interactions, API flows
+  * classDiagram — for data models, object relationships
+  * stateDiagram-v2 — for state machines
+  * erDiagram — for entity relationships
+  * gantt — for project timelines
+- Make the diagram clear, well-labeled, and directly relevant to the section content
+- After the diagram, add a caption: <p><strong>Figure: ${sectionTitle}</strong></p>
+- Use ONLY: <pre class="mermaid">, <p>, <strong> tags
+- Do NOT output any other HTML or text`
+
+                    userPrompt =
+                        `Section: ${sectionTitle}
+Diagram type requested: ${diagramHint}
+Additional instructions: ${instructions || 'None'}
+
+--- PROJECT CONTEXT ---
+${contextText}
+-----------------------`
+                } else {
+                    // draw.io XML
+                    systemPrompt =
+                        `You are an expert diagram designer for ${docType} documents.
+Your task is to generate a draw.io diagram in mxGraphModel XML format for the section titled "${sectionTitle}".
+${guidanceBlock}
+The diagram should represent: ${diagramHint}
+
+RULES:
+- Output ONLY valid draw.io mxGraphModel XML wrapped in: <pre class="drawio">YOUR_XML_HERE</pre>
+- Use simple shapes: mxgraph.basic.rect for boxes, mxgraph.basic.ellipse for circles, mxgraph.basic.arrow for arrows
+- A minimal mxGraphModel looks like:
+  <mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/>
+  <mxCell id="2" value="Component" style="rounded=1;whiteSpace=wrap;" vertex="1" parent="1"><mxGeometry x="10" y="10" width="120" height="60" as="geometry"/></mxCell>
+  </root></mxGraphModel>
+- Keep the diagram simple (5-10 components max) and directly relevant to the section
+- After the diagram, add: <p><strong>Figure: ${sectionTitle}</strong></p>
+- Use ONLY: <pre class="drawio">, <p>, <strong> tags`
+
+                    userPrompt =
+                        `Section: ${sectionTitle}
+Additional instructions: ${instructions || 'None'}
+
+--- PROJECT CONTEXT ---
+${contextText}
+-----------------------`
+                }
+            } else {
+                // ── Text mode (enhanced from original) ──
+                systemPrompt =
+                    `You are an expert technical writer drafting a ${docType} requirements document.
 Your task is to write the content for the section titled "${sectionTitle}".
-Use the provided Project Context below as your source of truth. Do not hallucinate information outside of this context, but you may infer standard technical practices where necessary.
-If the context does not contain enough information, provide generic standard template text that fits the section, and bracket any placeholders like [Customer Name] or [System Name].
+${guidanceBlock}
+RULES:
+- Follow the template guidance above precisely — it defines what this section should contain
+- Use the Project Context as your primary source of truth
+- Do not hallucinate information outside of the context; infer standard technical practices where necessary
+- If the context is insufficient, provide standard template text with [bracketed placeholders]
+- Format your output as clean HTML using ONLY: <p>, <ul>, <ol>, <li>, <h3>, <table>, <thead>, <tbody>, <tr>, <th>, <td>, <strong>, <em>, <br>
+- Do NOT use markdown, <html>, <head>, <body>, or <style> tags
+- Return ONLY the HTML content for this section`
 
-Format your output as clean HTML using ONLY these tags:
-<p> for paragraphs, <ul>/<ol>/<li> for lists, <h3> for sub-headings within the section,
-<table>/<tr>/<th>/<td> for data tables, <strong> for bold, <em> for italic.
-Do NOT use markdown, <html>, <head>, <body>, or <style> tags.
-Return ONLY the HTML content for this section.`
-
-            const userPrompt =
-                `Section Title: ${sectionTitle}
-Section Instructions: ${instructions || 'No specific instructions. Write standard content appropriate for this section type.'}
+                userPrompt =
+                    `Section Title: ${sectionTitle}
+Section Instructions: ${instructions || 'No specific instructions. Write standard content appropriate for this section.'}
 
 --- PROJECT CONTEXT (from uploaded documents) ---
 ${contextText}
 -------------------------------------------------`
+            }
 
             messages = [
                 { role: 'system', content: systemPrompt },
@@ -189,17 +349,19 @@ ${contextText}
             throw new Error('Failed to generate content')
         }
 
-        // ── 6. Stream: sources metadata event first, then LLM tokens ──────────
-        const encoder = new TextEncoder()
+        // ── 6. Stream: status event + sources metadata + LLM tokens ──────────
         const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>()
         const writer = writable.getWriter()
 
-        // Send source document names as the first event (custom type)
+        // Searching status event
+        writer.write(statusEvent).catch(() => {})
+
+        // Sources metadata event
         writer.write(
             encoder.encode(`data: ${JSON.stringify({ type: 'sources', sources })}\n\n`)
         ).catch(() => {})
 
-        // Pipe the rest of the LLM stream through
+        // Pipe LLM stream through
         const reader = completionResponse.body.getReader()
         ;(async () => {
             try {

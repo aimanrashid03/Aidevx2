@@ -1,7 +1,7 @@
 import { useParams, useNavigate } from 'react-router-dom'
 import {
     ArrowLeft, Download, History, MessageSquare,
-    FileText, FileDown, Loader2, AlertCircle
+    FileText, FileDown, Loader2, AlertCircle, Sparkles
 } from 'lucide-react'
 import { useProjects, type DocVersion } from '../context/ProjectContext'
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
@@ -51,6 +51,12 @@ export default function DocumentEditor() {
 
     // TOC populated by mammoth parse on doc load
     const [tocSections, setTocSections] = useState<DocHeading[]>([])
+
+
+    // AI panel state
+    const [showAiPanel, setShowAiPanel] = useState(true)
+    const [aiPrefillTitle, setAiPrefillTitle] = useState<string | undefined>()
+    const [aiActiveSectionId, setAiActiveSectionId] = useState<string | undefined>()
 
     // Sidebar toggles
     const [showVersionHistory, setShowVersionHistory] = useState(false)
@@ -235,6 +241,16 @@ export default function DocumentEditor() {
     }, [showExport])
 
 
+    // ─── AI panel handler ─────────────────────────────────────────────────────
+
+    const handleAutoGen = useCallback((sectionId: string, sectionTitle: string) => {
+        setAiActiveSectionId(sectionId)
+        setAiPrefillTitle(sectionTitle)
+        setShowAiPanel(true)
+        setShowVersionHistory(false)
+        setShowComments(false)
+    }, [])
+
     // ─── OnlyOffice config ────────────────────────────────────────────────────
 
     const onlyOfficeConfig = useMemo(() => {
@@ -326,6 +342,9 @@ export default function DocumentEditor() {
 
     const serverUrl = (import.meta.env.VITE_ONLYOFFICE_SERVER_URL as string) || 'http://localhost:8080'
 
+    // Whether the AI panel should be visible (toggled independently, hidden when other panels are open)
+    const aiPanelVisible = showAiPanel && !showVersionHistory && !showComments
+
     return (
         <div className="flex flex-col h-screen bg-slate-100 overflow-hidden">
 
@@ -372,6 +391,13 @@ export default function DocumentEditor() {
                         title="Comments"
                     >
                         <MessageSquare size={15} />
+                    </button>
+                    <button
+                        onClick={() => setShowAiPanel(v => !v)}
+                        className={`p-1.5 rounded hover:bg-slate-100 transition-colors ${showAiPanel ? 'bg-violet-100 text-violet-600' : 'text-slate-500'}`}
+                        title="AI Assistant"
+                    >
+                        <Sparkles size={15} />
                     </button>
                     <button
                         onClick={() => setShowExport(v => !v)}
@@ -459,10 +485,14 @@ export default function DocumentEditor() {
                     )}
                 </main>
 
-                {/* AI Assistant Panel — always visible on the right */}
-                {projectId && !showVersionHistory && !showComments && (
+                {/* AI Assistant Panel — toggleable */}
+                {projectId && aiPanelVisible && (
                     <AIGeneratePanel
                         projectId={projectId}
+                        docType={docType}
+                        tocSections={tocSections}
+                        prefillTitle={aiPrefillTitle}
+                        activeSectionId={aiActiveSectionId}
                         onInsert={(html) => editorRef.current?.pasteHtml(html)}
                     />
                 )}
