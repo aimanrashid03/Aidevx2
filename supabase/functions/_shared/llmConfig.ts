@@ -33,7 +33,17 @@ export function getEmbeddingConfig() {
 
 export function getRagConfig() {
     return {
-        matchThreshold: parseFloat(Deno.env.get('RAG_MATCH_THRESHOLD') || '0.3'),
-        matchCount: parseInt(Deno.env.get('RAG_MATCH_COUNT') || '10'),
+        matchThreshold: parseFloat(Deno.env.get('RAG_MATCH_THRESHOLD') || '0.45'),
+        matchCount: parseInt(Deno.env.get('RAG_MATCH_COUNT') || '18'),
+    }
+}
+
+/** Per-content-type temperature and token limits for more precise generation */
+export function getContentTypeConfig(contentType: string, chatMode: boolean) {
+    if (chatMode) return { temperature: 0.5, max_tokens: 2500 }
+    switch (contentType) {
+        case 'table':   return { temperature: 0.2, max_tokens: 1500 }
+        case 'diagram': return { temperature: 0.2, max_tokens: 1000 }
+        default:        return { temperature: 0.3, max_tokens: 2500 }
     }
 }

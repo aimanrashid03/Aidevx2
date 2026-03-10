@@ -55,8 +55,6 @@ export default function DocumentEditor() {
 
     // AI panel state
     const [showAiPanel, setShowAiPanel] = useState(true)
-    const [aiPrefillTitle, setAiPrefillTitle] = useState<string | undefined>()
-    const [aiActiveSectionId, setAiActiveSectionId] = useState<string | undefined>()
 
     // Sidebar toggles
     const [showVersionHistory, setShowVersionHistory] = useState(false)
@@ -240,16 +238,6 @@ export default function DocumentEditor() {
         return () => document.removeEventListener('mousedown', handler)
     }, [showExport])
 
-
-    // ─── AI panel handler ─────────────────────────────────────────────────────
-
-    const handleAutoGen = useCallback((sectionId: string, sectionTitle: string) => {
-        setAiActiveSectionId(sectionId)
-        setAiPrefillTitle(sectionTitle)
-        setShowAiPanel(true)
-        setShowVersionHistory(false)
-        setShowComments(false)
-    }, [])
 
     // ─── OnlyOffice config ────────────────────────────────────────────────────
 
@@ -491,8 +479,7 @@ export default function DocumentEditor() {
                         projectId={projectId}
                         docType={docType}
                         tocSections={tocSections}
-                        prefillTitle={aiPrefillTitle}
-                        activeSectionId={aiActiveSectionId}
+
                         onInsert={(html) => editorRef.current?.pasteHtml(html)}
                     />
                 )}

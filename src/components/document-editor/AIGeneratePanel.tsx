@@ -123,6 +123,12 @@ export default function AIGeneratePanel({
     const [showGuidance, setShowGuidance] = useState(false)
     const genAbortRef = useRef<AbortController | null>(null)
 
+    // ── Refinement state ────────────────────────────────────────────────────
+    const [showRefineInput, setShowRefineInput] = useState(false)
+    const [refineFeedback, setRefineFeedback] = useState('')
+    const [refineCount, setRefineCount] = useState(0)
+    const refineInputRef = useRef<HTMLTextAreaElement | null>(null)
+
     // ── Document selector state ─────────────────────────────────────────────
     const [projectDocs, setProjectDocs] = useState<ProjectDocument[]>([])
     const [selectedDocPaths, setSelectedDocPaths] = useState<Set<string>>(new Set())
@@ -267,6 +273,9 @@ export default function AIGeneratePanel({
         setGenSources([])
         setViewSource(false)
         setGenStatus('Searching documents…')
+        setShowRefineInput(false)
+        setRefineFeedback('')
+        setRefineCount(0)
 
         const selectedPaths = selectedDocPaths.size > 0
             ? projectDocs.filter(d => selectedDocPaths.has(d.id)).map(d => d.file_path)
@@ -296,6 +305,9 @@ export default function AIGeneratePanel({
                         diagramHint: sectionContext.diagramHint,
                     } : undefined,
                     selectedDocumentPaths: selectedPaths,
+                    documentOutline: tocSections.length > 0
+                        ? tocSections.map(s => s.title).filter(Boolean)
+                        : undefined,
                 },
                 ctrl.signal,
                 (token) => { acc += token; setGeneratedHtml(acc) },
@@ -334,6 +346,71 @@ export default function AIGeneratePanel({
         }
         onInsert?.(sanitizeHtml(html))
     }
+
+    // ── Refine ──────────────────────────────────────────────────────────────
+    const refine = useCallback(async () => {
+        const feedback = refineFeedback.trim()
+        if (!feedback || !generatedHtml || isGenerating || refineCount >= 5) return
+        genAbortRef.current?.abort()
+        const ctrl = new AbortController()
+        genAbortRef.current = ctrl
+
+        const selectedPaths = selectedDocPaths.size > 0
+            ? projectDocs.filter(d => selectedDocPaths.has(d.id)).map(d => d.file_path)
+            : undefined
+        const tableSchema: TableSchema | null = contentType === 'table' && tableColumns.length > 0
+            ? { columns: tableColumns }
+            : null
+
+        setIsGenerating(true)
+        setGenError(null)
+        setShowRefineInput(false)
+        const prevHtml = generatedHtml
+        setGeneratedHtml('')
+        setGenStatus('Refining…')
+
+        try {
+            let acc = ''
+            await streamSSE(
+                {
+                    projectId,
+                    sectionTitle: sectionTitle.trim(),
+                    instructions: instructions.trim() || undefined,
+                    contentType,
+                    diagramFormat: contentType === 'diagram' ? diagramFormat : undefined,
+                    docType,
+                    sectionContext: sectionContext ? {
+                        instructions: sectionContext.instructions,
+                        expectedFormat: sectionContext.expectedFormat,
+                        tableSchemas: tableSchema ? [tableSchema] : sectionContext.tableSchemas,
+                        parentSection: sectionContext.parentSection,
+                        siblingTitles: sectionContext.siblingTitles,
+                        diagramHint: sectionContext.diagramHint,
+                    } : undefined,
+                    selectedDocumentPaths: selectedPaths,
+                    documentOutline: tocSections.length > 0
+                        ? tocSections.map(s => s.title).filter(Boolean)
+                        : undefined,
+                    refinementContext: { previousOutput: prevHtml, feedback },
+                },
+                ctrl.signal,
+                (token) => { acc += token; setGeneratedHtml(acc) },
+                (sources) => setGenSources(sources),
+                (msg) => setGenStatus(msg),
+            )
+            setRefineCount(c => c + 1)
+            setRefineFeedback('')
+            setGenStatus('')
+        } catch (err) {
+            setGeneratedHtml(prevHtml)
+            if ((err as Error).name !== 'AbortError')
+                setGenError((err as Error).message || 'Refinement failed')
+            setGenStatus('')
+        } finally {
+            setIsGenerating(false)
+        }
+    }, [refineFeedback, generatedHtml, isGenerating, refineCount, sectionTitle, instructions, projectId,
+        selectedDocPaths, projectDocs, contentType, diagramFormat, docType, sectionContext, tableColumns, tocSections])
 
     // ── Chat ────────────────────────────────────────────────────────────────
     const sendChat = useCallback(async () => {
@@ -672,7 +749,7 @@ export default function AIGeneratePanel({
                             )}
                         </div>
 
-                        <div className="flex-1 overflow-y-auto rounded border border-slate-200 bg-slate-50">
+                        <div className={`overflow-y-auto rounded border border-slate-200 bg-slate-50 ${hasDiagramCode && !isGenerating ? 'flex-1 min-h-[260px]' : 'flex-1'}`}>
                             {viewSource ? (
                                 <textarea
                                     value={generatedHtml}
@@ -716,6 +793,40 @@ export default function AIGeneratePanel({
                         {genError && <p className="text-[11px] text-red-500 shrink-0">{genError}</p>}
                     </div>
 
+                    {/* Refine input */}
+                    {showRefineInput && (
+                        <div className="px-3 pb-2 shrink-0 border-t border-slate-100 pt-2 flex flex-col gap-1.5">
+                            <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">
+                                Feedback for refinement
+                            </label>
+                            <textarea
+                                ref={refineInputRef}
+                                value={refineFeedback}
+                                onChange={e => setRefineFeedback(e.target.value)}
+                                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); refine() } }}
+                                placeholder="e.g. Make the language more formal, add two more rows…"
+                                rows={2}
+                                autoFocus
+                                className="w-full resize-none text-[12px] text-slate-700 bg-slate-50 border border-slate-200 rounded px-2 py-1.5 outline-none focus:border-violet-300 focus:ring-1 focus:ring-violet-100"
+                            />
+                            <div className="flex gap-1.5">
+                                <button
+                                    onClick={() => setShowRefineInput(false)}
+                                    className="flex-1 text-[11px] py-1 rounded border border-slate-200 text-slate-500 hover:bg-slate-50 transition-colors"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={refine}
+                                    disabled={!refineFeedback.trim() || isGenerating}
+                                    className="flex-1 flex items-center justify-center gap-1 text-[11px] py-1 rounded bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50 transition-colors"
+                                >
+                                    <Send size={10} /> Send
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Footer */}
                     <div className="px-3 pb-3 flex gap-2 shrink-0 border-t border-slate-100 pt-2">
                         <button
@@ -725,6 +836,16 @@ export default function AIGeneratePanel({
                         >
                             ↺ Regen
                         </button>
+                        {generatedHtml && !isGenerating && refineCount < 5 && (
+                            <button
+                                onClick={() => setShowRefineInput(v => !v)}
+                                className={`flex items-center justify-center gap-1 px-2.5 text-[11px] py-1.5 rounded border transition-colors ${showRefineInput ? 'border-violet-400 text-violet-600 bg-violet-50' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                                title={refineCount > 0 ? `Refined ${refineCount}x` : 'Refine with feedback'}
+                            >
+                                <Sparkles size={10} />
+                                {refineCount > 0 ? `${refineCount}x` : 'Refine'}
+                            </button>
+                        )}
                         <button
                             onClick={handleCopy}
                             disabled={!generatedHtml || isGenerating}
@@ -837,11 +958,16 @@ function DiagramPreview({ html, mermaidCode, drawioXml }: {
                 const mermaid = mod.default
                 mermaid.initialize({ startOnLoad: false, theme: 'neutral' })
                 mermaid.render(`preview-${Date.now()}`, mermaidCode)
-                    .then(({ svg }) => setRenderedSvg(svg))
+                    .then(({ svg }) => {
+                        // Force SVG to fill container width and remove fixed max-width
+                        const patched = svg
+                            .replace(/style="[^"]*max-width[^"]*"/gi, 'style="width:100%;height:auto;"')
+                            .replace(/<svg /, '<svg style="width:100%;height:auto;" ')
+                        setRenderedSvg(patched)
+                    })
                     .catch(e => setRenderError(String(e)))
             }).catch(e => setRenderError(String(e)))
         } else if (drawioXml) {
-            // For draw.io, show XML in a code block in the preview
             setRenderedSvg(null)
         }
     }, [mermaidCode, drawioXml])
@@ -850,13 +976,13 @@ function DiagramPreview({ html, mermaidCode, drawioXml }: {
         return (
             <div className="p-2 flex flex-col gap-2 h-full overflow-y-auto">
                 <div
-                    className="rounded border border-slate-200 bg-white p-2 overflow-auto"
+                    className="rounded border border-slate-200 bg-white p-3 w-full overflow-x-auto min-h-[220px] flex items-center justify-center [&_svg]:w-full [&_svg]:h-auto [&_svg]:max-w-full"
                     dangerouslySetInnerHTML={{ __html: renderedSvg }}
                 />
                 {renderError && (
                     <p className="text-[11px] text-red-500">{renderError}</p>
                 )}
-                <details className="text-[10px]">
+                <details className="text-[10px] shrink-0">
                     <summary className="text-slate-400 cursor-pointer hover:text-slate-600">Mermaid source</summary>
                     <pre className="mt-1 text-[10px] font-mono text-slate-600 bg-slate-50 p-2 rounded border border-slate-200 overflow-auto whitespace-pre-wrap">{mermaidCode}</pre>
                 </details>

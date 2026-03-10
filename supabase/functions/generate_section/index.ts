@@ -1,7 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import "https://deno.land/x/xhr@0.1.0/mod.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.38.0'
-import { getLlmConfig, getEmbeddingConfig, getRagConfig } from '../_shared/llmConfig.ts'
+import { getLlmConfig, getEmbeddingConfig, getRagConfig, getContentTypeConfig } from '../_shared/llmConfig.ts'
+import { URS_TEXT_EXAMPLE, URS_TABLE_EXAMPLE, URS_DIAGRAM_EXAMPLE } from '../_shared/ursExamples.ts'
 
 const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -22,6 +23,11 @@ interface SectionContext {
     diagramHint?: string | null
 }
 
+interface RefinementContext {
+    previousOutput: string
+    feedback: string
+}
+
 serve(async (req) => {
     if (req.method === 'OPTIONS') {
         return new Response('ok', { headers: corsHeaders })
@@ -39,6 +45,8 @@ serve(async (req) => {
             diagramFormat = 'mermaid',
             docType = 'BRS',
             sectionContext,
+            documentOutline,
+            refinementContext,
         }: {
             projectId: string
             sectionTitle: string
@@ -50,6 +58,8 @@ serve(async (req) => {
             diagramFormat?: 'mermaid' | 'drawio'
             docType?: string
             sectionContext?: SectionContext
+            documentOutline?: string[]
+            refinementContext?: RefinementContext
         } = await req.json()
 
         if (!projectId || !sectionTitle) {
@@ -64,6 +74,7 @@ serve(async (req) => {
         const llmConfig = getLlmConfig()
         const embeddingConfig = getEmbeddingConfig()
         const ragConfig = getRagConfig()
+        const ctConfig = getContentTypeConfig(contentType, !!chatMode)
 
         if (!llmConfig.apiKey) {
             throw new Error('No LLM API key configured (set LLM_API_KEY or OPENAI_API_KEY)')
@@ -108,17 +119,14 @@ serve(async (req) => {
         }
 
         // ── 1. Build multi-query embeddings ───────────────────────────────────
-        // Query 1: section title + user instructions
         const query1 = chatMode
             ? sectionTitle
             : `Context needed for ${docType} section: ${sectionTitle}. ${instructions || ''}`
 
-        // Query 2: section context keywords (template guidance)
         const templateInstructions = sectionContext?.instructions?.join(' ').slice(0, 300) || ''
         const parentSection = sectionContext?.parentSection || ''
         const query2 = chatMode ? '' : `${docType} ${parentSection} ${sectionTitle} ${templateInstructions}`
 
-        // Emit status event first (pre-stream before we have a readable yet, buffer it)
         const encoder = new TextEncoder()
         const statusEvent = encoder.encode(`data: ${JSON.stringify({ type: 'status', message: 'Searching documents…' })}\n\n`)
 
@@ -167,7 +175,12 @@ serve(async (req) => {
 
         const sources = [...sourceMap.keys()]
 
-        // ── 4. Build prompt based on mode + content type ──────────────────────
+        // ── 4. Build document outline block ───────────────────────────────────
+        const outlineBlock = (documentOutline?.length && !chatMode)
+            ? `\nDOCUMENT OUTLINE (for cross-section awareness):\n${documentOutline.map(s => `  - ${s}`).join('\n')}\n\nYou are writing: "${sectionTitle}"\nDo not duplicate content belonging in other sections. Reference other sections where appropriate (e.g. "as described in Section 3.1").\n`
+            : ''
+
+        // ── 5. Build prompt based on mode + content type ──────────────────────
         let messages: { role: string; content: string }[]
 
         if (chatMode) {
@@ -211,15 +224,16 @@ ${contextText}
             let userPrompt: string
 
             if (contentType === 'table') {
-                // ── Table mode ──
                 const schema = sectionContext?.tableSchemas?.[0]
                 const columnList = schema?.columns?.join(', ') || 'appropriate columns for this section'
                 const exampleRow = schema?.exampleData?.[0]?.join(' | ') || ''
+                const fewShot = docType === 'URS' ? `\nEXAMPLE OUTPUT (use as style/format reference):\n${URS_TABLE_EXAMPLE}\n` : ''
 
                 systemPrompt =
                     `You are an expert technical writer drafting a ${docType} requirements document.
 Your task is to generate a data table for the section titled "${sectionTitle}".
 ${guidanceBlock}
+${outlineBlock}
 RULES:
 - Output a complete HTML <table> with <thead> and <tbody>
 - Use EXACTLY these column headers: ${columnList}
@@ -228,7 +242,9 @@ ${exampleRow ? `- Example row format: ${exampleRow}` : ''}
 - If context is insufficient, add rows with [placeholder] values
 - Add a caption as <p><strong>Table: ${sectionTitle}</strong></p> before the table
 - Use ONLY these HTML tags: <p>, <table>, <thead>, <tbody>, <tr>, <th>, <td>, <strong>, <em>
-- Do NOT use markdown or any other tags`
+- Do NOT use markdown or any other tags
+- Every requirement must use MoSCoW priority: M (Must), S (Should), C (Could), W (Won't)
+${fewShot}`
 
                 userPrompt =
                     `Section: ${sectionTitle}
@@ -239,14 +255,15 @@ ${contextText}
 -----------------------`
 
             } else if (contentType === 'diagram') {
-                // ── Diagram mode ──
                 const diagramHint = sectionContext?.diagramHint || 'process flow'
 
                 if (diagramFormat === 'mermaid') {
+                    const fewShot = docType === 'URS' ? `\nEXAMPLE OUTPUT (use as style/format reference):\n${URS_DIAGRAM_EXAMPLE}\n` : ''
                     systemPrompt =
                         `You are an expert technical writer and diagram designer for ${docType} documents.
 Your task is to generate a Mermaid diagram for the section titled "${sectionTitle}".
 ${guidanceBlock}
+${outlineBlock}
 The diagram should represent: ${diagramHint}
 
 RULES:
@@ -261,7 +278,8 @@ RULES:
 - Make the diagram clear, well-labeled, and directly relevant to the section content
 - After the diagram, add a caption: <p><strong>Figure: ${sectionTitle}</strong></p>
 - Use ONLY: <pre class="mermaid">, <p>, <strong> tags
-- Do NOT output any other HTML or text`
+- Do NOT output any other HTML or text
+${fewShot}`
 
                     userPrompt =
                         `Section: ${sectionTitle}
@@ -272,11 +290,11 @@ Additional instructions: ${instructions || 'None'}
 ${contextText}
 -----------------------`
                 } else {
-                    // draw.io XML
                     systemPrompt =
                         `You are an expert diagram designer for ${docType} documents.
 Your task is to generate a draw.io diagram in mxGraphModel XML format for the section titled "${sectionTitle}".
 ${guidanceBlock}
+${outlineBlock}
 The diagram should represent: ${diagramHint}
 
 RULES:
@@ -299,19 +317,23 @@ ${contextText}
 -----------------------`
                 }
             } else {
-                // ── Text mode (enhanced from original) ──
+                // ── Text mode ──
+                const fewShot = docType === 'URS' ? `\nEXAMPLE OUTPUT (use as style/format reference):\n${URS_TEXT_EXAMPLE}\n` : ''
                 systemPrompt =
                     `You are an expert technical writer drafting a ${docType} requirements document.
 Your task is to write the content for the section titled "${sectionTitle}".
 ${guidanceBlock}
+${outlineBlock}
 RULES:
 - Follow the template guidance above precisely — it defines what this section should contain
 - Use the Project Context as your primary source of truth
 - Do not hallucinate information outside of the context; infer standard technical practices where necessary
 - If the context is insufficient, provide standard template text with [bracketed placeholders]
+- Every statement must be traceable to the project context or marked as [TBD]
 - Format your output as clean HTML using ONLY: <p>, <ul>, <ol>, <li>, <h3>, <table>, <thead>, <tbody>, <tr>, <th>, <td>, <strong>, <em>, <br>
 - Do NOT use markdown, <html>, <head>, <body>, or <style> tags
-- Return ONLY the HTML content for this section`
+- Return ONLY the HTML content for this section
+${fewShot}`
 
                 userPrompt =
                     `Section Title: ${sectionTitle}
@@ -322,13 +344,22 @@ ${contextText}
 -------------------------------------------------`
             }
 
-            messages = [
-                { role: 'system', content: systemPrompt },
-                { role: 'user', content: userPrompt },
-            ]
+            // ── 6. Handle refinement mode ──────────────────────────────────────
+            if (refinementContext) {
+                messages = [
+                    { role: 'system', content: systemPrompt },
+                    { role: 'assistant', content: refinementContext.previousOutput },
+                    { role: 'user', content: `Revise the content based on this feedback: ${refinementContext.feedback}` },
+                ]
+            } else {
+                messages = [
+                    { role: 'system', content: systemPrompt },
+                    { role: 'user', content: userPrompt },
+                ]
+            }
         }
 
-        // ── 5. Stream LLM response ────────────────────────────────────────────
+        // ── 7. Stream LLM response ────────────────────────────────────────────
         const completionResponse = await fetch(`${llmConfig.baseUrl}/chat/completions`, {
             method: 'POST',
             headers: {
@@ -338,7 +369,8 @@ ${contextText}
             body: JSON.stringify({
                 model: llmConfig.model,
                 messages,
-                temperature: llmConfig.temperature,
+                temperature: ctConfig.temperature,
+                max_tokens: ctConfig.max_tokens,
                 stream: true,
             }),
         })
@@ -349,19 +381,16 @@ ${contextText}
             throw new Error('Failed to generate content')
         }
 
-        // ── 6. Stream: status event + sources metadata + LLM tokens ──────────
+        // ── 8. Stream: status event + sources metadata + LLM tokens ──────────
         const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>()
         const writer = writable.getWriter()
 
-        // Searching status event
         writer.write(statusEvent).catch(() => {})
 
-        // Sources metadata event
         writer.write(
             encoder.encode(`data: ${JSON.stringify({ type: 'sources', sources })}\n\n`)
         ).catch(() => {})
 
-        // Pipe LLM stream through
         const reader = completionResponse.body.getReader()
         ;(async () => {
             try {
