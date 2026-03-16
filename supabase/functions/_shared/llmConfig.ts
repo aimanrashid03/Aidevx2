@@ -33,7 +33,7 @@ export function getEmbeddingConfig() {
 
 export function getRagConfig() {
     return {
-        matchThreshold: parseFloat(Deno.env.get('RAG_MATCH_THRESHOLD') || '0.45'),
+        matchThreshold: parseFloat(Deno.env.get('RAG_MATCH_THRESHOLD') || '0.30'),
         matchCount: parseInt(Deno.env.get('RAG_MATCH_COUNT') || '18'),
     }
 }

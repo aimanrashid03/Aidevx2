@@ -149,6 +149,7 @@ serve(async (req) => {
             }
         }
         const matchedChunks = [...chunkMap.values()].sort((a, b) => b.similarity - a.similarity)
+        console.log(`RAG: ${matchedChunks.length} chunks matched for project ${projectId}`)
 
         // ── 3. Build context with source attribution ───────────────────────────
         const sourceMap = new Map<string, string[]>()

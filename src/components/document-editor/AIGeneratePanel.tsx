@@ -20,7 +20,7 @@ interface ChatMessage {
 
 interface ProjectDocument {
     id: string
-    name: string
+    file_name: string
     file_path: string
 }
 
@@ -182,7 +182,7 @@ export default function AIGeneratePanel({
         if (!projectId) return
         supabase
             .from('project_documents')
-            .select('id, name, file_path')
+            .select('id, file_name, file_path')
             .eq('project_id', projectId)
             .then(({ data }) => {
                 if (data) setProjectDocs(data as ProjectDocument[])
@@ -703,8 +703,8 @@ export default function AIGeneratePanel({
                                                     className="accent-violet-600 shrink-0"
                                                 />
                                                 <FileText size={10} className="text-slate-400 shrink-0" />
-                                                <span className="text-[11px] text-slate-600 truncate group-hover:text-slate-800" title={doc.name}>
-                                                    {doc.name}
+                                                <span className="text-[11px] text-slate-600 truncate group-hover:text-slate-800" title={doc.file_name}>
+                                                    {doc.file_name}
                                                 </span>
                                             </label>
                                         ))}
