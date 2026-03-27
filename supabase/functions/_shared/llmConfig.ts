@@ -43,7 +43,7 @@ export function getContentTypeConfig(contentType: string, chatMode: boolean) {
     if (chatMode) return { temperature: 0.5, max_tokens: 2500 }
     switch (contentType) {
         case 'table':   return { temperature: 0.2, max_tokens: 1500 }
-        case 'diagram': return { temperature: 0.2, max_tokens: 1000 }
+        case 'diagram': return { temperature: 0.2, max_tokens: 1800 }
         default:        return { temperature: 0.3, max_tokens: 2500 }
     }
 }

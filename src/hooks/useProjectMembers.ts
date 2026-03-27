@@ -21,24 +21,37 @@ export function useProjectMembers(projectId: string | undefined) {
 
         setLoading(true);
         try {
-            const { data, error } = await supabase
+            // 1. Fetch member rows
+            const { data: memberRows, error } = await supabase
                 .from('project_members')
-                .select(`
-                    id,
-                    user_id,
-                    role,
-                    invited_at,
-                    profiles:user_id (email, full_name)
-                `)
+                .select('id, user_id, role, invited_at')
                 .eq('project_id', projectId);
 
             if (error) throw error;
+            if (!memberRows || memberRows.length === 0) {
+                setMembers([]);
+                setLoading(false);
+                return;
+            }
 
-            const mapped: ProjectMember[] = (data || []).map((m: any) => ({
+            // 2. Fetch profiles for all member user_ids
+            const userIds = memberRows.map(m => m.user_id);
+            const { data: profiles } = await supabase
+                .from('profiles')
+                .select('id, email, full_name')
+                .in('id', userIds);
+
+            const profileMap: Record<string, { email: string; full_name: string }> = {};
+            for (const p of profiles || []) {
+                profileMap[p.id] = { email: p.email || '', full_name: p.full_name || '' };
+            }
+
+            // 3. Merge
+            const mapped: ProjectMember[] = memberRows.map((m) => ({
                 id: m.id,
                 userId: m.user_id,
-                email: m.profiles?.email || '',
-                fullName: m.profiles?.full_name || '',
+                email: profileMap[m.user_id]?.email || '',
+                fullName: profileMap[m.user_id]?.full_name || '',
                 role: m.role,
                 invitedAt: m.invited_at,
             }));

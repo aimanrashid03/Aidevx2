@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import {
     Sparkles, Loader2, Copy, Check, MessageSquare, Zap, Send,
     Trash2, CornerDownLeft, ChevronDown, ChevronRight, FileText, Code,
-    Table, GitFork, BookOpen, Info,
+    Table, GitFork, BookOpen, Info, Square,
 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { getSectionContext, type SectionContext, type TableSchema } from '../../lib/ai/sectionContext'
@@ -119,6 +119,7 @@ export default function AIGeneratePanel({
     const [copied, setCopied] = useState(false)
     const [viewSource, setViewSource] = useState(false)
     const [genSources, setGenSources] = useState<string[]>([])
+    const [contextQuality, setContextQuality] = useState<'none' | 'low' | 'medium' | 'high' | null>(null)
     const [sectionContext, setSectionContext] = useState<SectionContext | null>(null)
     const [showGuidance, setShowGuidance] = useState(false)
     const genAbortRef = useRef<AbortController | null>(null)
@@ -143,14 +144,57 @@ export default function AIGeneratePanel({
     const chatBottomRef = useRef<HTMLDivElement>(null)
     const chatInputRef = useRef<HTMLTextAreaElement>(null)
 
+    // ── Batch generation state ─────────────────────────────────────────────
+    const [batchMode, setBatchMode] = useState(false)
+    const [batchResults, setBatchResults] = useState<Map<string, string>>(new Map())
+    const [batchProgress, setBatchProgress] = useState({ current: 0, total: 0 })
+    const batchAbortRef = useRef<AbortController | null>(null)
+
+    // ── Generation cache (persists across section switches) ──────────────
+    const [generationCache, setGenerationCache] = useState<Map<string, { html: string; sources: string[]; timestamp: number }>>(new Map())
+
+    // Abort any in-flight streams on unmount
+    useEffect(() => {
+        return () => {
+            genAbortRef.current?.abort()
+            chatAbortRef.current?.abort()
+            batchAbortRef.current?.abort()
+        }
+    }, [])
+
     // Pre-fill section title when TOC sparkle is clicked
     useEffect(() => {
         if (prefillTitle) {
+            // Save current work to cache before switching
+            if (sectionTitle.trim() && generatedHtml) {
+                setGenerationCache(prev => {
+                    const next = new Map(prev)
+                    next.set(sectionTitle.trim(), { html: generatedHtml, sources: genSources, timestamp: Date.now() })
+                    return next
+                })
+            }
             setSectionTitle(prefillTitle)
             setTab('generate')
-            setGeneratedHtml('')
             setGenError(null)
+            // Auto-suggest content type from template context
+            const ctx = getSectionContext(docType, prefillTitle)
+            if (ctx) {
+                if (ctx.expectedFormat === 'diagram') setContentType('diagram')
+                else if (ctx.expectedFormat === 'table') setContentType('table')
+                else setContentType('text')
+                if (ctx.tableSchemas.length > 0) setTableColumns(ctx.tableSchemas[0].columns)
+            }
+            // Restore from cache if available, otherwise clear
+            const cached = generationCache.get(prefillTitle.trim())
+            if (cached) {
+                setGeneratedHtml(cached.html)
+                setGenSources(cached.sources)
+            } else {
+                setGeneratedHtml('')
+                setGenSources([])
+            }
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [prefillTitle, activeSectionId])
 
     // Update section context when section title or docType changes
@@ -161,16 +205,6 @@ export default function AIGeneratePanel({
         }
         const ctx = getSectionContext(docType, sectionTitle)
         setSectionContext(ctx)
-        if (ctx) {
-            // Auto-suggest content type
-            if (ctx.expectedFormat === 'diagram') setContentType('diagram')
-            else if (ctx.expectedFormat === 'table') setContentType('table')
-            else setContentType('text')
-            // Pre-populate table columns from schema
-            if (ctx.tableSchemas.length > 0) {
-                setTableColumns(ctx.tableSchemas[0].columns)
-            }
-        }
     }, [sectionTitle, docType])
 
     useEffect(() => {
@@ -204,7 +238,7 @@ export default function AIGeneratePanel({
         body: object,
         signal: AbortSignal,
         onToken: (token: string) => void,
-        onSources?: (sources: string[]) => void,
+        onSources?: (sources: string[], quality?: string) => void,
         onStatus?: (msg: string) => void,
     ) {
         const headers = await getAuthHeaders()
@@ -229,7 +263,7 @@ export default function AIGeneratePanel({
                         if (data !== '[DONE]') {
                             try {
                                 const parsed = JSON.parse(data)
-                                if (parsed?.type === 'sources') onSources?.(parsed.sources ?? [])
+                                if (parsed?.type === 'sources') onSources?.(parsed.sources ?? [], parsed.contextQuality)
                                 else if (parsed?.type === 'status') onStatus?.(parsed.message ?? '')
                                 else {
                                     const token: string = parsed?.choices?.[0]?.delta?.content ?? ''
@@ -250,7 +284,7 @@ export default function AIGeneratePanel({
                 if (data === '[DONE]') return
                 try {
                     const parsed = JSON.parse(data)
-                    if (parsed?.type === 'sources') { onSources?.(parsed.sources ?? []); continue }
+                    if (parsed?.type === 'sources') { onSources?.(parsed.sources ?? [], parsed.contextQuality); continue }
                     if (parsed?.type === 'status') { onStatus?.(parsed.message ?? ''); continue }
                     const token: string = parsed?.choices?.[0]?.delta?.content ?? ''
                     if (token) onToken(token)
@@ -271,6 +305,7 @@ export default function AIGeneratePanel({
         setGenError(null)
         setCopied(false)
         setGenSources([])
+        setContextQuality(null)
         setViewSource(false)
         setGenStatus('Searching documents…')
         setShowRefineInput(false)
@@ -288,6 +323,7 @@ export default function AIGeneratePanel({
 
         try {
             let acc = ''
+            let cachedSources: string[] = []
             await streamSSE(
                 {
                     projectId,
@@ -311,10 +347,22 @@ export default function AIGeneratePanel({
                 },
                 ctrl.signal,
                 (token) => { acc += token; setGeneratedHtml(acc) },
-                (sources) => setGenSources(sources),
+                (sources, quality) => {
+                    setGenSources(sources)
+                    setContextQuality((quality as typeof contextQuality) ?? null)
+                    cachedSources = sources
+                },
                 (msg) => setGenStatus(msg),
             )
             setGenStatus('')
+            // Cache the result
+            if (acc) {
+                setGenerationCache(prev => {
+                    const next = new Map(prev)
+                    next.set(sectionTitle.trim(), { html: acc, sources: cachedSources, timestamp: Date.now() })
+                    return next
+                })
+            }
         } catch (err) {
             if ((err as Error).name !== 'AbortError')
                 setGenError((err as Error).message || 'Generation failed')
@@ -322,7 +370,7 @@ export default function AIGeneratePanel({
         } finally {
             setIsGenerating(false)
         }
-    }, [sectionTitle, instructions, projectId, selectedDocPaths, projectDocs, contentType, diagramFormat, docType, sectionContext, tableColumns])
+    }, [sectionTitle, instructions, projectId, selectedDocPaths, projectDocs, contentType, diagramFormat, docType, sectionContext, tableColumns, tocSections, getAuthHeaders])
 
     const handleCopy = async () => {
         try {
@@ -410,7 +458,96 @@ export default function AIGeneratePanel({
             setIsGenerating(false)
         }
     }, [refineFeedback, generatedHtml, isGenerating, refineCount, sectionTitle, instructions, projectId,
-        selectedDocPaths, projectDocs, contentType, diagramFormat, docType, sectionContext, tableColumns, tocSections])
+        selectedDocPaths, projectDocs, contentType, diagramFormat, docType, sectionContext, tableColumns, tocSections, getAuthHeaders])
+
+    // ── Batch Generate ─────────────────────────────────────────────────────
+    const startBatch = useCallback(async () => {
+        if (tocSections.length === 0 || batchMode) return
+        batchAbortRef.current?.abort()
+        const ctrl = new AbortController()
+        batchAbortRef.current = ctrl
+
+        const queue = tocSections.filter(s => s.title.trim())
+        setBatchMode(true)
+        setBatchResults(new Map())
+        setBatchProgress({ current: 0, total: queue.length })
+
+        const selectedPaths = selectedDocPaths.size > 0
+            ? projectDocs.filter(d => selectedDocPaths.has(d.id)).map(d => d.file_path)
+            : undefined
+        const outline = queue.map(s => s.title).filter(Boolean)
+
+        const results = new Map<string, string>()
+
+        for (let i = 0; i < queue.length; i++) {
+            if (ctrl.signal.aborted) break
+            const section = queue[i]
+            setBatchProgress({ current: i + 1, total: queue.length })
+            setGenStatus(`Generating ${i + 1}/${queue.length}: ${section.title}`)
+
+            const ctx = getSectionContext(docType, section.title)
+            try {
+                let acc = ''
+                let sources: string[] = []
+                await streamSSE(
+                    {
+                        projectId,
+                        sectionTitle: section.title,
+                        contentType: ctx?.expectedFormat === 'table' ? 'table'
+                            : ctx?.expectedFormat === 'diagram' ? 'diagram' : 'text',
+                        docType,
+                        sectionContext: ctx ? {
+                            instructions: ctx.instructions,
+                            expectedFormat: ctx.expectedFormat,
+                            tableSchemas: ctx.tableSchemas,
+                            parentSection: ctx.parentSection,
+                            siblingTitles: ctx.siblingTitles,
+                            diagramHint: ctx.diagramHint,
+                        } : undefined,
+                        selectedDocumentPaths: selectedPaths,
+                        documentOutline: outline,
+                    },
+                    ctrl.signal,
+                    (token) => { acc += token },
+                    (s) => { sources = s },
+                )
+                if (acc) {
+                    results.set(section.sectionId, acc)
+                    setBatchResults(new Map(results))
+                    // Also cache
+                    setGenerationCache(prev => {
+                        const next = new Map(prev)
+                        next.set(section.title.trim(), { html: acc, sources, timestamp: Date.now() })
+                        return next
+                    })
+                }
+            } catch (err) {
+                if ((err as Error).name === 'AbortError') break
+                // Skip failed section, continue batch
+                results.set(section.sectionId, `<p class="text-red-500">[Generation failed: ${(err as Error).message}]</p>`)
+                setBatchResults(new Map(results))
+            }
+        }
+        setGenStatus('')
+        setBatchMode(false)
+    }, [tocSections, batchMode, selectedDocPaths, projectDocs, docType, projectId, getAuthHeaders])
+
+    const cancelBatch = useCallback(() => {
+        batchAbortRef.current?.abort()
+        setBatchMode(false)
+        setGenStatus('')
+    }, [])
+
+    const insertAllBatch = useCallback(() => {
+        if (!onInsert || batchResults.size === 0) return
+        // Insert in section order
+        const allHtml = tocSections
+            .map(s => batchResults.get(s.sectionId))
+            .filter(Boolean)
+            .map(html => sanitizeHtml(html!))
+            .join('<br>')
+        onInsert(allHtml)
+    }, [batchResults, tocSections, onInsert])
 
     // ── Chat ────────────────────────────────────────────────────────────────
     const sendChat = useCallback(async () => {
@@ -432,12 +569,17 @@ export default function AIGeneratePanel({
         setChatHistory(prev => [...prev, { role: 'assistant', content: '' }])
 
         try {
+            const chatSelectedPaths = selectedDocPaths.size > 0
+                ? projectDocs.filter(d => selectedDocPaths.has(d.id)).map(d => d.file_path)
+                : undefined
+
             await streamSSE(
                 {
                     projectId,
                     sectionTitle: text,
                     chatMode: true,
                     chatHistory: [...chatHistory, userMsg].slice(-10),
+                    selectedDocumentPaths: chatSelectedPaths,
                 },
                 ctrl.signal,
                 (token) => {
@@ -457,7 +599,7 @@ export default function AIGeneratePanel({
         } finally {
             setIsChatting(false)
         }
-    }, [chatInput, isChatting, chatHistory, projectId])
+    }, [chatInput, isChatting, chatHistory, projectId, selectedDocPaths, projectDocs, getAuthHeaders])
 
     const clearChat = () => {
         chatAbortRef.current?.abort()
@@ -473,6 +615,16 @@ export default function AIGeneratePanel({
             else next.add(id)
             return next
         })
+    }
+
+    // Resolve raw source paths to user-friendly display names
+    const getSourceDisplayName = (src: string) => {
+        const doc = projectDocs.find(d =>
+            d.file_name === src ||
+            d.file_path.endsWith(src) ||
+            src.includes(d.file_name)
+        )
+        return doc?.file_name || src.replace(/^.*[\\/]/, '').replace(/\.[^.]+$/, '') || src
     }
 
     const addColumn = () => setTableColumns(prev => [...prev, `Column ${prev.length + 1}`])
@@ -497,7 +649,7 @@ export default function AIGeneratePanel({
     const hasDiagramCode = !!(mermaidCode || drawioXml)
 
     return (
-        <aside className="w-72 bg-white border-l border-slate-200 flex flex-col shrink-0 z-10">
+        <aside className="w-96 bg-white border-l border-slate-200 flex flex-col shrink-0 z-10">
             {/* Header */}
             <div className="flex items-center gap-1.5 px-3 py-2.5 border-b border-slate-200 shrink-0 bg-slate-900">
                 <Sparkles size={13} className="text-violet-400" />
@@ -520,7 +672,7 @@ export default function AIGeneratePanel({
             {/* ── GENERATE TAB ── */}
             {tab === 'generate' && (
                 <div className="flex flex-col flex-1 overflow-hidden">
-                    <div className="flex flex-col gap-2.5 p-3 border-b border-slate-100 shrink-0 overflow-y-auto">
+                    <div className="flex flex-col gap-2.5 p-3 border-b border-slate-100 shrink-0 overflow-y-auto max-h-[40%]">
 
                         {/* Section selector — dropdown from TOC */}
                         <div>
@@ -530,13 +682,23 @@ export default function AIGeneratePanel({
                             {tocSections.length > 0 ? (
                                 <select
                                     value={sectionTitle}
-                                    onChange={e => setSectionTitle(e.target.value)}
+                                    onChange={e => {
+                                        const val = e.target.value
+                                        setSectionTitle(val)
+                                        const ctx = getSectionContext(docType, val)
+                                        if (ctx) {
+                                            if (ctx.expectedFormat === 'diagram') setContentType('diagram')
+                                            else if (ctx.expectedFormat === 'table') setContentType('table')
+                                            else setContentType('text')
+                                            if (ctx.tableSchemas.length > 0) setTableColumns(ctx.tableSchemas[0].columns)
+                                        }
+                                    }}
                                     className="w-full text-[12px] text-slate-700 bg-slate-50 border border-slate-200 rounded px-2 py-1.5 outline-none focus:border-violet-300 focus:ring-1 focus:ring-violet-100"
                                 >
                                     <option value="">— Select a section —</option>
                                     {tocSections.map(s => (
                                         <option key={s.sectionId} value={s.title}>
-                                            {'  '.repeat(s.level - 1)}{s.title}
+                                            {'\u00A0\u00A0'.repeat(s.level - 1)}{s.title}
                                         </option>
                                     ))}
                                 </select>
@@ -721,15 +883,118 @@ export default function AIGeneratePanel({
                             </div>
                         )}
 
-                        <button
-                            onClick={generate}
-                            disabled={isGenerating || !sectionTitle.trim()}
-                            className="flex items-center justify-center gap-1.5 py-1.5 rounded bg-violet-600 text-white text-[11px] font-medium hover:bg-violet-700 disabled:opacity-50 transition-colors"
-                        >
-                            {isGenerating ? <Loader2 size={11} className="animate-spin" /> : <Zap size={11} />}
-                            {isGenerating ? (genStatus || 'Generating…') : 'Generate with RAG'}
-                        </button>
+                        {/* Cache indicator */}
+                        {!isGenerating && sectionTitle.trim() && generationCache.has(sectionTitle.trim()) && !generatedHtml && (
+                            <div className="flex items-center gap-2 px-2 py-1.5 rounded border border-emerald-100 bg-emerald-50">
+                                <span className="text-[10px] text-emerald-700 flex-1">
+                                    Previous generation available ({Math.round((Date.now() - (generationCache.get(sectionTitle.trim())?.timestamp ?? 0)) / 60000)} min ago)
+                                </span>
+                                <button
+                                    onClick={() => {
+                                        const cached = generationCache.get(sectionTitle.trim())
+                                        if (cached) { setGeneratedHtml(cached.html); setGenSources(cached.sources) }
+                                    }}
+                                    className="text-[10px] font-medium text-emerald-700 hover:text-emerald-900"
+                                >
+                                    Restore
+                                </button>
+                            </div>
+                        )}
+
+                        <div className="flex gap-1.5">
+                            <button
+                                onClick={generate}
+                                disabled={isGenerating || batchMode || !sectionTitle.trim()}
+                                className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded bg-violet-600 text-white text-[11px] font-medium hover:bg-violet-700 disabled:opacity-50 transition-colors"
+                            >
+                                {isGenerating ? <Loader2 size={11} className="animate-spin" /> : <Zap size={11} />}
+                                {isGenerating ? (genStatus || 'Generating…') : 'Generate'}
+                            </button>
+                            {isGenerating && (
+                                <button
+                                    onClick={() => genAbortRef.current?.abort()}
+                                    className="flex items-center justify-center px-2.5 py-1.5 rounded border border-red-200 text-red-500 hover:bg-red-50 text-[11px] font-medium transition-colors"
+                                    title="Stop generation"
+                                >
+                                    <Square size={10} />
+                                </button>
+                            )}
+                        </div>
+
+                        {/* Batch Generate All */}
+                        {tocSections.length > 0 && !isGenerating && (
+                            batchMode ? (
+                                <div className="flex flex-col gap-1.5">
+                                    <div className="flex items-center gap-2">
+                                        <div className="flex-1 bg-slate-200 rounded-full h-1.5 overflow-hidden">
+                                            <div
+                                                className="h-full bg-violet-500 transition-all duration-300"
+                                                style={{ width: `${batchProgress.total > 0 ? (batchProgress.current / batchProgress.total) * 100 : 0}%` }}
+                                            />
+                                        </div>
+                                        <span className="text-[10px] text-slate-500 shrink-0">{batchProgress.current}/{batchProgress.total}</span>
+                                    </div>
+                                    <button
+                                        onClick={cancelBatch}
+                                        className="flex items-center justify-center gap-1 py-1 rounded border border-red-200 text-red-500 hover:bg-red-50 text-[11px] transition-colors"
+                                    >
+                                        <Square size={10} /> Stop Batch
+                                    </button>
+                                </div>
+                            ) : (
+                                <button
+                                    onClick={startBatch}
+                                    className="flex items-center justify-center gap-1.5 py-1.5 rounded border border-violet-200 text-violet-600 hover:bg-violet-50 text-[11px] font-medium transition-colors"
+                                >
+                                    <Sparkles size={10} /> Generate All Sections ({tocSections.length})
+                                </button>
+                            )
+                        )}
                     </div>
+
+                    {/* Batch results review */}
+                    {batchResults.size > 0 && !batchMode && (
+                        <div className="flex flex-col gap-2 p-3 border-b border-slate-100 shrink-0 max-h-48 overflow-y-auto">
+                            <div className="flex items-center justify-between">
+                                <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">
+                                    Batch Results ({batchResults.size}/{tocSections.length})
+                                </label>
+                                <div className="flex gap-1">
+                                    {onInsert && (
+                                        <button
+                                            onClick={insertAllBatch}
+                                            className="text-[10px] font-medium text-violet-600 hover:text-violet-800"
+                                        >
+                                            Insert All
+                                        </button>
+                                    )}
+                                    <button
+                                        onClick={() => setBatchResults(new Map())}
+                                        className="text-[10px] text-slate-400 hover:text-slate-600 ml-2"
+                                    >
+                                        Clear
+                                    </button>
+                                </div>
+                            </div>
+                            {tocSections.map(s => {
+                                const result = batchResults.get(s.sectionId)
+                                if (!result) return null
+                                return (
+                                    <button
+                                        key={s.sectionId}
+                                        onClick={() => {
+                                            setSectionTitle(s.title)
+                                            setGeneratedHtml(result)
+                                        }}
+                                        className="flex items-center gap-2 text-left px-2 py-1 rounded hover:bg-slate-50 transition-colors"
+                                    >
+                                        <Check size={10} className="text-emerald-500 shrink-0" />
+                                        <span className="text-[11px] text-slate-600 truncate">{s.title}</span>
+                                    </button>
+                                )
+                            })}
+                        </div>
+                    )}
 
                     {/* Output area */}
                     <div className="flex-1 flex flex-col overflow-hidden p-3 gap-2">
@@ -749,7 +1014,7 @@ export default function AIGeneratePanel({
                             )}
                         </div>
 
-                        <div className={`overflow-y-auto rounded border border-slate-200 bg-slate-50 ${hasDiagramCode && !isGenerating ? 'flex-1 min-h-[260px]' : 'flex-1'}`}>
+                        <div className={`overflow-y-auto rounded border border-slate-200 bg-slate-50 flex-1 min-h-[200px]`}>
                             {viewSource ? (
                                 <textarea
                                     value={generatedHtml}
@@ -769,24 +1034,55 @@ export default function AIGeneratePanel({
                                         [&_td]:border [&_td]:border-slate-200 [&_td]:px-1.5 [&_td]:py-1
                                         ${!generatedHtml ? 'text-slate-400 italic' : ''}`}
                                     dangerouslySetInnerHTML={{
-                                        __html: generatedHtml || (isGenerating ? '' : 'Generated content will appear here'),
+                                        __html: generatedHtml || (isGenerating
+                                            ? '<div class="space-y-2 animate-pulse"><div class="h-3 bg-slate-200 rounded w-3/4"></div><div class="h-3 bg-slate-200 rounded w-full"></div><div class="h-3 bg-slate-200 rounded w-5/6"></div><div class="h-3 bg-slate-200 rounded w-2/3"></div></div>'
+                                            : 'Generated content will appear here'),
                                     }}
                                 />
                             )}
                         </div>
 
-                        {/* Source pills */}
+                        {/* Source pills + context quality */}
                         {genSources.length > 0 && (
                             <div className="shrink-0">
-                                <p className="text-[10px] text-slate-400 mb-1">Sources used:</p>
+                                <div className="flex items-center gap-2 mb-1">
+                                    <p className="text-[10px] text-slate-400">Sources used:</p>
+                                    {contextQuality && (
+                                        <span className={`inline-flex items-center gap-1 text-[9px] font-medium px-1.5 py-0.5 rounded-full ${
+                                            contextQuality === 'high' ? 'bg-emerald-50 text-emerald-700' :
+                                            contextQuality === 'medium' ? 'bg-amber-50 text-amber-700' :
+                                            contextQuality === 'low' ? 'bg-red-50 text-red-600' :
+                                            'bg-slate-100 text-slate-500'
+                                        }`} title={
+                                            contextQuality === 'high' ? 'Strong context match — output is well-grounded' :
+                                            contextQuality === 'medium' ? 'Partial context — review output carefully' :
+                                            contextQuality === 'low' ? 'Weak context — output may contain placeholders' :
+                                            'No matching context found'
+                                        }>
+                                            <span className={`w-1.5 h-1.5 rounded-full ${
+                                                contextQuality === 'high' ? 'bg-emerald-500' :
+                                                contextQuality === 'medium' ? 'bg-amber-500' :
+                                                contextQuality === 'low' ? 'bg-red-500' :
+                                                'bg-slate-400'
+                                            }`} />
+                                            {contextQuality === 'high' ? 'Strong' : contextQuality === 'medium' ? 'Partial' : contextQuality === 'low' ? 'Weak' : 'None'}
+                                        </span>
+                                    )}
+                                </div>
                                 <div className="flex flex-wrap gap-1">
                                     {genSources.map(src => (
                                         <span key={src} className="inline-flex items-center gap-1 text-[10px] bg-violet-50 text-violet-700 border border-violet-200 rounded px-1.5 py-0.5" title={src}>
                                             <FileText size={9} />
-                                            <span className="max-w-[120px] truncate">{src}</span>
+                                            <span className="max-w-[160px] truncate">{getSourceDisplayName(src)}</span>
                                         </span>
                                     ))}
                                 </div>
+                            </div>
+                        )}
+                        {genSources.length === 0 && contextQuality === 'none' && !isGenerating && generatedHtml && (
+                            <div className="shrink-0 flex items-center gap-1.5 text-[10px] text-amber-600 bg-amber-50 border border-amber-100 rounded px-2 py-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
+                                No project documents matched — output uses general knowledge only
                             </div>
                         )}
 
@@ -836,15 +1132,21 @@ export default function AIGeneratePanel({
                         >
                             ↺ Regen
                         </button>
-                        {generatedHtml && !isGenerating && refineCount < 5 && (
-                            <button
-                                onClick={() => setShowRefineInput(v => !v)}
-                                className={`flex items-center justify-center gap-1 px-2.5 text-[11px] py-1.5 rounded border transition-colors ${showRefineInput ? 'border-violet-400 text-violet-600 bg-violet-50' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}
-                                title={refineCount > 0 ? `Refined ${refineCount}x` : 'Refine with feedback'}
-                            >
-                                <Sparkles size={10} />
-                                {refineCount > 0 ? `${refineCount}x` : 'Refine'}
-                            </button>
+                        {generatedHtml && !isGenerating && (
+                            refineCount >= 5 ? (
+                                <span className="flex items-center text-[10px] text-slate-400 px-1" title="Refinement limit reached — regenerate to start over">
+                                    5/5 refined
+                                </span>
+                            ) : (
+                                <button
+                                    onClick={() => setShowRefineInput(v => !v)}
+                                    className={`flex items-center justify-center gap-1 px-2.5 text-[11px] py-1.5 rounded border transition-colors ${showRefineInput ? 'border-violet-400 text-violet-600 bg-violet-50' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                                    title={`Refine with feedback (${refineCount}/5)`}
+                                >
+                                    <Sparkles size={10} />
+                                    {refineCount > 0 ? `${refineCount}/5` : 'Refine'}
+                                </button>
+                            )
                         )}
                         <button
                             onClick={handleCopy}
@@ -888,7 +1190,7 @@ export default function AIGeneratePanel({
                                         : 'bg-slate-100 text-slate-700 rounded-bl-sm prose prose-sm max-w-none [&_h3]:text-[12px] [&_h3]:font-semibold [&_p]:mb-1 [&_ul]:pl-4 [&_li]:mb-0.5 [&_table]:text-[11px] [&_td]:border [&_td]:border-slate-200 [&_td]:px-1 [&_th]:border [&_th]:border-slate-300 [&_th]:px-1'
                                     }`}
                                     {...(msg.role === 'assistant'
-                                        ? { dangerouslySetInnerHTML: { __html: msg.content || (isChatting && i === chatHistory.length - 1 ? '<span style="opacity:0.6">Thinking…</span>' : '') } }
+                                        ? { dangerouslySetInnerHTML: { __html: sanitizeHtml(msg.content) || (isChatting && i === chatHistory.length - 1 ? '<span style="opacity:0.6">Thinking…</span>' : '') } }
                                         : { children: msg.content }
                                     )}
                                 />
@@ -907,34 +1209,37 @@ export default function AIGeneratePanel({
                         <div ref={chatBottomRef} />
                     </div>
 
-                    <div className="border-t border-slate-200 p-2 flex gap-2 items-end shrink-0">
-                        <textarea
-                            ref={chatInputRef}
-                            value={chatInput}
-                            onChange={e => {
-                                setChatInput(e.target.value)
-                                e.target.style.height = '32px'
-                                e.target.style.height = Math.min(e.target.scrollHeight, 80) + 'px'
-                            }}
-                            onKeyDown={e => {
-                                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat() }
-                            }}
-                            placeholder="Ask AI anything…"
-                            rows={1}
-                            className="flex-1 resize-none text-[12px] text-slate-700 bg-slate-50 border border-slate-200 rounded px-2 py-1.5 outline-none focus:border-violet-300 focus:ring-1 focus:ring-violet-100 min-h-[32px] max-h-[80px]"
-                        />
-                        <div className="flex gap-1 shrink-0">
-                            <button onClick={clearChat} className="p-1.5 rounded text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors" title="Clear chat">
-                                <Trash2 size={13} />
-                            </button>
-                            <button
-                                onClick={sendChat}
-                                disabled={!chatInput.trim() || isChatting}
-                                className="p-1.5 rounded bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50 transition-colors"
-                            >
-                                <Send size={13} />
-                            </button>
+                    <div className="border-t border-slate-200 p-2 flex flex-col gap-1 shrink-0">
+                        <div className="flex gap-2 items-end">
+                            <textarea
+                                ref={chatInputRef}
+                                value={chatInput}
+                                onChange={e => {
+                                    setChatInput(e.target.value)
+                                    e.target.style.height = '32px'
+                                    e.target.style.height = Math.min(e.target.scrollHeight, 80) + 'px'
+                                }}
+                                onKeyDown={e => {
+                                    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat() }
+                                }}
+                                placeholder="Ask AI anything…"
+                                rows={1}
+                                className="flex-1 resize-none text-[12px] text-slate-700 bg-slate-50 border border-slate-200 rounded px-2 py-1.5 outline-none focus:border-violet-300 focus:ring-1 focus:ring-violet-100 min-h-[32px] max-h-[80px]"
+                            />
+                            <div className="flex gap-1 shrink-0">
+                                <button onClick={clearChat} className="p-1.5 rounded text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors" title="Clear chat">
+                                    <Trash2 size={13} />
+                                </button>
+                                <button
+                                    onClick={sendChat}
+                                    disabled={!chatInput.trim() || isChatting}
+                                    className="p-1.5 rounded bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50 transition-colors"
+                                >
+                                    <Send size={13} />
+                                </button>
+                            </div>
                         </div>
+                        <p className="text-[9px] text-slate-400 px-0.5">Enter to send, Shift+Enter for new line</p>
                     </div>
                 </div>
             )}
@@ -957,7 +1262,7 @@ function DiagramPreview({ html, mermaidCode, drawioXml }: {
             import('mermaid').then(mod => {
                 const mermaid = mod.default
                 mermaid.initialize({ startOnLoad: false, theme: 'neutral' })
-                mermaid.render(`preview-${Date.now()}`, mermaidCode)
+                mermaid.render(`preview-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, mermaidCode)
                     .then(({ svg }) => {
                         // Force SVG to fill container width and remove fixed max-width
                         const patched = svg

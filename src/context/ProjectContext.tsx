@@ -40,6 +40,8 @@ export interface Project {
     documents?: { name: string; path: string }[];
     requirementDocs: RequirementDoc[];
     createdAt: string;
+    /** Current user's role: 'owner' if they created it, otherwise their project_members role */
+    userRole?: 'owner' | 'editor' | 'viewer';
 }
 
 interface ProjectContextType {
@@ -73,16 +75,28 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
         try {
             setLoading(true);
 
-            // 1. Fetch Projects
+            // 1. Fetch Projects (RLS returns owned + shared projects)
             const { data: projectsData, error: projectsError } = await supabase
                 .from('projects')
                 .select('*')
-                .eq('user_id', user.id)
                 .order('created_at', { ascending: false });
 
             if (projectsError) throw projectsError;
 
-            // 2. Fetch related data for all projects
+            // 2. Fetch the current user's role for each project
+            const projectIds = projectsData.map(p => p.id);
+            const { data: memberRows } = await supabase
+                .from('project_members')
+                .select('project_id, role')
+                .eq('user_id', user.id)
+                .in('project_id', projectIds);
+
+            const roleByProject: Record<string, string> = {};
+            for (const m of memberRows || []) {
+                roleByProject[m.project_id] = m.role;
+            }
+
+            // 3. Fetch related data for all projects
             const enrichedProjects = await Promise.all(projectsData.map(async (p) => {
                 // Fetch Documents (Metadata)
                 const { data: docsData } = await supabase
@@ -102,6 +116,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
                     description: p.description,
                     notes: p.notes,
                     createdAt: p.created_at,
+                    userRole: (roleByProject[p.id] || (p.user_id === user.id ? 'owner' : 'viewer')) as 'owner' | 'editor' | 'viewer',
                     documents: docsData?.map(d => ({ name: d.file_name, path: d.file_path })) || [],
                     requirementDocs: reqDocsData?.map(d => ({
                         id: d.id,

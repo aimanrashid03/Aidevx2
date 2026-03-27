@@ -1,7 +1,7 @@
 import { useProjects } from '../context/ProjectContext';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { FileText, Clock, Plus, ArrowRight } from 'lucide-react';
+import { FileText, Clock, Plus, ArrowRight, Users } from 'lucide-react';
 
 export default function Dashboard() {
     const { projects } = useProjects();
@@ -49,7 +49,15 @@ export default function Dashboard() {
                             className="group relative p-5 border border-slate-200 rounded bg-white transition-all cursor-pointer hover:border-slate-400 hover:shadow-sm"
                         >
                             <div className="mb-4">
-                                <h3 className="text-base font-bold text-slate-900 mb-2 group-hover:text-slate-900 transition-colors truncate">{project.name}</h3>
+                                <div className="flex items-center gap-2 mb-2">
+                                    <h3 className="text-base font-bold text-slate-900 group-hover:text-slate-900 transition-colors truncate">{project.name}</h3>
+                                    {project.userRole && project.userRole !== 'owner' && (
+                                        <span className="shrink-0 flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-blue-50 text-blue-600 border border-blue-200">
+                                            <Users size={10} />
+                                            {project.userRole}
+                                        </span>
+                                    )}
+                                </div>
                                 <p className="text-slate-600 text-sm line-clamp-2 h-10 leading-relaxed">
                                     {project.description || "No description provided."}
                                 </p>

@@ -75,17 +75,10 @@ export default function DocumentEditor() {
     // ─── Collaboration hooks ────────────────────────────────────────────────────
 
     const docId = existingDoc?.id
-    const { comments, addComment, resolveComment, deleteComment, getCommentCountBySection } = useDocumentComments(docId, projectId)
+    const { comments, addComment, resolveComment, deleteComment } = useDocumentComments(docId, projectId)
     const { otherUsers, totalViewers } = useDocumentPresence(docId)
 
-    // Derive commentCounts keyed by sectionId slug
-    const commentCounts: Record<string, number> = {}
     const sectionTitles = tocSections.map(s => s.title)
-    const rawCommentCounts = getCommentCountBySection()
-    Object.entries(rawCommentCounts).forEach(([idx, count]) => {
-        const section = tocSections[Number(idx)]
-        if (section) commentCounts[section.sectionId] = count
-    })
 
     // ─── Document initialization ────────────────────────────────────────────────
 
@@ -474,14 +467,15 @@ export default function DocumentEditor() {
                 </main>
 
                 {/* AI Assistant Panel — toggleable */}
-                {projectId && aiPanelVisible && (
-                    <AIGeneratePanel
-                        projectId={projectId}
-                        docType={docType}
-                        tocSections={tocSections}
-
-                        onInsert={(html) => editorRef.current?.pasteHtml(html)}
-                    />
+                {projectId && (
+                    <div className={aiPanelVisible ? 'flex' : 'hidden'}>
+                        <AIGeneratePanel
+                            projectId={projectId}
+                            docType={docType}
+                            tocSections={tocSections}
+                            onInsert={(html) => editorRef.current?.pasteHtml(html)}
+                        />
+                    </div>
                 )}
 
                 {/* Right panel — version history / comments */}

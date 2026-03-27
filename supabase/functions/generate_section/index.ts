@@ -3,6 +3,16 @@ import "https://deno.land/x/xhr@0.1.0/mod.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.38.0'
 import { getLlmConfig, getEmbeddingConfig, getRagConfig, getContentTypeConfig } from '../_shared/llmConfig.ts'
 import { URS_TEXT_EXAMPLE, URS_TABLE_EXAMPLE, URS_DIAGRAM_EXAMPLE } from '../_shared/ursExamples.ts'
+import { BRS_TEXT_EXAMPLE, BRS_TABLE_EXAMPLE, BRS_DIAGRAM_EXAMPLE } from '../_shared/brsExamples.ts'
+import { SRS_TEXT_EXAMPLE, SRS_TABLE_EXAMPLE, SRS_DIAGRAM_EXAMPLE } from '../_shared/srsExamples.ts'
+import { SDS_TEXT_EXAMPLE, SDS_TABLE_EXAMPLE, SDS_DIAGRAM_EXAMPLE } from '../_shared/sdsExamples.ts'
+
+const DOC_EXAMPLES: Record<string, { text: string; table: string; diagram: string }> = {
+    URS: { text: URS_TEXT_EXAMPLE, table: URS_TABLE_EXAMPLE, diagram: URS_DIAGRAM_EXAMPLE },
+    BRS: { text: BRS_TEXT_EXAMPLE, table: BRS_TABLE_EXAMPLE, diagram: BRS_DIAGRAM_EXAMPLE },
+    SRS: { text: SRS_TEXT_EXAMPLE, table: SRS_TABLE_EXAMPLE, diagram: SRS_DIAGRAM_EXAMPLE },
+    SDS: { text: SDS_TEXT_EXAMPLE, table: SDS_TABLE_EXAMPLE, diagram: SDS_DIAGRAM_EXAMPLE },
+}
 
 const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -123,7 +133,7 @@ serve(async (req) => {
             ? sectionTitle
             : `Context needed for ${docType} section: ${sectionTitle}. ${instructions || ''}`
 
-        const templateInstructions = sectionContext?.instructions?.join(' ').slice(0, 300) || ''
+        const templateInstructions = sectionContext?.instructions?.join(' ').slice(0, 800) || ''
         const parentSection = sectionContext?.parentSection || ''
         const query2 = chatMode ? '' : `${docType} ${parentSection} ${sectionTitle} ${templateInstructions}`
 
@@ -175,6 +185,15 @@ serve(async (req) => {
         }
 
         const sources = [...sourceMap.keys()]
+
+        // Compute context quality for the client
+        const avgSimilarity = matchedChunks.length > 0
+            ? matchedChunks.reduce((sum, c) => sum + c.similarity, 0) / matchedChunks.length
+            : 0
+        const contextQuality = matchedChunks.length === 0 ? 'none'
+            : avgSimilarity > 0.6 ? 'high'
+            : avgSimilarity > 0.4 ? 'medium'
+            : 'low'
 
         // ── 4. Build document outline block ───────────────────────────────────
         const outlineBlock = (documentOutline?.length && !chatMode)
@@ -228,7 +247,7 @@ ${contextText}
                 const schema = sectionContext?.tableSchemas?.[0]
                 const columnList = schema?.columns?.join(', ') || 'appropriate columns for this section'
                 const exampleRow = schema?.exampleData?.[0]?.join(' | ') || ''
-                const fewShot = docType === 'URS' ? `\nEXAMPLE OUTPUT (use as style/format reference):\n${URS_TABLE_EXAMPLE}\n` : ''
+                const fewShot = DOC_EXAMPLES[docType]?.table ? `\nEXAMPLE OUTPUT (use as style/format reference):\n${DOC_EXAMPLES[docType].table}\n` : ''
 
                 systemPrompt =
                     `You are an expert technical writer drafting a ${docType} requirements document.
@@ -259,7 +278,7 @@ ${contextText}
                 const diagramHint = sectionContext?.diagramHint || 'process flow'
 
                 if (diagramFormat === 'mermaid') {
-                    const fewShot = docType === 'URS' ? `\nEXAMPLE OUTPUT (use as style/format reference):\n${URS_DIAGRAM_EXAMPLE}\n` : ''
+                    const fewShot = DOC_EXAMPLES[docType]?.diagram ? `\nEXAMPLE OUTPUT (use as style/format reference):\n${DOC_EXAMPLES[docType].diagram}\n` : ''
                     systemPrompt =
                         `You are an expert technical writer and diagram designer for ${docType} documents.
 Your task is to generate a Mermaid diagram for the section titled "${sectionTitle}".
@@ -319,7 +338,7 @@ ${contextText}
                 }
             } else {
                 // ── Text mode ──
-                const fewShot = docType === 'URS' ? `\nEXAMPLE OUTPUT (use as style/format reference):\n${URS_TEXT_EXAMPLE}\n` : ''
+                const fewShot = DOC_EXAMPLES[docType]?.text ? `\nEXAMPLE OUTPUT (use as style/format reference):\n${DOC_EXAMPLES[docType].text}\n` : ''
                 systemPrompt =
                     `You are an expert technical writer drafting a ${docType} requirements document.
 Your task is to write the content for the section titled "${sectionTitle}".
@@ -389,7 +408,7 @@ ${contextText}
         writer.write(statusEvent).catch(() => {})
 
         writer.write(
-            encoder.encode(`data: ${JSON.stringify({ type: 'sources', sources })}\n\n`)
+            encoder.encode(`data: ${JSON.stringify({ type: 'sources', sources, contextQuality, chunkCount: matchedChunks.length })}\n\n`)
         ).catch(() => {})
 
         const reader = completionResponse.body.getReader()
