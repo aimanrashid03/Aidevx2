@@ -1,4 +1,4 @@
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import {
     ArrowLeft, Download, History, MessageSquare,
     FileText, FileDown, Loader2, AlertCircle, Sparkles
@@ -15,6 +15,7 @@ import CommentsSidebar from '../components/CommentsSidebar'
 import PresenceIndicator from '../components/PresenceIndicator'
 import OnlyOfficeEditor, { type OnlyOfficeEditorHandle } from '../components/document-editor/OnlyOfficeEditor'
 import AIGeneratePanel from '../components/document-editor/AIGeneratePanel'
+import AutoGenerateProgress from '../components/document-editor/AutoGenerateProgress'
 import {
     initializeDocxForDoc,
     getOnlyOfficeConfig,
@@ -28,6 +29,7 @@ import { detectDocMode } from '../lib/onlyoffice/docModeDetector'
 export default function DocumentEditor() {
     const { projectId, templateId } = useParams()
     const navigate = useNavigate()
+    const [searchParams] = useSearchParams()
     const { user, profile } = useAuth()
     const { projects, loading: projectsLoading, restoreVersion, restoreOnlyOfficeVersion, refreshProjects } = useProjects()
     const project = projects.find(p => p.id === projectId)
@@ -52,6 +54,10 @@ export default function DocumentEditor() {
     // TOC populated by mammoth parse on doc load
     const [tocSections, setTocSections] = useState<DocHeading[]>([])
 
+
+    // Auto-generate mode (detected from ?autoGenerate=true query param)
+    const isAutoGenerate = searchParams.get('autoGenerate') === 'true' && isNewDoc && templateId === 'BRS'
+    const [autoGenerateComplete, setAutoGenerateComplete] = useState(false)
 
     // AI panel state
     const [showAiPanel, setShowAiPanel] = useState(true)
@@ -193,9 +199,12 @@ export default function DocumentEditor() {
         setDocTitle(title)
         setDocStatus(existingDoc?.status || 'draft')
 
+        // Skip normal initialization when auto-generating — the edge function handles doc creation
+        if (isAutoGenerate && !autoGenerateComplete) return
+
         loadDocumentState(existingDoc, pid, did, title, type, pname)
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [existingDoc?.id, projectId, projectsLoading])
+    }, [existingDoc?.id, projectId, projectsLoading, autoGenerateComplete])
 
     // Sync document_key when OnlyOffice callback rotates it (other tabs, or after save)
     useEffect(() => {
@@ -325,6 +334,32 @@ export default function DocumentEditor() {
 
     // Whether the AI panel should be visible (toggled independently, hidden when other panels are open)
     const aiPanelVisible = showAiPanel && !showVersionHistory && !showComments
+
+    // ─── Auto-generate overlay ──────────────────────────────────────────────
+    if (isAutoGenerate && !autoGenerateComplete) {
+        return (
+            <AutoGenerateProgress
+                projectId={projectId!}
+                projectName={project?.name || 'Untitled Project'}
+                docTitle="Spesifikasi Keperluan Bisnes (BRS)"
+                docType="BRS"
+                onComplete={(result) => {
+                    setAutoGenerateComplete(true)
+                    setDocPublicUrl(result.publicUrl)
+                    setDocumentKey(result.documentKey)
+                    docIdRef.current = result.docId
+                    // Navigate to the new doc URL (removes ?autoGenerate param)
+                    navigate(`/editor/${projectId}/${result.docId}`, { replace: true })
+                }}
+                onCancel={() => {
+                    navigate(`/project/${projectId}`)
+                }}
+                onFallbackEmpty={() => {
+                    navigate(`/editor/${projectId}/BRS`, { replace: true })
+                }}
+            />
+        )
+    }
 
     return (
         <div className="flex flex-col h-screen bg-slate-100 overflow-hidden">

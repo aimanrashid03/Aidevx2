@@ -70,7 +70,7 @@ export function getDocPublicUrl(storagePath: string): string {
  * To add a new type: place public/templates/{TYPE}.docx and add the type here.
  * e.g. new Set(['URS', 'BRS', 'SRS', 'SDS'])
  */
-const FILE_TEMPLATE_TYPES = new Set<string>(['URS']);
+const FILE_TEMPLATE_TYPES = new Set<string>(['URS', 'BRS']);
 
 // ─── DOCX generation ──────────────────────────────────────────────────────────
 

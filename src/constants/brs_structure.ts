@@ -1,233 +1,323 @@
 import type { DocSection } from './urs_structure'
 
 export const BRS_STRUCTURE: DocSection[] = [
+    // ── Structural / Administrative sections (not auto-generated) ─────────
     {
-        title: "1.0 Executive Summary",
+        title: "SEJARAH DOKUMEN",
         level: 1,
         instructions: [
-            "Provide a concise overview of the business case for this project. Include the problem being solved, the proposed solution at a high level, expected ROI, and key timeline milestones.",
-            "This section should be understandable by non-technical stakeholders and executives. Keep it to 1-2 paragraphs followed by a summary table."
+            "Senarai jadual sejarah dokumen yang merangkumi versi, tarikh kemas kini, perincian perubahan, dan penulis dokumen. Sertakan perubahan berdasarkan bengkel, sesi perbincangan, maklum balas pengguna, dan versi baseline."
         ],
         content: [
             {
                 type: "table",
-                columns: ["Item", "Details"],
-                data: [
-                    ["Project Name", "<Project Name>"],
-                    ["Sponsor", "<Business Sponsor Name>"],
-                    ["Expected ROI", "<ROI estimate>"],
-                    ["Timeline", "<Start Date> – <End Date>"],
-                    ["Budget", "<Estimated Budget>"],
-                ]
+                columns: ["Versi", "Tarikh Dikemas kini", "Perubahan", "Penulis Dokumen"],
+                data: []
             }
-        ]
+        ],
+        autoGenerate: false,
     },
     {
-        title: "1.1 Business Problem",
+        title: "SEMAKAN DAN PENGESAHAN",
+        level: 1,
+        instructions: [
+            "Jadual semakan dan pengesahan dokumen oleh syarikat dan pihak pelanggan. Termasuk nama, jawatan, tarikh, dan tandatangan bagi pihak yang menyedia, menyemak, mengesah, dan meluluskan dokumen."
+        ],
+        content: [],
+        autoGenerate: false,
+    },
+    {
+        title: "ISI KANDUNGAN",
+        level: 1,
+        instructions: [],
+        content: [],
+        autoGenerate: false,
+    },
+    {
+        title: "SENARAI RAJAH",
+        level: 1,
+        instructions: [],
+        content: [],
+        autoGenerate: false,
+    },
+    {
+        title: "SENARAI JADUAL",
+        level: 1,
+        instructions: [],
+        content: [],
+        autoGenerate: false,
+    },
+    {
+        title: "AKRONIM DAN KATA SINGKATAN",
+        level: 1,
+        instructions: [
+            "Kenal pasti semua akronim dan kata singkatan dalam dokumen dan sediakan jadual yang mengandungi singkatan dan definisinya."
+        ],
+        content: [
+            {
+                type: "table",
+                columns: ["Akronim / Kata Singkatan", "Definisi"],
+                data: []
+            }
+        ],
+        autoGenerate: true,
+    },
+
+    // ── 1.0 PENGENALAN ───────────────────────────────────────────────────
+    {
+        title: "1.0 PENGENALAN",
+        level: 1,
+        instructions: [
+            "Dokumen Spesifikasi Keperluan Bisnes (BRS) ini disediakan bagi menerangkan keperluan sistem.",
+            "Merupakan pengenalan formal bagi dokumen BRS yang menerangkan tujuan dokumen, sistem yang dibangunkan, dan peranannya sebagai rujukan kepada pasukan projek.",
+            "Dokumen ini akan digunakan sebagai rujukan oleh pasukan projek, terutamanya penganalisa dan juga pembangun sistem, dalam menjelaskan Spesifikasi Keperluan Bisnes yang akan digunakan dalam mereka bentuk aplikasi."
+        ],
+        content: [],
+        autoGenerate: true,
+    },
+    {
+        title: "1.1 TUJUAN BISNES",
         level: 2,
         instructions: [
-            "Describe the current business problem or opportunity that this project addresses. Include: what the problem is, who is affected, the impact of not solving it (cost, risk, missed opportunity), and why now is the right time to act."
+            "Huraian tujuan bisnes bagi sistem yang dibangunkan, termasuk objektif utama, masalah yang ingin diselesaikan, dan hasil yang diharapkan.",
+            "Nyatakan dalam bentuk poin. Sistem baharu ini perlu memenuhi keperluan yang dikenal pasti."
         ],
-        content: []
+        content: [],
+        autoGenerate: true,
     },
     {
-        title: "1.2 Proposed Solution",
+        title: "1.2 SKOP BISNES",
         level: 2,
         instructions: [
-            "Describe the proposed solution at a business level (not technical). Explain what the solution will do, how it addresses the problem, and what the expected outcome is."
+            "Penerangan skop bisnes projek termasuk proses yang terlibat, pengguna, integrasi sistem, dan data yang berkaitan.",
+            "Nyatakan juga skop yang tidak termasuk jika perlu. Senaraikan skop bisnes dalam bentuk poin bernombor."
         ],
-        content: []
+        content: [],
+        autoGenerate: true,
     },
     {
-        title: "2.0 Project Scope",
-        level: 1,
-        instructions: [
-            "Define what is in scope and out of scope for this project. Be explicit to avoid scope creep."
-        ],
-        content: [
-            {
-                type: "table",
-                columns: ["Scope Item", "In Scope", "Out of Scope"],
-                data: [
-                    ["User Management", "Yes", ""],
-                    ["Reporting Module", "", "Deferred to Phase 2"],
-                ]
-            }
-        ]
-    },
-    {
-        title: "2.1 In-Scope Items",
+        title: "1.3 GAMBARAN KESELURUHAN BISNES",
         level: 2,
         instructions: [
-            "List all features, modules, processes, and deliverables that are included in this project."
+            "Gambaran keseluruhan bisnes termasuk proses semasa (AS-IS) dan bagaimana sistem baharu (TO-BE) akan menyokong atau menambah baik operasi tersebut.",
+            "Sertakan penerangan rajah jika berkaitan."
         ],
-        content: []
+        content: [],
+        autoGenerate: true,
     },
     {
-        title: "2.2 Out-of-Scope Items",
+        title: "1.4 SENARAI PEMEGANG TARUH",
         level: 2,
         instructions: [
-            "List all items explicitly excluded from this project. Include reasons where relevant to avoid future disputes."
-        ],
-        content: []
-    },
-    {
-        title: "3.0 Business Requirements",
-        level: 1,
-        instructions: [
-            "List the detailed business requirements. Each requirement should be specific, measurable, and testable. Use MoSCoW prioritisation (Must/Should/Could/Won't).",
-            "Must Have (M): Essential requirements without which the project fails.",
-            "Should Have (S): Important but not critical; acceptable workaround exists.",
-            "Could Have (C): Nice to have; will be de-scoped if time is limited.",
-            "Won't Have (W): Explicitly excluded from this phase."
+            "Senarai semua pemegang taruh yang terlibat dalam sistem dan nyatakan peranan serta tanggungjawab mereka dalam bentuk jadual."
         ],
         content: [
             {
                 type: "table",
-                columns: ["BR ID", "Business Requirement", "Priority", "Source", "Acceptance Criteria"],
-                data: [
-                    ["BR-001", "The system shall allow users to log in with their corporate credentials.", "M", "Stakeholder Workshop", "User can log in using SSO within 3 seconds."],
-                    ["BR-002", "The system shall generate monthly performance reports.", "S", "Management Request", "Report is generated and emailed by the 1st of each month."],
-                ]
+                columns: ["Pemegang Taruh", "Keterangan"],
+                data: []
             }
-        ]
+        ],
+        autoGenerate: true,
     },
+
+    // ── 2.0 KEPERLUAN PENGURUSAN BISNES ──────────────────────────────────
     {
-        title: "4.0 Stakeholders",
+        title: "2.0 KEPERLUAN PENGURUSAN BISNES",
         level: 1,
         instructions: [
-            "Identify all stakeholders affected by or involved in this project. Include their role, interest level, influence level, and key concerns."
+            "Bahagian ini menerangkan matlamat, objektif, arkitektur bisnes, dan arkitektur maklumat bagi sistem yang dibangunkan."
+        ],
+        content: [],
+        autoGenerate: true,
+    },
+    {
+        title: "2.1 MATLAMAT DAN OBJEKTIF",
+        level: 2,
+        instructions: [
+            "Huraian matlamat dan objektif sistem dari sudut peningkatan kecekapan, pengurusan data, sokongan keputusan, dan penambahbaikan proses operasi.",
+            "Nyatakan objektif utama dalam bentuk poin bernombor."
+        ],
+        content: [],
+        autoGenerate: true,
+    },
+    {
+        title: "2.2 ARKITEKTUR BISNES",
+        level: 2,
+        instructions: [
+            "Penerangan arkitektur bisnes termasuk hubungan antara perkhidmatan organisasi, proses bisnes, sistem aplikasi, dan teknologi.",
+            "Jelaskan bagaimana ia menyokong objektif strategik."
+        ],
+        content: [],
+        autoGenerate: true,
+    },
+    {
+        title: "2.3 ARKITEKTUR MAKLUMAT",
+        level: 2,
+        instructions: [
+            "Rajah arkitektur maklumat termasuk entiti data utama, hubungan antara data, dan aliran maklumat antara pengguna dan sistem."
+        ],
+        content: [],
+        autoGenerate: true,
+    },
+
+    // ── 3.0 KEPERLUAN PENGOPERASIAN BISNES ───────────────────────────────
+    {
+        title: "3.0 KEPERLUAN PENGOPERASIAN BISNES",
+        level: 1,
+        instructions: [
+            "Bahagian ini memperincikan keperluan fungsi bisnes dan keperluan proses bisnes bagi sistem yang dibangunkan."
+        ],
+        content: [],
+        autoGenerate: true,
+    },
+
+    // ── 3.1 Keperluan Fungsi Bisnes ──────────────────────────────────────
+    {
+        title: "3.1 KEPERLUAN FUNGSI BISNES",
+        level: 2,
+        instructions: [
+            "Bahagian ini menerangkan fungsi-fungsi bisnes yang telah dikenal pasti melalui sesi bengkel bersama pemilik proses dan SME."
+        ],
+        content: [],
+        autoGenerate: true,
+    },
+    {
+        title: "3.1.1 PENGGUNAAN NOTASI",
+        level: 3,
+        instructions: [
+            "Penerangan notasi yang digunakan dalam pemodelan fungsi bisnes termasuk konvensyen penamaan, struktur fungsi, dan penggunaan ID fungsi.",
+            "Notasi yang digunakan dalam melakarkan hierarki fungsi bisnes hendaklah diterangkan dalam bentuk jadual."
         ],
         content: [
             {
                 type: "table",
-                columns: ["Name", "Role / Title", "Department", "Interest", "Influence", "Key Concerns"],
+                columns: ["Elemen", "Keterangan"],
                 data: [
-                    ["<Name>", "Project Sponsor", "<Department>", "High", "High", "ROI, timeline"],
-                    ["<Name>", "End User Representative", "<Department>", "High", "Medium", "Usability, training"],
+                    ["Fungsi Bisnes", "Kotak yang mewakili fungsi bisnes"],
+                    ["Sintaks Nama Fungsi <kata kerja><kata nama>", "Nama: Definisi aktiviti hendaklah dimulakan dengan kata kerja dan diikuti kata nama."],
+                    ["Penghubung antara fungsi", "Penghubung antara fungsi dan sub fungsi menggunakan garis lurus mendatar atau menegak"],
+                    ["Keterangan Fungsian Bisnes", "Pernyataan yang akan menerangkan suatu fungsian bisnes."]
                 ]
             }
-        ]
+        ],
+        autoGenerate: true,
     },
     {
-        title: "5.0 Cost Benefit Analysis",
-        level: 1,
+        title: "3.1.2 MODEL FUNGSI BISNES",
+        level: 3,
         instructions: [
-            "Provide a cost-benefit analysis to justify the investment. Include one-time costs, recurring costs, and expected benefits (quantified where possible)."
+            "Pemodelan fungsi bisnes telah dilakukan ke atas maklumat yang diperolehi melalui sesi bengkel yang telah diadakan bersama pemilik proses dan SME yang dilantik.",
+            "Fungsi utama dan sub fungsi bisnes telah dikenal pasti selaras dengan mencapai misi organisasi dan tujuan utama sistem yang akan dibangunkan."
+        ],
+        content: [],
+        autoGenerate: true,
+    },
+    {
+        title: "3.1.2.1 STRUKTUR HIERARKI FUNGSI BISNES",
+        level: 4,
+        instructions: [
+            "Struktur hierarki fungsi bisnes yang menunjukkan fungsi utama, sub fungsi, dan fungsi terperinci.",
+            "Sertakan rajah hierarki dan penerangan ringkas."
+        ],
+        content: [],
+        autoGenerate: true,
+    },
+    {
+        title: "3.1.2.2 KETERANGAN DEFINISI FUNGSI BISNES",
+        level: 4,
+        instructions: [
+            "Sediakan keterangan bagi setiap fungsi bisnes termasuk tujuan, skop, dan peranannya dalam sistem.",
+            "Keterangan hendaklah disediakan dalam bentuk jadual."
         ],
         content: [
             {
                 type: "table",
-                columns: ["Category", "Item", "Estimated Cost / Benefit", "Timeline", "Notes"],
-                data: [
-                    ["Cost", "Development", "$<amount>", "One-time", ""],
-                    ["Cost", "Licensing", "$<amount>/year", "Recurring", ""],
-                    ["Benefit", "Reduced manual processing time", "$<amount>/year", "Ongoing", "Based on 10 FTE hours/week"],
-                ]
+                columns: ["ID Nama & Fungsi Bisnes", "Keterangan Fungsi Bisnes"],
+                data: []
             }
-        ]
+        ],
+        autoGenerate: true,
     },
     {
-        title: "6.0 Business Rules",
-        level: 1,
+        title: "3.1.2.3 SENARAI PENGGUNA",
+        level: 4,
         instructions: [
-            "Document the business rules that govern how the system must behave. These are policies, regulations, or constraints that the solution must comply with."
+            "Senarai pengguna yang terlibat serta keterangan ringkas mengenai peranannya di dalam sistem secara keseluruhan."
         ],
         content: [
             {
                 type: "table",
-                columns: ["Rule ID", "Business Rule", "Source / Authority", "Impact"],
-                data: [
-                    ["BR-RULE-001", "All financial transactions above $10,000 require dual approval.", "Finance Policy FP-001", "Approval workflow required"],
-                ]
+                columns: ["Pengguna", "Keterangan"],
+                data: []
             }
-        ]
+        ],
+        autoGenerate: true,
+    },
+
+    // ── 3.2 Keperluan Proses Bisnes ──────────────────────────────────────
+    {
+        title: "3.2 KEPERLUAN PROSES BISNES",
+        level: 2,
+        instructions: [
+            "Bahagian ini menerangkan aliran proses bisnes secara terperinci termasuk urutan aktiviti, keputusan, dan interaksi antara peranan."
+        ],
+        content: [],
+        autoGenerate: true,
     },
     {
-        title: "7.0 Success Criteria",
-        level: 1,
+        title: "3.2.1 PENGGUNAAN NOTASI",
+        level: 3,
         instructions: [
-            "Define measurable criteria that will determine whether this project has been successful. These should be agreed upon by all key stakeholders before the project begins."
+            "Notasi yang digunakan dalam aliran proses bisnes termasuk aktiviti, decision, swimlane, dan aliran proses.",
+            "Sediakan jadual notasi yang digunakan dalam melakarkan Aliran Proses Bisnes."
         ],
         content: [
             {
                 type: "table",
-                columns: ["Criterion", "Target Metric", "Measurement Method", "Target Date"],
+                columns: ["Elemen", "Keterangan"],
                 data: [
-                    ["System adoption rate", ">80% of target users active within 3 months", "System login analytics", "<Date>"],
-                    ["Process efficiency gain", "50% reduction in manual processing time", "Time-motion study", "<Date>"],
+                    ["Activity", "Digunakan bagi mewakili setiap aktiviti. Labelkan ID Aktiviti Bisnes dan Nama Aktiviti Bisnes."],
+                    ["Connector", "Digunakan untuk menghubungkan satu elemen notasi kepada notasi-notasi berikutnya."],
+                    ["Swimlane", "Digunakan untuk mengumpulkan aktiviti-aktiviti yang di bawah satu-satu peranan."],
+                    ["Initial Code", "Digunakan untuk menggambarkan permulaan bagi proses."],
+                    ["Activity Final Code", "Digunakan untuk menamatkan keseluruhan aliran aktiviti."]
                 ]
             }
-        ]
+        ],
+        autoGenerate: true,
     },
     {
-        title: "8.0 Risk Assessment",
-        level: 1,
+        title: "3.2.2 MODEL DAN DEFINISI PROSES BISNES",
+        level: 3,
         instructions: [
-            "Identify key business risks associated with this project. For each risk, assess likelihood and impact, and propose a mitigation strategy."
+            "Huraian aliran proses bisnes secara terperinci termasuk urutan aktiviti, keputusan, dan interaksi antara peranan.",
+            "Sertakan rajah aliran proses dan jadual definisi aktiviti fungsi bisnes bagi setiap proses."
         ],
         content: [
             {
                 type: "table",
-                columns: ["Risk ID", "Risk Description", "Likelihood (H/M/L)", "Impact (H/M/L)", "Mitigation Strategy", "Owner"],
-                data: [
-                    ["RISK-001", "Key stakeholder unavailability delays sign-off", "M", "H", "Identify backup decision-makers upfront", "<Name>"],
-                    ["RISK-002", "Scope creep extends timeline", "H", "M", "Strict change control process", "Project Manager"],
-                ]
+                columns: ["Rujukan Fungsi", "Nama Fungsi", "Rujukan Aktiviti", "Nama Aktiviti", "Keterangan Aktiviti", "Aktor", "Tanggungjawab", "Kekerapan", "Aktiviti Sebelum", "Aktiviti Selepas"],
+                data: []
             }
-        ]
+        ],
+        autoGenerate: true,
     },
+
+    // ── LAMPIRAN ─────────────────────────────────────────────────────────
     {
-        title: "9.0 Constraints",
+        title: "LAMPIRAN",
         level: 1,
         instructions: [
-            "List any constraints that limit the solution options. These may be budget, technology, regulatory, time, or resource constraints."
+            "Senaraikan semua lampiran termasuk borang, dokumen sokongan, dan bahan rujukan yang berkaitan dengan sistem. Sertakan penerangan ringkas bagi setiap lampiran."
         ],
         content: [
             {
                 type: "table",
-                columns: ["Constraint Type", "Description", "Impact on Project"],
-                data: [
-                    ["Budget", "Maximum budget of $<amount>", "Limits technology options"],
-                    ["Regulatory", "Must comply with PDPA data protection requirements", "Data handling and storage design constrained"],
-                    ["Timeline", "Must go live before <Date>", "Limits scope of Phase 1"],
-                ]
+                columns: ["BIL", "Modul Utama", "Sub Modul", "Borang", "Nama dokumen"],
+                data: []
             }
-        ]
-    },
-    {
-        title: "10.0 Assumptions",
-        level: 1,
-        instructions: [
-            "List all assumptions made in preparing this document. If any assumption proves false, the requirements or estimates may need revision."
         ],
-        content: [
-            {
-                type: "table",
-                columns: ["No.", "Assumption", "Impact if Wrong"],
-                data: [
-                    ["1.", "Current infrastructure can support the new system without major upgrades.", "Additional infrastructure cost required."],
-                    ["2.", "Stakeholders will be available for weekly reviews.", "Timeline may slip."],
-                ]
-            }
-        ]
-    },
-    {
-        title: "11.0 Glossary",
-        level: 1,
-        instructions: [
-            "Define key terms, acronyms, and abbreviations used in this document."
-        ],
-        content: [
-            {
-                type: "table",
-                columns: ["Term / Acronym", "Definition"],
-                data: [
-                    ["BRS", "Business Requirements Specification"],
-                    ["ROI", "Return on Investment"],
-                    ["MoSCoW", "Must Have, Should Have, Could Have, Won't Have (prioritisation framework)"],
-                ]
-            }
-        ]
+        autoGenerate: false,
     },
 ]

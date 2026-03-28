@@ -1,7 +1,7 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useProjects } from '../context/ProjectContext';
 import { supabase } from '../lib/supabase';
-import { ArrowLeft, FileText, File, Calendar, Plus, X, LayoutTemplate, ChevronRight, Download, Edit, Trash2, Check, CloudUpload, Clock, FileCheck, AlertCircle, LayoutDashboard, Folders, Users } from 'lucide-react';
+import { ArrowLeft, FileText, File, Calendar, Plus, X, LayoutTemplate, ChevronRight, Download, Edit, Trash2, Check, CloudUpload, Clock, FileCheck, AlertCircle, LayoutDashboard, Folders, Users, Sparkles, FileEdit } from 'lucide-react';
 import { useRef, useState, DragEvent } from 'react';
 import ProjectMembers from '../components/ProjectMembers';
 import mammoth from 'mammoth';
@@ -31,6 +31,7 @@ export default function ProjectDetails() {
     const navigate = useNavigate();
     const { projects, updateProject, deleteProjectDocument, deleteRequirementDoc, refreshProjects } = useProjects();
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+    const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
     const [downloading, setDownloading] = useState<string | null>(null);
     const [uploading, setUploading] = useState(false);
     const [isDragging, setIsDragging] = useState(false);
@@ -85,6 +86,10 @@ export default function ProjectDetails() {
     };
 
     const handleCreateDocument = (templateId: string) => {
+        if (templateId === 'BRS') {
+            setSelectedTemplate('BRS');
+            return;
+        }
         navigate(`/editor/${projectId}/${templateId}`);
     };
 
@@ -645,6 +650,78 @@ export default function ProjectDetails() {
                                 className="px-4 py-2 text-sm font-bold text-slate-600 hover:text-slate-900"
                             >
                                 Cancel
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* BRS Creation Mode Sub-Modal */}
+            {selectedTemplate === 'BRS' && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+                    <div className="bg-white rounded w-full max-w-lg shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in duration-200">
+                        <div className="p-5 border-b border-slate-100 flex justify-between items-center">
+                            <div>
+                                <h2 className="text-lg font-bold text-slate-900 tracking-tight">Create BRS Document</h2>
+                                <p className="text-xs text-slate-500 mt-1">Choose how to start your Business Requirement Specification.</p>
+                            </div>
+                            <button
+                                onClick={() => setSelectedTemplate(null)}
+                                className="p-1.5 text-slate-400 hover:text-slate-900 hover:bg-slate-50 rounded transition-colors"
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
+
+                        <div className="p-5 space-y-3">
+                            <button
+                                onClick={() => {
+                                    setSelectedTemplate(null);
+                                    setIsCreateModalOpen(false);
+                                    navigate(`/editor/${projectId}/BRS?autoGenerate=true`);
+                                }}
+                                className="w-full flex items-start gap-4 p-4 rounded border-2 border-slate-900 bg-slate-50 hover:bg-slate-100 transition-all text-left group"
+                            >
+                                <div className="w-10 h-10 rounded bg-slate-900 text-white flex items-center justify-center flex-shrink-0 mt-0.5">
+                                    <Sparkles size={18} />
+                                </div>
+                                <div className="flex-1">
+                                    <div className="flex items-center gap-2">
+                                        <h3 className="text-sm font-bold text-slate-900">Jana Dokumen Automatik dengan AI</h3>
+                                        <span className="text-[10px] font-bold text-white bg-slate-900 px-1.5 py-0.5 rounded">RECOMMENDED</span>
+                                    </div>
+                                    <p className="text-xs text-slate-500 mt-1">
+                                        AI akan menganalisis fail projek yang dimuat naik dan menjana semua bahagian BRS secara automatik. Proses ini mengambil masa 2–5 minit.
+                                    </p>
+                                </div>
+                            </button>
+
+                            <button
+                                onClick={() => {
+                                    setSelectedTemplate(null);
+                                    setIsCreateModalOpen(false);
+                                    navigate(`/editor/${projectId}/BRS`);
+                                }}
+                                className="w-full flex items-start gap-4 p-4 rounded border border-slate-200 hover:border-slate-400 hover:bg-slate-50 transition-all text-left group"
+                            >
+                                <div className="w-10 h-10 rounded bg-slate-100 text-slate-500 flex items-center justify-center flex-shrink-0 mt-0.5 group-hover:bg-slate-200">
+                                    <FileEdit size={18} />
+                                </div>
+                                <div className="flex-1">
+                                    <h3 className="text-sm font-bold text-slate-900 group-hover:text-black">Mulakan dengan Templat Kosong</h3>
+                                    <p className="text-xs text-slate-500 mt-1">
+                                        Buka templat BRS kosong dan isi kandungan secara manual atau guna panel AI untuk menjana bahagian tertentu.
+                                    </p>
+                                </div>
+                            </button>
+                        </div>
+
+                        <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end">
+                            <button
+                                onClick={() => setSelectedTemplate(null)}
+                                className="px-4 py-2 text-sm font-bold text-slate-600 hover:text-slate-900"
+                            >
+                                Batal
                             </button>
                         </div>
                     </div>

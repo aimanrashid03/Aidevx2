@@ -2,35 +2,56 @@
  * Few-shot examples for BRS document generation.
  * These are injected into system prompts when docType === 'BRS'
  * to guide the LLM toward the correct style, tone, and format.
+ *
+ * HTML variants are used by `generate_section` (OnlyOffice plugin flow).
+ * Markdown variants are used by `auto_generate_document` (server-side DOCX flow).
  */
 
-/** Example of a well-written BRS text section (Executive Summary style) */
-export const BRS_TEXT_EXAMPLE = `<p>This <strong>Business Requirements Specification (BRS)</strong> outlines the business needs, objectives, and high-level requirements for the [Project Name] initiative. The document establishes the business case for the proposed solution and defines measurable success criteria aligned with organizational strategy.</p>
-<p>The initiative addresses the following business problem: [Organization Name] currently relies on manual, paper-based processes for [process area], resulting in an estimated [X]% operational inefficiency, [Y] hours of rework per month, and compliance risks under [Regulation/Standard].</p>
-<p>This document is intended for review and sign-off by the Project Sponsor and key business stakeholders prior to the commencement of solution design activities.</p>`
+// ── HTML examples (used by generate_section → OO plugin) ────────────────────
 
-/** Example of a well-written BRS requirements table */
-export const BRS_TABLE_EXAMPLE = `<p><strong>Table: Business Requirements</strong></p>
+/** Example of a well-written BRS text section (HTML format for OO plugin) */
+export const BRS_TEXT_EXAMPLE = `<p><strong>Spesifikasi Keperluan Bisnes (BRS)</strong> ini menggariskan keperluan bisnes, objektif, dan keperluan tahap tinggi bagi inisiatif [Nama Projek]. Dokumen ini menetapkan kes bisnes bagi penyelesaian yang dicadangkan dan mentakrifkan kriteria kejayaan yang boleh diukur selaras dengan strategi organisasi.</p>
+<p>Inisiatif ini menangani masalah bisnes berikut: [Nama Organisasi] pada masa ini bergantung kepada proses manual berasaskan kertas untuk [kawasan proses], menyebabkan anggaran [X]% ketidakcekapan operasi, [Y] jam kerja semula setiap bulan, dan risiko pematuhan di bawah [Peraturan/Piawaian].</p>
+<p>Dokumen ini bertujuan untuk semakan dan pengesahan oleh Penaja Projek dan pihak berkepentingan bisnes utama sebelum aktiviti reka bentuk penyelesaian dimulakan.</p>`
+
+/** Example of a well-written BRS requirements table (HTML format for OO plugin) */
+export const BRS_TABLE_EXAMPLE = `<p><strong>Jadual: Keperluan Bisnes</strong></p>
 <table>
-<thead><tr><th>BR ID</th><th>Requirement</th><th>Business Justification</th><th>Priority</th></tr></thead>
+<thead><tr><th>ID Keperluan</th><th>Keperluan</th><th>Justifikasi Bisnes</th><th>Keutamaan</th></tr></thead>
 <tbody>
-<tr><td>BR-1.1</td><td>The solution shall reduce average order processing time from 48 hours to under 4 hours.</td><td>Current processing delays cause SLA breaches affecting 23% of enterprise clients.</td><td>M</td></tr>
-<tr><td>BR-1.2</td><td>The solution shall provide real-time visibility into inventory levels across all warehouses.</td><td>Stockout incidents have increased 15% YoY due to lack of cross-warehouse visibility.</td><td>M</td></tr>
-<tr><td>BR-2.1</td><td>The solution should integrate with the existing ERP system (SAP S/4HANA) without requiring ERP customization.</td><td>ERP customizations have historically added 6+ months to project timelines.</td><td>S</td></tr>
+<tr><td>BR-1.1</td><td>Penyelesaian hendaklah mengurangkan masa pemprosesan pesanan purata daripada 48 jam kepada kurang 4 jam.</td><td>Kelewatan pemprosesan semasa menyebabkan pelanggaran SLA yang menjejaskan 23% pelanggan enterprise.</td><td>M</td></tr>
+<tr><td>BR-1.2</td><td>Penyelesaian hendaklah menyediakan keterlihatan masa nyata ke atas tahap inventori di semua gudang.</td><td>Insiden kehabisan stok telah meningkat 15% YoY disebabkan kekurangan keterlihatan merentas gudang.</td><td>M</td></tr>
+<tr><td>BR-2.1</td><td>Penyelesaian perlu berintegrasi dengan sistem ERP sedia ada tanpa memerlukan pengubahsuaian ERP.</td><td>Pengubahsuaian ERP secara sejarah menambah 6+ bulan kepada garis masa projek.</td><td>S</td></tr>
 </tbody>
 </table>`
 
-/** Example of a BRS business process Mermaid diagram */
+/** Example of a BRS business process Mermaid diagram (HTML format for OO plugin) */
 export const BRS_DIAGRAM_EXAMPLE = `<pre class="mermaid">flowchart LR
-    A[Customer Order] --> B{Inventory Check}
-    B -->|In Stock| C[Reserve Inventory]
-    B -->|Out of Stock| D[Backorder Queue]
-    C --> E[Generate Pick List]
-    D --> F[Notify Procurement]
-    E --> G[Warehouse Fulfillment]
-    F --> H[Supplier PO Created]
-    G --> I[Ship & Track]
+    A[Pesanan Pelanggan] --> B{Semakan Inventori}
+    B -->|Ada Stok| C[Rizab Inventori]
+    B -->|Tiada Stok| D[Giliran Pesanan Belakang]
+    C --> E[Jana Senarai Kutip]
+    D --> F[Maklumkan Perolehan]
+    E --> G[Pemenuhan Gudang]
+    F --> H[PO Pembekal Dicipta]
+    G --> I[Hantar & Jejak]
     H --> D
-    I --> J[Customer Notification]
+    I --> J[Pemberitahuan Pelanggan]
 </pre>
-<p><strong>Figure: Order Fulfillment Business Process</strong></p>`
+<p><strong>Rajah: Proses Bisnes Pemenuhan Pesanan</strong></p>`
+
+// ── Markdown examples (used by auto_generate_document → DOCX builder) ───────
+
+/** Example of a well-written BRS text section (markdown format for auto-generate) */
+export const BRS_MD_TEXT_EXAMPLE = `**Spesifikasi Keperluan Bisnes (BRS)** ini menggariskan keperluan bisnes, objektif, dan keperluan tahap tinggi bagi inisiatif [Nama Projek]. Dokumen ini menetapkan kes bisnes bagi penyelesaian yang dicadangkan dan mentakrifkan kriteria kejayaan yang boleh diukur selaras dengan strategi organisasi.
+
+Inisiatif ini menangani masalah bisnes berikut: [Nama Organisasi] pada masa ini bergantung kepada proses manual berasaskan kertas untuk [kawasan proses], menyebabkan anggaran [X]% ketidakcekapan operasi, [Y] jam kerja semula setiap bulan, dan risiko pematuhan di bawah [Peraturan/Piawaian].
+
+Dokumen ini bertujuan untuk semakan dan pengesahan oleh Penaja Projek dan pihak berkepentingan bisnes utama sebelum aktiviti reka bentuk penyelesaian dimulakan.`
+
+/** Example of a well-written BRS requirements table (markdown format for auto-generate) */
+export const BRS_MD_TABLE_EXAMPLE = `| ID Keperluan | Keperluan | Justifikasi Bisnes | Keutamaan |
+|---|---|---|---|
+| BR-1.1 | Penyelesaian hendaklah mengurangkan masa pemprosesan pesanan purata daripada 48 jam kepada kurang 4 jam. | Kelewatan pemprosesan semasa menyebabkan pelanggaran SLA yang menjejaskan 23% pelanggan enterprise. | M |
+| BR-1.2 | Penyelesaian hendaklah menyediakan keterlihatan masa nyata ke atas tahap inventori di semua gudang. | Insiden kehabisan stok telah meningkat 15% YoY disebabkan kekurangan keterlihatan merentas gudang. | M |
+| BR-2.1 | Penyelesaian perlu berintegrasi dengan sistem ERP sedia ada tanpa memerlukan pengubahsuaian ERP. | Pengubahsuaian ERP secara sejarah menambah 6+ bulan kepada garis masa projek. | S |`
