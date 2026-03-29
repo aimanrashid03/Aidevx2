@@ -1,13 +1,15 @@
 # Aidevx2 — CLAUDE.md
 
 ## Project Overview
-**Aidevx** is a web-based requirements engineering tool for creating, editing, and exporting BRS, URS, SRS, and SDS documents. Built with React 19, OnlyOffice Document Server, and Supabase.
+**Aidevx** is a web-based requirements engineering tool for creating, editing, and exporting BRS, URS, SRS, and SDS documents. Features AI-powered content generation with RAG, real-time collaboration, and automatic full-document generation. Built with React 19, OnlyOffice Document Server, and Supabase.
 
 ## Tech Stack
 - **Frontend**: React 19, TypeScript, Vite, Tailwind CSS
 - **Editor**: OnlyOffice Document Server (self-hosted via Docker) — replaced Tiptap WYSIWYG
 - **Backend**: Supabase (Postgres, Auth, Storage, Edge Functions)
-- **Document processing**: mammoth (DOCX→HTML), docx (DOCX generation), docx-preview
+- **AI**: OpenAI GPT-4o (streaming SSE), text-embedding-3-small for RAG
+- **Document processing**: mammoth (DOCX→HTML), docx (DOCX generation), docx-preview, PizZip (template manipulation)
+- **Diagrams**: Mermaid (client-side rendering), draw.io (via public viewer API)
 - **Routing**: React Router v7
 
 ## Commands
@@ -26,15 +28,16 @@ src/
   App.tsx                        # Routes
   pages/
     DocumentEditor.tsx           # Main editor page — route /editor/:projectId/:templateId
-    ProjectDetails.tsx           # Project detail + document list
-    Dashboard.tsx
+    ProjectDetails.tsx           # Project detail + document list (with collaboration)
+    Dashboard.tsx                # Project list with owner/member info
     AddProject.tsx
     DocumentRepository.tsx
     AdminDashboard.tsx
   components/
     document-editor/
       OnlyOfficeEditor.tsx       # OO iframe wrapper
-      AIGeneratePanel.tsx        # Slide-in AI generation panel (fallback)
+      AIGeneratePanel.tsx        # Slide-in AI panel: multi-doc-type, chat mode, RAG, diagrams
+      AutoGenerateProgress.tsx   # Modal UI for full-document auto-generation progress
       SectionTOC.tsx             # TOC sidebar — accepts DocHeading[] from mammoth
       VersionHistory.tsx
       VersionViewer.tsx          # Dual-path: docx-preview (OO) or legacy block renderer
@@ -43,35 +46,56 @@ src/
     PresenceIndicator.tsx
   context/
     AuthContext.tsx
-    ProjectContext.tsx
+    ProjectContext.tsx           # Projects + collaboration (userRole, memberCount, ownerName)
+  hooks/
+    useProjectMembers.ts         # Invite/remove/update members with role management
   lib/
     onlyoffice/
-      documentService.ts         # OO config builder, storage URL helpers
+      documentService.ts         # OO config builder, template registry, storage URL helpers
       extractSections.ts         # mammoth → DocHeading[] from DOCX
       docModeDetector.ts         # detectDocMode(): 'onlyoffice' | 'tiptap-v1' | 'legacy'
+    ai/
+      sectionContext.ts          # Extracts section context from doc structures (fuzzy matching)
+      diagramRenderer.ts         # Mermaid → base64 PNG (via canvas)
+      drawioRenderer.ts          # draw.io XML → base64 PNG (via public viewer API)
     export/
       docxBuilder.ts             # DOCX export for blank/non-URS docs
       ursDocxTemplate.ts         # Legal-format URS DOCX export
   tiptap/
     converters/
-      legacyToTiptap.ts          # Legacy block[] → Tiptap JSON migration (content only)
       tiptapToDocx.ts            # Tiptap JSON → docx nodes (async)
       htmlStringToTiptapNodes.ts # HTML string → Tiptap nodes (with table support)
   constants/
-    urs_structure.ts             # DocSection[] template structure
+    docs.ts                      # DOC_STRUCTURES registry — maps doc types to structures
+    urs_structure.ts             # URS DocSection[] template
+    brs_structure.ts             # BRS DocSection[] template (Bahasa Malaysia)
+    srs_structure.ts             # SRS DocSection[] template
+    sds_structure.ts             # SDS DocSection[] template
 supabase/
   functions/
-    generate_section/            # Streams AI text via OpenAI SSE
+    generate_section/            # Per-section AI generation (streaming SSE, chat mode, RAG)
+    auto_generate_document/      # Full-document auto-generation (BRS) with progress streaming
     onlyoffice_callback/         # OO save callback — rotates documentKey
-    embed_document/
+    embed_document/              # Document embedding for RAG pipeline
     admin-users/
+    _shared/
+      ragHelper.ts               # RAG pipeline: dual-query embedding, dedup, quality assessment
+      promptBuilder.ts           # System/user prompt construction for auto-generate mode
+      llmConfig.ts               # Environment-based LLM/embedding config (model, temp, tokens)
+      chunker.ts                 # Structure-aware text splitter with heading/table detection
+      markdownToOoxml.ts         # Markdown → raw OOXML fragments (preserves template styles)
+      docxTemplateBuilder.ts     # Template-based DOCX builder (PizZip, preserves formatting)
+      docxServerBuilder.ts       # From-scratch DOCX builder (markdown → docx library nodes)
+      brsStructure.ts            # Server-side BRS structure with autoGenerate flags
+      brsExamples.ts             # Few-shot examples for BRS generation
+      srsExamples.ts             # Few-shot examples for SRS generation
+      sdsExamples.ts             # Few-shot examples for SDS generation
+      ursExamples.ts             # Few-shot examples for URS generation
   migrations/
 public/
-  templates/URS.docx             # URS template loaded on new URS document creation
-  onlyoffice-plugins/
-    ai-generate/                 # OO plugin: config.json + index.html
-      config.json                # guid: asc.aidevx2-ai-generate-v1
-      index.html                 # Reads sessionStorage keys, streams from generate_section
+  templates/
+    URS.docx                     # URS template loaded on new document creation
+    BRS.docx                     # BRS template (government specification format)
 ```
 
 ## Document Storage Model
@@ -79,6 +103,12 @@ public/
 - `doc.storagePath` — path in storage bucket
 - `docPublicUrl` — Supabase public URL used by OO editor and TOC extraction
 - `documentKey` — unique per-save string for OO cache-busting; rotated by `onlyoffice_callback`
+- Version snapshots stored at: `documents/{projectId}/{docId}/v{n}.docx`
+
+## Document Templates
+- Template registry in `documentService.ts`: `FILE_TEMPLATE_TYPES = new Set(['URS', 'BRS'])`
+- Templates loaded from `/public/templates/{TYPE}.docx` on new document creation
+- Falls back to from-scratch DOCX build if template not available
 
 ## Content Format Detection (`docModeDetector.ts`)
 - `doc.storagePath` present → `'onlyoffice'`
@@ -103,12 +133,41 @@ public/
 - **JWT**: Disabled locally (`JWT_ENABLED=false`); enable + set `ONLYOFFICE_JWT_SECRET` in production
 
 ## AI Generation
-- Edge function `generate_section` streams OpenAI SSE (`stream: true`)
-- System prompt: plain text paragraphs (no HTML tags)
-- Plugin reads `sessionStorage`: `aidevx_supabase_url`, `aidevx_anon_key`, `aidevx_project_id`
-- `DocumentEditor` writes those keys in a `useEffect([projectId])`
-- OO plugin inserts generated text via `PasteHtml` executeMethod
-- `AIGeneratePanel` (slide-in component) is a fallback triggered by TOC sparkle buttons
+
+### Per-Section Generation (`generate_section`)
+- Streams OpenAI SSE responses for individual sections
+- Supports all doc types: BRS, URS, SRS, SDS
+- Content types: text, table, diagram (mermaid or draw.io format)
+- Chat mode with multi-turn conversation history
+- Refinement mode: accepts previous output + user feedback
+- RAG-enhanced: uses embedded project documents as context
+- `AIGeneratePanel` is the primary UI — supports doc type selection, document path picker, content type choice, source attribution display
+
+### Full-Document Auto-Generation (`auto_generate_document`)
+- Server-side pipeline that generates all auto-generate sections for a document
+- Two-phase DOCX builder: template-based (preserves exact formatting) with from-scratch fallback
+- Streams SSE progress events per section back to frontend
+- `AutoGenerateProgress` modal shows real-time section completion status
+- Currently supports BRS documents
+
+### RAG Pipeline
+- `embed_document` edge function chunks and embeds uploaded project files
+- Dual-query embedding strategy (direct + template-aware) for better recall
+- Structure-aware chunker: preserves heading boundaries, keeps tables intact
+- Context quality assessment: none/low/medium/high
+- Default config: match threshold 0.30, match count 18, embedding dimensions 1536
+
+### LLM Configuration (`llmConfig.ts`)
+- Model: `gpt-4o` (configurable via env vars)
+- Per-content-type settings: tables (temp 0.2, 1500 tokens), diagrams (temp 0.2, 1800 tokens), text (temp 0.3, 2500 tokens)
+- Supports custom endpoints for self-hosted models (Ollama, etc.)
+
+## Collaboration
+- `project_members` table: roles are `owner`, `editor`, `viewer`
+- `ProjectContext` exposes `userRole`, `memberCount`, `ownerName` per project
+- `useProjectMembers` hook: invite by email, remove member, update role
+- Dashboard shows owner avatar, member count, role badges
+- Real-time presence via `PresenceIndicator`
 
 ## Tiptap (Legacy — still in codebase for old content)
 - Used only for rendering/exporting old `tiptap-v1` content
@@ -119,7 +178,9 @@ public/
 ## Supabase Edge Functions — Deployment
 ```bash
 supabase functions deploy generate_section
+supabase functions deploy auto_generate_document
 supabase functions deploy onlyoffice_callback
+supabase functions deploy embed_document
 supabase secrets set ONLYOFFICE_CALLBACK_SECRET=... SUPABASE_SERVICE_ROLE_KEY=...
 ```
 
@@ -129,6 +190,7 @@ supabase secrets set ONLYOFFICE_CALLBACK_SECRET=... SUPABASE_SERVICE_ROLE_KEY=..
 - `VersionViewer`: takes `docType: string`, `onRestore(version)` takes argument
 - `CommentsSidebar`: requires `activeSectionIndex: number | null`; no `onClose`
 - `SectionTOC`: accepts `DocHeading[]` (not a Tiptap editor instance)
+- `AutoGenerateProgress`: modal component, receives project/doc IDs and streams progress
 
 ## Coding Conventions
 - TypeScript strict mode — zero errors required before committing
@@ -136,4 +198,6 @@ supabase secrets set ONLYOFFICE_CALLBACK_SECRET=... SUPABASE_SERVICE_ROLE_KEY=..
 - Lucide React for icons
 - Supabase client imported from `src/lib/supabase.ts` (singleton)
 - Edge functions in `supabase/functions/<name>/index.ts` (Deno)
+- Shared edge function modules in `supabase/functions/_shared/` (imported across functions)
+- BRS documents use Bahasa Malaysia (Malay); SRS/SDS use English
 - Do not auto-commit; do not force-push

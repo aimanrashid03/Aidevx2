@@ -35,7 +35,7 @@ export default function ProjectDetails() {
     const [downloading, setDownloading] = useState<string | null>(null);
     const [uploading, setUploading] = useState(false);
     const [isDragging, setIsDragging] = useState(false);
-    const [activeTab, setActiveTab] = useState<'overview' | 'documents' | 'members'>('overview');
+    const [activeTab, setActiveTab] = useState<'overview' | 'workspace' | 'references' | 'members'>('overview');
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const project = projects.find(p => p.id === projectId);
@@ -231,7 +231,7 @@ export default function ProjectDetails() {
 
 
     return (
-        <div className="p-4 md:p-6 max-w-5xl mx-auto font-sans relative pb-10">
+        <div className="p-6 max-w-7xl mx-auto font-sans relative pb-10">
             {/* Top Navigation & Header */}
             <button
                 onClick={() => navigate('/dashboard')}
@@ -294,20 +294,13 @@ export default function ProjectDetails() {
                     </div>
                 )}
 
-                <button
-                    onClick={() => setIsCreateModalOpen(true)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 text-white rounded hover:bg-slate-800 transition-colors shadow-sm text-xs font-bold whitespace-nowrap mt-1"
-                >
-                    <Plus size={14} />
-                    <span>Create Document</span>
-                </button>
             </div>
 
             {/* Tabs */}
-            <div className="flex border-b border-slate-200 mb-5 space-x-6">
+            <div className="flex border-b border-slate-200 mb-5 space-x-4 overflow-x-auto">
                 <button
                     onClick={() => setActiveTab('overview')}
-                    className={`pb-3 text-sm font-bold transition-colors relative flex items-center gap-2 ${activeTab === 'overview'
+                    className={`pb-3 text-sm font-bold transition-colors relative flex items-center gap-2 whitespace-nowrap ${activeTab === 'overview'
                         ? 'text-slate-900 before:absolute before:bottom-0 before:left-0 before:w-full before:h-0.5 before:bg-slate-900'
                         : 'text-slate-500 hover:text-slate-700'
                         }`}
@@ -316,14 +309,14 @@ export default function ProjectDetails() {
                     Project Overview
                 </button>
                 <button
-                    onClick={() => setActiveTab('documents')}
-                    className={`pb-3 text-sm font-bold transition-colors relative flex items-center gap-2 ${activeTab === 'documents'
+                    onClick={() => setActiveTab('workspace')}
+                    className={`pb-3 text-sm font-bold transition-colors relative flex items-center gap-2 whitespace-nowrap ${activeTab === 'workspace'
                         ? 'text-slate-900 before:absolute before:bottom-0 before:left-0 before:w-full before:h-0.5 before:bg-slate-900'
                         : 'text-slate-500 hover:text-slate-700'
                         }`}
                 >
-                    <Folders size={16} className={activeTab === 'documents' ? 'text-slate-900' : 'text-slate-400'} />
-                    Documents Workspace
+                    <Folders size={16} className={activeTab === 'workspace' ? 'text-slate-900' : 'text-slate-400'} />
+                    Workspace
                     {project.requirementDocs && project.requirementDocs.length > 0 && (
                         <span className="bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded text-[10px] font-bold ml-1">
                             {project.requirementDocs.length}
@@ -331,8 +324,23 @@ export default function ProjectDetails() {
                     )}
                 </button>
                 <button
+                    onClick={() => setActiveTab('references')}
+                    className={`pb-3 text-sm font-bold transition-colors relative flex items-center gap-2 whitespace-nowrap ${activeTab === 'references'
+                        ? 'text-slate-900 before:absolute before:bottom-0 before:left-0 before:w-full before:h-0.5 before:bg-slate-900'
+                        : 'text-slate-500 hover:text-slate-700'
+                        }`}
+                >
+                    <File size={16} className={activeTab === 'references' ? 'text-slate-900' : 'text-slate-400'} />
+                    References
+                    {project.documents && project.documents.length > 0 && (
+                        <span className="bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded text-[10px] font-bold ml-1">
+                            {project.documents.length}
+                        </span>
+                    )}
+                </button>
+                <button
                     onClick={() => setActiveTab('members')}
-                    className={`pb-3 text-sm font-bold transition-colors relative flex items-center gap-2 ${activeTab === 'members'
+                    className={`pb-3 text-sm font-bold transition-colors relative flex items-center gap-2 whitespace-nowrap ${activeTab === 'members'
                         ? 'text-slate-900 before:absolute before:bottom-0 before:left-0 before:w-full before:h-0.5 before:bg-slate-900'
                         : 'text-slate-500 hover:text-slate-700'
                         }`}
@@ -397,9 +405,8 @@ export default function ProjectDetails() {
                     </div>
                 )}
 
-                {activeTab === 'documents' && (
+                {activeTab === 'workspace' && (
                     <div className="space-y-6">
-                        {/* 1. Ongoing Document Drafting Section */}
                         <section>
                             <div className="flex items-center justify-between mb-3">
                                 <div>
@@ -408,7 +415,7 @@ export default function ProjectDetails() {
                                 </div>
                                 <button
                                     onClick={() => setIsCreateModalOpen(true)}
-                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 text-slate-700 rounded hover:bg-slate-200 hover:text-slate-900 transition-colors shadow-sm text-xs font-bold"
+                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 text-white rounded hover:bg-slate-800 transition-colors shadow-sm text-xs font-bold"
                                 >
                                     <Plus size={14} />
                                     New Draft
@@ -476,10 +483,11 @@ export default function ProjectDetails() {
                                 </div>
                             )}
                         </section>
+                    </div>
+                )}
 
-                        <hr className="border-slate-200" />
-
-                        {/* 2. Supporting Documents Section (Drag & Drop) */}
+                {activeTab === 'references' && (
+                    <div className="space-y-6">
                         <section>
                             <div className="flex items-center justify-between mb-4">
                                 <div>

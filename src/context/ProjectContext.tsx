@@ -42,6 +42,8 @@ export interface Project {
     createdAt: string;
     /** Current user's role: 'owner' if they created it, otherwise their project_members role */
     userRole?: 'owner' | 'editor' | 'viewer';
+    memberCount?: number;
+    ownerName?: string;
 }
 
 interface ProjectContextType {
@@ -96,7 +98,30 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
                 roleByProject[m.project_id] = m.role;
             }
 
-            // 3. Fetch related data for all projects
+            // 3. Fetch all member counts in one query
+            const { data: allMembers } = await supabase
+                .from('project_members')
+                .select('project_id')
+                .in('project_id', projectIds);
+
+            const memberCountByProject: Record<string, number> = {};
+            for (const m of allMembers || []) {
+                memberCountByProject[m.project_id] = (memberCountByProject[m.project_id] || 0) + 1;
+            }
+
+            // 4. Fetch owner profiles in one query
+            const ownerIds = [...new Set(projectsData.map(p => p.user_id))];
+            const { data: ownerProfiles } = await supabase
+                .from('profiles')
+                .select('id, full_name')
+                .in('id', ownerIds);
+
+            const ownerNameById: Record<string, string> = {};
+            for (const profile of ownerProfiles || []) {
+                if (profile.full_name) ownerNameById[profile.id] = profile.full_name;
+            }
+
+            // 5. Fetch related data for all projects
             const enrichedProjects = await Promise.all(projectsData.map(async (p) => {
                 // Fetch Documents (Metadata)
                 const { data: docsData } = await supabase
@@ -129,7 +154,9 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
                         currentVersion: d.current_version || 1,
                         storagePath: d.storage_path || null,
                         documentKey: d.document_key || null,
-                    })) || []
+                    })) || [],
+                    memberCount: memberCountByProject[p.id] || 0,
+                    ownerName: ownerNameById[p.user_id] || undefined,
                 };
             }));
 
