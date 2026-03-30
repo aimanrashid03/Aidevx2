@@ -30,7 +30,7 @@ export default function DocumentRepository() {
     };
 
     return (
-        <div className="p-6 max-w-7xl mx-auto font-sans">
+        <div className="px-6 py-6 font-sans">
             <div className="mb-6 border-b border-slate-200 pb-4">
                 <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Document Repository</h1>
                 <p className="text-slate-500 mt-1 text-sm">Centralized view of all project documents and requirements.</p>

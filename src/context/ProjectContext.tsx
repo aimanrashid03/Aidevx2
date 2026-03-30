@@ -37,7 +37,7 @@ export interface Project {
     name: string;
     description: string;
     notes?: string;
-    documents?: { name: string; path: string }[];
+    documents?: { id: string; name: string; path: string; embeddingStatus: string }[];
     requirementDocs: RequirementDoc[];
     createdAt: string;
     /** Current user's role: 'owner' if they created it, otherwise their project_members role */
@@ -126,7 +126,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
                 // Fetch Documents (Metadata)
                 const { data: docsData } = await supabase
                     .from('project_documents')
-                    .select('file_name, file_path')
+                    .select('id, file_name, file_path, embedding_status')
                     .eq('project_id', p.id);
 
                 // Fetch Requirement Docs
@@ -142,7 +142,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
                     notes: p.notes,
                     createdAt: p.created_at,
                     userRole: (roleByProject[p.id] || (p.user_id === user.id ? 'owner' : 'viewer')) as 'owner' | 'editor' | 'viewer',
-                    documents: docsData?.map(d => ({ name: d.file_name, path: d.file_path })) || [],
+                    documents: docsData?.map(d => ({ id: d.id, name: d.file_name, path: d.file_path, embeddingStatus: d.embedding_status || 'pending' })) || [],
                     requirementDocs: reqDocsData?.map(d => ({
                         id: d.id,
                         title: d.title,

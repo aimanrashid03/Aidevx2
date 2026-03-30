@@ -56,7 +56,7 @@ export default function ProjectMembers({ projectId }: ProjectMembersProps) {
             <div className="p-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
                 <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wide flex items-center gap-2">
                     <Users size={14} />
-                    Team Members
+                    Collaborators
                 </h2>
                 <span className="text-[10px] text-slate-400 font-bold">
                     {members.length} member{members.length !== 1 ? 's' : ''}
@@ -132,27 +132,30 @@ export default function ProjectMembers({ projectId }: ProjectMembersProps) {
                             </div>
                             <div className="flex items-center gap-2">
                                 {member.role === 'owner' ? (
-                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${getRoleBadgeStyle(member.role)}`}>
-                                        {member.role}
-                                    </span>
+                                    <>
+                                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${getRoleBadgeStyle(member.role)}`}>
+                                            {member.role}
+                                        </span>
+                                        <div className="w-[22px]" />
+                                    </>
                                 ) : (
-                                    <select
-                                        value={member.role}
-                                        onChange={(e) => updateMemberRole(member.id, e.target.value as 'viewer' | 'editor')}
-                                        className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border cursor-pointer ${getRoleBadgeStyle(member.role)}`}
-                                    >
-                                        <option value="viewer">Viewer</option>
-                                        <option value="editor">Editor</option>
-                                    </select>
-                                )}
-                                {member.role !== 'owner' && (
-                                    <button
-                                        onClick={() => handleRemove(member)}
-                                        className="p-1 text-slate-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-all rounded hover:bg-red-50"
-                                        title="Remove member"
-                                    >
-                                        <Trash2 size={12} />
-                                    </button>
+                                    <>
+                                        <select
+                                            value={member.role}
+                                            onChange={(e) => updateMemberRole(member.id, e.target.value as 'viewer' | 'editor')}
+                                            className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border cursor-pointer ${getRoleBadgeStyle(member.role)}`}
+                                        >
+                                            <option value="viewer">Viewer</option>
+                                            <option value="editor">Editor</option>
+                                        </select>
+                                        <button
+                                            onClick={() => handleRemove(member)}
+                                            className="p-1 text-slate-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-all rounded hover:bg-red-50"
+                                            title="Remove member"
+                                        >
+                                            <Trash2 size={12} />
+                                        </button>
+                                    </>
                                 )}
                             </div>
                         </div>

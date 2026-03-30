@@ -92,6 +92,11 @@ Starts the Supabase Edge Functions runtime locally. Required if you want AI gene
 - **Real-time collaboration** — Project roles (owner/editor/viewer), member management, presence indicators
 - **Version history** — DOCX snapshots with restore capability
 - **Comments** — Section-level commenting sidebar
+- **Project Library** — Per-project knowledge base with three sections:
+  - *User Stories* — structured 7-section questionnaire, answers indexed into the RAG pipeline
+  - *Supporting Files* — multi-file upload (txt/md/csv/docx/pdf) with per-file RAG indexing status
+  - *Diagram Notes* — store Mermaid, draw.io, or freeform diagram references
+- **Prototype Generation** *(Experimental)* — Generate a self-contained HTML/CSS front-end prototype from any workspace document; view source, copy, and run directly in the browser
 
 ## How It Works
 
@@ -99,8 +104,10 @@ Starts the Supabase Edge Functions runtime locally. Required if you want AI gene
 2. The **OnlyOffice editor** loads the `.docx` directly from a public Supabase Storage URL.
 3. When a user saves, OnlyOffice POSTs the updated file to the **`onlyoffice_callback`** edge function, which writes the new `.docx` back to Storage.
 4. The **AI generate** feature calls the **`generate_section`** edge function, which streams OpenAI completions as SSE directly into the editor.
-5. Uploaded project files are chunked and embedded via the **`embed_document`** function, enabling RAG-powered context for AI generation.
+5. Uploaded project files are chunked and embedded via the **`embed_document`** function, enabling RAG-powered context for AI generation. Each file tracks an `embedding_status` (pending → processing → processed / failed).
 6. The **`auto_generate_document`** function generates a complete document server-side using template-based DOCX building with AI-generated content.
+7. **User Stories** answers are also embedded into the RAG pipeline, giving the AI richer project context during generation.
+8. **Prototype Generation** runs entirely client-side — a built-in HTML/CSS template is rendered based on the selected document type and stored in `localStorage`. No backend call is made.
 
 ---
 

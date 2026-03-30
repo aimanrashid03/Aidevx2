@@ -24,7 +24,7 @@ export default function Dashboard() {
     const displayName = profile?.full_name?.split(' ')[0] || profile?.email?.split('@')[0] || 'User';
 
     return (
-        <div className="p-6 max-w-7xl mx-auto font-sans">
+        <div className="px-6 py-6 font-sans">
             <div className="flex justify-between items-center mb-6 pb-6 border-b border-slate-200">
                 <div>
                     <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Welcome back, {displayName}!</h1>

@@ -16,14 +16,19 @@ serve(async (req) => {
         return new Response('ok', { headers: corsHeaders })
     }
 
+    let documentId: string | undefined
+    let supabaseAdmin: ReturnType<typeof createClient> | undefined
+
     try {
-        const { projectId, documentPath, content } = await req.json()
+        const body = await req.json()
+        const { projectId, documentPath, content } = body
+        documentId = body.documentId
 
         if (!projectId || !documentPath || !content) {
             throw new Error('Missing required fields: projectId, documentPath, content')
         }
 
-        const supabaseAdmin = createClient(
+        supabaseAdmin = createClient(
             Deno.env.get('SUPABASE_URL') ?? '',
             Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
         )
@@ -104,6 +109,14 @@ serve(async (req) => {
             }
         }
 
+        // ── 4. Update embedding status to 'processed' if documentId provided ──
+        if (documentId) {
+            await supabaseAdmin
+                .from('project_documents')
+                .update({ embedding_status: 'processed' })
+                .eq('id', documentId)
+        }
+
         return new Response(
             JSON.stringify({
                 success: true,
@@ -115,6 +128,16 @@ serve(async (req) => {
         )
     } catch (error) {
         console.error('Error:', error)
+
+        // Best-effort: mark status as 'failed'
+        if (documentId && supabaseAdmin) {
+            await supabaseAdmin
+                .from('project_documents')
+                .update({ embedding_status: 'failed' })
+                .eq('id', documentId)
+                .catch(() => { /* ignore */ })
+        }
+
         return new Response(
             JSON.stringify({ error: error.message }),
             { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
