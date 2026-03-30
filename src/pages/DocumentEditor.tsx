@@ -4,7 +4,7 @@ import {
     FileText, FileDown, Loader2, AlertCircle, Sparkles
 } from 'lucide-react'
 import { useProjects, type DocVersion } from '../context/ProjectContext'
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useDocumentComments } from '../hooks/useDocumentComments'
@@ -243,18 +243,15 @@ export default function DocumentEditor() {
 
     // ─── OnlyOffice config ────────────────────────────────────────────────────
 
-    const onlyOfficeConfig = useMemo(() => {
-        if (!docPublicUrl || !documentKey) return null
-        const currentDocId = docIdRef.current
-        if (!currentDocId || !projectId) return null
+    const [onlyOfficeConfig, setOnlyOfficeConfig] = useState<object | null>(null)
 
-        // OnlyOffice runs inside Docker — it cannot reach 127.0.0.1 (host loopback).
-        // Replace the browser-facing Supabase URL with the Docker-reachable equivalent
-        // for both the document download URL and the save callback URL.
+    useEffect(() => {
+        if (!docPublicUrl || !documentKey) { setOnlyOfficeConfig(null); return }
+        const currentDocId = docIdRef.current
+        if (!currentDocId || !projectId) { setOnlyOfficeConfig(null); return }
+
         const supabaseBase = import.meta.env.VITE_SUPABASE_URL as string
         const ooBase = (import.meta.env.VITE_ONLYOFFICE_CALLBACK_BASE_URL as string) || supabaseBase
-
-        // Rewrite storage URL so OO can download the DOCX from inside Docker
         const ooDocUrl = docPublicUrl.replace(supabaseBase, ooBase)
 
         const callbackSecret = import.meta.env.VITE_ONLYOFFICE_CALLBACK_SECRET as string
@@ -262,7 +259,7 @@ export default function DocumentEditor() {
             `${ooBase}/functions/v1/onlyoffice_callback` +
             `?docId=${currentDocId}&projectId=${projectId}&token=${callbackSecret}`
 
-        return getOnlyOfficeConfig({
+        getOnlyOfficeConfig({
             docId: currentDocId,
             projectId,
             docTitle,
@@ -272,7 +269,7 @@ export default function DocumentEditor() {
             mode: viewingVersion ? 'view' : 'edit',
             userId: user?.id ?? 'anonymous',
             userDisplayName: profile?.full_name || user?.email || 'User',
-        })
+        }).then(setOnlyOfficeConfig)
     }, [docPublicUrl, documentKey, docTitle, viewingVersion, projectId, user?.id, profile?.full_name])
 
     // ─── Export ──────────────────────────────────────────────────────────────
