@@ -174,7 +174,7 @@ serve(async (req) => {
                         )
 
                         // ── LLM call ─────────────────────────────────────────
-                        const maxTokens = section.expectedFormat === 'table' ? 1500 : 2500
+                        const maxTokens = section.expectedFormat === 'table' ? 4000 : 4000
                         const content = await callLlm(messages, llmConfig, 0.3, maxTokens)
 
                         generatedContent.set(section.title, content)

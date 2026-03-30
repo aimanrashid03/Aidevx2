@@ -202,6 +202,15 @@ export default function DocumentEditor() {
         // Skip normal initialization when auto-generating — the edge function handles doc creation
         if (isAutoGenerate && !autoGenerateComplete) return
 
+        // After auto-generate completes, docPublicUrl and documentKey are already set by onComplete.
+        // Only extract TOC — do NOT call loadDocumentState which would create a duplicate document.
+        if (autoGenerateComplete && docPublicUrl) {
+            extractSectionsFromDocx(docPublicUrl)
+                .then(setTocSections)
+                .catch(() => setTocSections([]))
+            return
+        }
+
         loadDocumentState(existingDoc, pid, did, title, type, pname)
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [existingDoc?.id, projectId, projectsLoading, autoGenerateComplete])

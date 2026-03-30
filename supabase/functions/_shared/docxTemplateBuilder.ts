@@ -367,6 +367,16 @@ export async function buildFromTemplate(
     // Update title page
     elements = updateTitlePage(elements, projectName, docTitle)
 
+    // Ensure portrait orientation in the body-level sectPr
+    if (sectPrXml) {
+        // Remove any existing <w:pgSz> that might have landscape orientation
+        // and replace with explicit portrait dimensions (A4: 11906 x 16838 twips)
+        if (sectPrXml.includes('w:orient="landscape"')) {
+            sectPrXml = sectPrXml.replace(/<w:pgSz[^/]*\/>/,
+                '<w:pgSz w:w="11906" w:h="16838"/>')
+        }
+    }
+
     // Reassemble body XML
     const newBodyContent = elements.map(el => el.xml).join('') + sectPrXml
     const newDocXml = docXmlRaw.replace(

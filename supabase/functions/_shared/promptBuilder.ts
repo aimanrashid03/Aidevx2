@@ -64,13 +64,14 @@ export function buildAutoGeneratePrompt(
 - Use EXACTLY these column headers where applicable: ${columnList}
 - Populate table rows using facts from the Project Context
 - If context is insufficient, add rows with [placeholder] values
-- Use **bold** for emphasis, bullet lists with - prefix, numbered lists with 1. prefix
+- Use **bold** for emphasis
+- ALWAYS use numbered lists (1. 2. 3.) instead of bullet points (- or *) for traceability between documents
 - Do NOT use HTML tags`
     } else {
         formatRules = `OUTPUT FORMAT RULES:
 - Output content as plain markdown text
 - Use **bold** for emphasis, *italic* for secondary emphasis
-- Use bullet lists with - prefix, numbered lists with 1. prefix
+- ALWAYS use numbered lists (1. 2. 3.) instead of bullet points (- or *) for traceability between documents
 - Use markdown tables (| col1 | col2 |) where tabular data is appropriate
 - Do NOT use HTML tags
 - Do NOT include the section title/heading in your output (it will be added automatically)`

@@ -44,15 +44,14 @@ function parseInlineMarkdown(text: string): RunFragment[] {
 
 // ── OOXML element builders ──────────────────────────────────────────────────
 
-/** Build a <w:r> element from a run fragment. */
+/** Build a <w:r> element from a run fragment. Always enforces Arial font. */
 function runXml(frag: RunFragment): string {
-    let rPr = ''
-    if (frag.bold || frag.italic) {
-        rPr = '<w:rPr>'
-        if (frag.bold) rPr += '<w:b/><w:bCs/>'
-        if (frag.italic) rPr += '<w:i/><w:iCs/>'
-        rPr += '</w:rPr>'
-    }
+    let rPr = '<w:rPr>'
+    rPr += '<w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/>'
+    rPr += '<w:sz w:val="20"/><w:szCs w:val="20"/>'
+    if (frag.bold) rPr += '<w:b/><w:bCs/>'
+    if (frag.italic) rPr += '<w:i/><w:iCs/>'
+    rPr += '</w:rPr>'
     return `<w:r>${rPr}<w:t xml:space="preserve">${escapeXml(frag.text)}</w:t></w:r>`
 }
 
@@ -67,10 +66,10 @@ function paragraphXml(text: string, style = 'Content'): string {
     return `<w:p><w:pPr><w:pStyle w:val="${style}"/></w:pPr>${runs}</w:p>`
 }
 
-/** Build a bullet list item paragraph. Uses numId=21 from template. */
+/** Build a list item paragraph as numbered (for traceability). Uses numId=5 from template. */
 function bulletXml(text: string): string {
     const runs = runsFromText(text)
-    return `<w:p><w:pPr><w:pStyle w:val="ListParagraph"/><w:numPr><w:ilvl w:val="0"/><w:numId w:val="21"/></w:numPr></w:pPr>${runs}</w:p>`
+    return `<w:p><w:pPr><w:pStyle w:val="ListParagraph"/><w:numPr><w:ilvl w:val="0"/><w:numId w:val="5"/></w:numPr></w:pPr>${runs}</w:p>`
 }
 
 /** Build a numbered list item paragraph. Uses numId=5 from template. */
@@ -103,7 +102,7 @@ function tableXml(headers: string[], rows: string[][]): string {
     for (const h of headers) {
         xml += `<w:tc><w:tcPr><w:tcW w:w="${colWidth}" w:type="dxa"/><w:shd w:val="clear" w:color="auto" w:fill="2D3748"/></w:tcPr>`
         xml += `<w:p><w:pPr><w:jc w:val="left"/></w:pPr>`
-        xml += `<w:r><w:rPr><w:b/><w:bCs/><w:color w:val="FFFFFF"/></w:rPr><w:t xml:space="preserve">${escapeXml(h)}</w:t></w:r>`
+        xml += `<w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/><w:sz w:val="18"/><w:szCs w:val="18"/><w:b/><w:bCs/><w:color w:val="FFFFFF"/></w:rPr><w:t xml:space="preserve">${escapeXml(h)}</w:t></w:r>`
         xml += '</w:p></w:tc>'
     }
     xml += '</w:tr>'
@@ -203,7 +202,7 @@ export function markdownToOoxml(markdown: string): string {
             const headingStyle = `Heading${level}`
             parts.push(
                 `<w:p><w:pPr><w:pStyle w:val="${headingStyle}"/></w:pPr>` +
-                `<w:r><w:rPr><w:b/><w:bCs/></w:rPr><w:t xml:space="preserve">${escapeXml(headingMatch[2])}</w:t></w:r></w:p>`
+                `<w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/><w:b/><w:bCs/></w:rPr><w:t xml:space="preserve">${escapeXml(headingMatch[2])}</w:t></w:r></w:p>`
             )
             i++
             continue

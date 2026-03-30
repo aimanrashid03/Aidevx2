@@ -90,8 +90,11 @@ export function deduplicateChunks(searchResults: MatchedChunk[][]): MatchedChunk
     return [...chunkMap.values()].sort((a, b) => b.similarity - a.similarity)
 }
 
-/** Build context text with source attribution from matched chunks. */
-export function buildContextText(chunks: MatchedChunk[]): string {
+/** Build context text with source attribution from matched chunks.
+ *  @param maxChars  Hard cap on total context length to avoid consuming the LLM
+ *                   token budget. Defaults to 6000 chars (~1500 tokens).
+ */
+export function buildContextText(chunks: MatchedChunk[], maxChars = 6000): string {
     const sourceMap = new Map<string, string[]>()
     for (const chunk of chunks) {
         const source: string =
@@ -108,9 +111,14 @@ export function buildContextText(chunks: MatchedChunk[]): string {
 
     let text = ''
     for (const [source, contents] of sourceMap) {
-        text += `\n--- Source: ${source} ---\n`
-        text += contents.join('\n\n')
-        text += '\n'
+        const block = `\n--- Source: ${source} ---\n${contents.join('\n\n')}\n`
+        if (text.length + block.length > maxChars) {
+            // Fit as much of this source as possible, then stop
+            const remaining = maxChars - text.length
+            if (remaining > 100) text += block.slice(0, remaining) + '\n...(truncated)'
+            break
+        }
+        text += block
     }
     return text
 }

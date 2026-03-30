@@ -28,7 +28,7 @@ src/
   App.tsx                        # Routes
   pages/
     DocumentEditor.tsx           # Main editor page — route /editor/:projectId/:templateId
-    ProjectDetails.tsx           # Project detail — 5 tabs: Dashboard, Workspace, Library, Prototype, Collaborators
+    ProjectDetails.tsx           # Project detail + document list (with collaboration)
     Dashboard.tsx                # Project list with owner/member info
     AddProject.tsx
     DocumentRepository.tsx
@@ -42,26 +42,13 @@ src/
       VersionHistory.tsx
       VersionViewer.tsx          # Dual-path: docx-preview (OO) or legacy block renderer
       CommentsSidebar.tsx
-    project-tabs/
-      DashboardTab.tsx           # Stats, doc progress, project health, quick actions, notes
-      WorkspaceTab.tsx           # Requirement doc cards grid with status badges
-      LibraryTab.tsx             # Orchestrates 3 sections: User Stories, Supporting Files, Diagram Notes
-      LibraryUserStories.tsx     # Template questionnaire (7 groups), embeddable into RAG
-      LibrarySupportingFiles.tsx # Multi-file upload with queue UI and per-file RAG status
-      LibraryDiagramNotes.tsx    # Mermaid / draw.io / freeform diagram reference notes
-      PrototypeTab.tsx           # [Experimental] Front-end prototype generator — localStorage-only, no backend
-      CollaboratorsTab.tsx       # Thin wrapper around ProjectMembers
     Layout.tsx
     PresenceIndicator.tsx
-    ProjectMembers.tsx           # Invite/remove/update members — header label: "Collaborators"
   context/
     AuthContext.tsx
     ProjectContext.tsx           # Projects + collaboration (userRole, memberCount, ownerName)
-                                 # documents type: { id, name, path, embeddingStatus }[]
   hooks/
     useProjectMembers.ts         # Invite/remove/update members with role management
-    useUserStories.ts            # CRUD + embedStory() for user_stories table
-    useDiagramNotes.ts           # CRUD for diagram_notes table
   lib/
     onlyoffice/
       documentService.ts         # OO config builder, template registry, storage URL helpers
@@ -181,42 +168,6 @@ public/
 - `useProjectMembers` hook: invite by email, remove member, update role
 - Dashboard shows owner avatar, member count, role badges
 - Real-time presence via `PresenceIndicator`
-- UI label: "Collaborators" (not "Team Members") throughout the app
-
-## ProjectDetails Tab Structure
-Tabs in order: `dashboard` → `workspace` → `library` → `prototype` → `collaborators`
-
-| Tab | Key | Description |
-|-----|-----|-------------|
-| Dashboard | `dashboard` | Stats cards, doc progress, project health, quick actions, internal notes |
-| Workspace | `workspace` | Requirement doc cards (BRS/URS/SRS/SDS) with status badges |
-| Library | `library` | User Stories + Supporting Files + Diagram Notes (last two side-by-side on lg screens) |
-| Prototype | `prototype` | **Experimental** — client-side HTML/CSS prototype generator, no backend |
-| Collaborators | `collaborators` | Member invite/remove/role management |
-
-### Library Tab Sections
-- **User Stories** — 7-section questionnaire (q1–q7), saved to `user_stories` table, embeddable into RAG
-- **Supporting Files** — multi-file upload with queue UI; `embedding_status` tracked per file
-- **Diagram Notes** — Mermaid / draw.io / freeform notes saved to `diagram_notes` table
-
-### Prototype Tab (Experimental)
-- No backend; prototypes stored in `localStorage` keyed by `aidevx_prototypes_{projectId}`
-- Wizard: select a workspace document → simulated generation (progress steps) → auto-opens code viewer
-- Code viewer: dark-themed, shows full `index.html` source, copy button, run (opens blob URL in new tab), delete
-- `generatePrototypeHTML(docTitle, docType)` produces a self-contained HTML/CSS app mock tailored to doc type
-- Full backend (persistence, versioning, real AI generation) planned for a future release
-
-## Database Tables (added via migration `20260330000000_library_enhancements.sql`)
-| Table | Purpose |
-|-------|---------|
-| `user_stories` | Project user story questionnaires; JSONB `responses` keyed q1–q7; `embedding_status` |
-| `diagram_notes` | Diagram references per project; `diagram_type`: mermaid / drawio / freeform |
-| `project_documents.embedding_status` | Added column: pending / processing / processed / failed |
-
-Chunk cleanup: `trg_cleanup_chunks_on_doc_delete` BEFORE DELETE trigger on `project_documents` auto-removes orphaned `document_chunks` rows.
-
-## Page Layout Convention
-All top-level page containers use `px-6 py-6 font-sans` — **no** `max-w-*` constraint, content fills available width. Applies to: `Dashboard.tsx`, `DocumentRepository.tsx`, `ProjectDetails.tsx`.
 
 ## Tiptap (Legacy — still in codebase for old content)
 - Used only for rendering/exporting old `tiptap-v1` content
@@ -250,3 +201,6 @@ supabase secrets set ONLYOFFICE_CALLBACK_SECRET=... SUPABASE_SERVICE_ROLE_KEY=..
 - Shared edge function modules in `supabase/functions/_shared/` (imported across functions)
 - BRS documents use Bahasa Malaysia (Malay); SRS/SDS use English
 - Do not auto-commit; do not force-push
+
+## Server Setup
+For server infrastructure details (Docker, tunnels, Coolify, networking, credentials), see [SERVER-SETUP.md](./SERVER-SETUP.md).
