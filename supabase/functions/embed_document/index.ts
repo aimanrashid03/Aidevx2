@@ -21,7 +21,7 @@ serve(async (req) => {
 
     try {
         const body = await req.json()
-        const { projectId, documentPath, content } = body
+        const { projectId, documentPath, content, extraMetadata } = body
         documentId = body.documentId
 
         if (!projectId || !documentPath || !content) {
@@ -94,7 +94,7 @@ serve(async (req) => {
                 document_path: documentPath,
                 content: chunk.content,
                 embedding: embeddings[j],
-                metadata: chunk.metadata,
+                metadata: extraMetadata ? { ...chunk.metadata, ...extraMetadata } : chunk.metadata,
                 embedding_model: embeddingConfig.model,
                 chunk_index: chunk.metadata.chunkIndex,
             }))

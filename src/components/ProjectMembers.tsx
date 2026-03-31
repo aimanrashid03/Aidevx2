@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { UserPlus, X, Users, Trash2 } from 'lucide-react';
 import { useProjectMembers, type ProjectMember } from '../hooks/useProjectMembers';
+import { useConfirmDialog } from '../hooks/useConfirmDialog';
 
 interface ProjectMembersProps {
     projectId: string;
@@ -12,6 +13,7 @@ export default function ProjectMembers({ projectId }: ProjectMembersProps) {
     const [role, setRole] = useState<'viewer' | 'editor'>('viewer');
     const [inviteError, setInviteError] = useState<string | null>(null);
     const [inviting, setInviting] = useState(false);
+    const { dialog, confirm } = useConfirmDialog();
 
     const handleInvite = async () => {
         if (!email.trim()) return;
@@ -32,7 +34,13 @@ export default function ProjectMembers({ projectId }: ProjectMembersProps) {
     };
 
     const handleRemove = async (member: ProjectMember) => {
-        if (!confirm(`Remove ${member.fullName || member.email} from this project?`)) return;
+        const ok = await confirm({
+            title: 'Remove Member',
+            message: `Remove ${member.fullName || member.email} from this project? They will lose access.`,
+            confirmLabel: 'Remove',
+            variant: 'danger',
+        });
+        if (!ok) return;
         await removeMember(member.id);
     };
 
@@ -162,6 +170,7 @@ export default function ProjectMembers({ projectId }: ProjectMembersProps) {
                     ))
                 )}
             </div>
+            {dialog}
         </div>
     );
 }

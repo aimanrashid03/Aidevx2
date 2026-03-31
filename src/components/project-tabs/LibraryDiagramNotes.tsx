@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Plus, Edit, Trash2, Loader2, GitBranch, X, Check } from 'lucide-react';
 import { useDiagramNotes, type DiagramNote } from '../../hooks/useDiagramNotes';
+import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 
 type DiagramType = DiagramNote['diagramType'];
 
@@ -90,6 +91,7 @@ export default function LibraryDiagramNotes({ projectId }: Props) {
     const { notes, loading, createNote, updateNote, deleteNote } = useDiagramNotes(projectId);
     const [isAdding, setIsAdding] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
+    const { dialog, confirm } = useConfirmDialog();
 
     const handleCreate = async (title: string, content: string, diagramType: DiagramType) => {
         await createNote(title, content, diagramType);
@@ -103,7 +105,13 @@ export default function LibraryDiagramNotes({ projectId }: Props) {
 
     const handleDelete = async (e: React.MouseEvent, id: string) => {
         e.stopPropagation();
-        if (!window.confirm('Delete this diagram note?')) return;
+        const ok = await confirm({
+            title: 'Delete Diagram Note',
+            message: 'This will permanently delete this diagram note.',
+            confirmLabel: 'Delete',
+            variant: 'danger',
+        });
+        if (!ok) return;
         await deleteNote(id);
     };
 
@@ -204,6 +212,7 @@ export default function LibraryDiagramNotes({ projectId }: Props) {
                     <X size={11} /> Cancel add
                 </button>
             )}
+            {dialog}
         </div>
     );
 }

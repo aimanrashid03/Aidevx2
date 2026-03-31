@@ -4,6 +4,8 @@ import { supabase } from '../../lib/supabase';
 import mammoth from 'mammoth';
 import * as pdfjsLib from 'pdfjs-dist';
 import type { Project } from '../../context/ProjectContext';
+import EmbeddingStatusBadge from '../EmbeddingStatusBadge';
+import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
 
@@ -17,43 +19,12 @@ interface Props {
     onFilesChanged: () => Promise<void>;
 }
 
-type EmbeddingStatus = 'pending' | 'processing' | 'processed' | 'failed';
-
-function EmbeddingStatusBadge({ status }: { status: EmbeddingStatus }) {
-    if (status === 'processed') {
-        return (
-            <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-700">
-                <CheckCircle2 size={11} /> Indexed
-            </span>
-        );
-    }
-    if (status === 'processing') {
-        return (
-            <span className="flex items-center gap-1 text-[10px] font-bold text-amber-600">
-                <Loader2 size={11} className="animate-spin" /> Processing
-            </span>
-        );
-    }
-    if (status === 'failed') {
-        return (
-            <span className="flex items-center gap-1 text-[10px] font-bold text-red-600">
-                <AlertCircle size={11} /> Failed
-            </span>
-        );
-    }
-    // pending
-    return (
-        <span className="flex items-center gap-1 text-[10px] font-bold text-slate-400">
-            <Clock size={11} /> Pending
-        </span>
-    );
-}
-
 export default function LibrarySupportingFiles({ project, onFilesChanged }: Props) {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [isDragging, setIsDragging] = useState(false);
     const [downloading, setDownloading] = useState<string | null>(null);
     const [uploadQueue, setUploadQueue] = useState<UploadQueueItem[]>([]);
+    const { dialog, notificationBanner, confirm, notify } = useConfirmDialog();
 
     const extractText = async (file: File): Promise<string> => {
         const fileExt = file.name.split('.').pop()?.toLowerCase();
@@ -175,7 +146,7 @@ export default function LibrarySupportingFiles({ project, onFilesChanged }: Prop
             if (error) throw error;
             if (data?.signedUrl) window.open(data.signedUrl, '_blank');
         } catch {
-            alert('Failed to download file.');
+            notify({ message: 'Failed to download file.', variant: 'error' });
         } finally {
             setDownloading(null);
         }
@@ -183,13 +154,19 @@ export default function LibrarySupportingFiles({ project, onFilesChanged }: Prop
 
     const handleDelete = async (e: React.MouseEvent, path: string) => {
         e.stopPropagation();
-        if (!window.confirm('Delete this file? This will also remove it from the AI knowledge base.')) return;
+        const ok = await confirm({
+            title: 'Delete File',
+            message: 'This will permanently delete the file and remove it from the AI knowledge base.',
+            confirmLabel: 'Delete',
+            variant: 'danger',
+        });
+        if (!ok) return;
         try {
             await supabase.storage.from('project-files').remove([path]);
             await supabase.from('project_documents').delete().eq('file_path', path);
             await onFilesChanged();
         } catch {
-            alert('Failed to delete file.');
+            notify({ message: 'Failed to delete file.', variant: 'error' });
         }
     };
 
@@ -296,7 +273,7 @@ export default function LibrarySupportingFiles({ project, onFilesChanged }: Prop
                                     </div>
                                 </div>
                                 <div className="col-span-4">
-                                    <EmbeddingStatusBadge status={doc.embeddingStatus as EmbeddingStatus} />
+                                    <EmbeddingStatusBadge status={doc.embeddingStatus} />
                                 </div>
                                 <div className="col-span-3 flex items-center justify-end gap-1 pr-1">
                                     <button
@@ -327,6 +304,8 @@ export default function LibrarySupportingFiles({ project, onFilesChanged }: Prop
                     </div>
                 </div>
             )}
+            {dialog}
+            {notificationBanner}
         </div>
     );
 }

@@ -1,4 +1,4 @@
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useProjects } from '../context/ProjectContext';
 import {
     ArrowLeft, FileText, File, Calendar, X,
@@ -6,6 +6,8 @@ import {
     CirclePlay, LibraryBig, Users, Sparkles, FileEdit, Check, Edit, FlaskConical
 } from 'lucide-react';
 import { useState } from 'react';
+import { useConfirmDialog } from '../hooks/useConfirmDialog';
+import { useUserStories } from '../hooks/useUserStories';
 import DashboardTab from '../components/project-tabs/DashboardTab';
 import WorkspaceTab from '../components/project-tabs/WorkspaceTab';
 import LibraryTab from '../components/project-tabs/LibraryTab';
@@ -34,13 +36,30 @@ export default function ProjectDetails() {
     const navigate = useNavigate();
     const { projects, updateProject, deleteRequirementDoc, refreshProjects } = useProjects();
 
-    const [activeTab, setActiveTab] = useState<TabKey>('dashboard');
+    const [searchParams, setSearchParams] = useSearchParams();
+    const initialTab = searchParams.get('tab') as TabKey | null;
+    const [activeTab, setActiveTab] = useState<TabKey>(
+        initialTab && TABS.some(t => t.key === initialTab) ? initialTab : 'dashboard'
+    );
+
+    const handleTabChange = (key: TabKey) => {
+        setActiveTab(key);
+        setSearchParams({ tab: key }, { replace: true });
+    };
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
     const [isEditing, setIsEditing] = useState(false);
     const [editForm, setEditForm] = useState({ name: '', description: '', notes: '' });
 
+    const { dialog, notificationBanner, confirm, notify } = useConfirmDialog();
+
     const project = projects.find(p => p.id === projectId);
+
+    const { stories } = useUserStories(project?.id || '');
+    const indexedFiles = project?.documents?.filter(d => d.embeddingStatus === 'processed').length || 0;
+    const indexedStories = stories.filter(s => s.embeddingStatus === 'processed').length;
+    const totalIndexed = indexedFiles + indexedStories;
+    const ragReadiness = totalIndexed === 0 ? 'none' : totalIndexed < 5 ? 'limited' : 'ready';
 
     const handleEditClick = () => {
         if (project) {
@@ -55,18 +74,24 @@ export default function ProjectDetails() {
             await updateProject(project.id, editForm);
             setIsEditing(false);
         } catch {
-            alert('Failed to update project details.');
+            notify({ message: 'Failed to update project details.', variant: 'error' });
         }
     };
 
     const handleDeleteRequirement = async (e: React.MouseEvent, id: string) => {
         e.stopPropagation();
         if (!project) return;
-        if (window.confirm('Are you sure you want to delete this requirement document?')) {
+        const ok = await confirm({
+            title: 'Delete Document',
+            message: 'Are you sure you want to delete this requirement document? This action cannot be undone.',
+            confirmLabel: 'Delete',
+            variant: 'danger',
+        });
+        if (ok) {
             try {
                 await deleteRequirementDoc(id, project.id);
             } catch {
-                alert('Failed to delete requirement document.');
+                notify({ message: 'Failed to delete requirement document.', variant: 'error' });
             }
         }
     };
@@ -168,7 +193,7 @@ export default function ProjectDetails() {
                     return (
                         <button
                             key={tab.key}
-                            onClick={() => setActiveTab(tab.key)}
+                            onClick={() => handleTabChange(tab.key)}
                             className={`pb-3 text-sm font-bold transition-colors relative flex items-center gap-2 whitespace-nowrap ${
                                 active
                                     ? 'text-slate-900 before:absolute before:bottom-0 before:left-0 before:w-full before:h-0.5 before:bg-slate-900'
@@ -193,8 +218,8 @@ export default function ProjectDetails() {
                     <DashboardTab
                         project={project}
                         onNewDraft={() => setIsCreateModalOpen(true)}
-                        onGoToLibrary={() => setActiveTab('library')}
-                        onGoToCollaborators={() => setActiveTab('collaborators')}
+                        onGoToLibrary={() => handleTabChange('library')}
+                        onGoToCollaborators={() => handleTabChange('collaborators')}
                         isEditing={isEditing}
                         editForm={editForm}
                         onEditFormChange={(field, value) => setEditForm(prev => ({ ...prev, [field]: value }))}
@@ -242,24 +267,41 @@ export default function ProjectDetails() {
                         </div>
                         <div className="p-5">
                             <div className="space-y-3">
-                                {TEMPLATES.map((template) => (
-                                    <button
-                                        key={template.id}
-                                        onClick={() => handleCreateDocument(template.id)}
-                                        className="w-full flex items-center gap-4 p-3 rounded border border-slate-200 hover:border-slate-900 hover:bg-slate-50 transition-all text-left group"
-                                    >
-                                        <div className="w-10 h-10 rounded bg-slate-100 text-slate-500 flex items-center justify-center border border-slate-200 group-hover:bg-slate-900 group-hover:text-white transition-colors">
-                                            <LayoutTemplate size={18} />
-                                        </div>
-                                        <div className="flex-1">
-                                            <div className="flex items-center justify-between">
-                                                <h3 className="text-sm font-bold text-slate-900 group-hover:text-black">{template.name}</h3>
-                                                <ChevronRight size={14} className="text-slate-300 group-hover:text-slate-900" />
+                                {TEMPLATES.map((template) => {
+                                    const disabled = template.id === 'SRS' || template.id === 'SDS';
+                                    return (
+                                        <button
+                                            key={template.id}
+                                            onClick={() => !disabled && handleCreateDocument(template.id)}
+                                            disabled={disabled}
+                                            className={`w-full flex items-center gap-4 p-3 rounded border text-left group transition-all ${
+                                                disabled
+                                                    ? 'border-slate-100 bg-slate-50 opacity-50 cursor-not-allowed'
+                                                    : 'border-slate-200 hover:border-slate-900 hover:bg-slate-50'
+                                            }`}
+                                        >
+                                            <div className={`w-10 h-10 rounded flex items-center justify-center border transition-colors ${
+                                                disabled
+                                                    ? 'bg-slate-100 text-slate-300 border-slate-100'
+                                                    : 'bg-slate-100 text-slate-500 border-slate-200 group-hover:bg-slate-900 group-hover:text-white'
+                                            }`}>
+                                                <LayoutTemplate size={18} />
                                             </div>
-                                            <p className="text-xs text-slate-500 mt-0.5">{template.desc}</p>
-                                        </div>
-                                    </button>
-                                ))}
+                                            <div className="flex-1">
+                                                <div className="flex items-center justify-between">
+                                                    <div className="flex items-center gap-2">
+                                                        <h3 className={`text-sm font-bold ${disabled ? 'text-slate-400' : 'text-slate-900 group-hover:text-black'}`}>{template.name}</h3>
+                                                        {disabled && (
+                                                            <span className="text-[10px] font-bold text-slate-400 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded uppercase tracking-wide">Coming Soon</span>
+                                                        )}
+                                                    </div>
+                                                    {!disabled && <ChevronRight size={14} className="text-slate-300 group-hover:text-slate-900" />}
+                                                </div>
+                                                <p className={`text-xs mt-0.5 ${disabled ? 'text-slate-400' : 'text-slate-500'}`}>{template.desc}</p>
+                                            </div>
+                                        </button>
+                                    );
+                                })}
                             </div>
                         </div>
                         <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end">
@@ -292,7 +334,16 @@ export default function ProjectDetails() {
                         </div>
                         <div className="p-5 space-y-3">
                             <button
-                                onClick={() => {
+                                onClick={async () => {
+                                    if (ragReadiness === 'none') {
+                                        const ok = await confirm({
+                                            title: 'No Indexed Content',
+                                            message: 'No files or user stories have been indexed yet. The AI-generated BRS may contain generic placeholder content. Consider uploading and indexing project files first.',
+                                            confirmLabel: 'Generate Anyway',
+                                            variant: 'danger',
+                                        });
+                                        if (!ok) return;
+                                    }
                                     setSelectedTemplate(null);
                                     setIsCreateModalOpen(false);
                                     navigate(`/editor/${projectId}/BRS?autoGenerate=true`);
@@ -304,14 +355,34 @@ export default function ProjectDetails() {
                                 </div>
                                 <div className="flex-1">
                                     <div className="flex items-center gap-2">
-                                        <h3 className="text-sm font-bold text-slate-900">Jana Dokumen Automatik dengan AI</h3>
+                                        <h3 className="text-sm font-bold text-slate-900">Auto-Generate with AI</h3>
                                         <span className="text-[10px] font-bold text-white bg-slate-900 px-1.5 py-0.5 rounded">RECOMMENDED</span>
                                     </div>
                                     <p className="text-xs text-slate-500 mt-1">
-                                        AI akan menganalisis fail projek yang dimuat naik dan menjana semua bahagian BRS secara automatik. Proses ini mengambil masa 2–5 minit.
+                                        AI will analyse your uploaded project files and automatically generate all BRS sections. This process takes about 2–5 minutes.
                                     </p>
                                 </div>
                             </button>
+                            {/* RAG Readiness Indicator */}
+                            <div className={`flex items-center gap-2 px-4 py-2.5 rounded border text-xs ${
+                                ragReadiness === 'none' ? 'bg-rose-50 border-rose-200 text-rose-700' :
+                                ragReadiness === 'limited' ? 'bg-amber-50 border-amber-200 text-amber-700' :
+                                'bg-emerald-50 border-emerald-200 text-emerald-700'
+                            }`}>
+                                <div className={`w-2 h-2 rounded-full shrink-0 ${
+                                    ragReadiness === 'none' ? 'bg-rose-500' :
+                                    ragReadiness === 'limited' ? 'bg-amber-500' :
+                                    'bg-emerald-500'
+                                }`} />
+                                <span className="font-bold">
+                                    {ragReadiness === 'none' ? 'No indexed content' :
+                                     ragReadiness === 'limited' ? 'Limited content' :
+                                     'Ready for generation'}
+                                </span>
+                                <span className="text-[10px] opacity-75 ml-auto">
+                                    {indexedFiles} file{indexedFiles !== 1 ? 's' : ''} + {indexedStories} stor{indexedStories !== 1 ? 'ies' : 'y'} indexed
+                                </span>
+                            </div>
                             <button
                                 onClick={() => {
                                     setSelectedTemplate(null);
@@ -324,9 +395,9 @@ export default function ProjectDetails() {
                                     <FileEdit size={18} />
                                 </div>
                                 <div className="flex-1">
-                                    <h3 className="text-sm font-bold text-slate-900 group-hover:text-black">Mulakan dengan Templat Kosong</h3>
+                                    <h3 className="text-sm font-bold text-slate-900 group-hover:text-black">Start from Blank Template</h3>
                                     <p className="text-xs text-slate-500 mt-1">
-                                        Buka templat BRS kosong dan isi kandungan secara manual atau guna panel AI untuk menjana bahagian tertentu.
+                                        Open a blank BRS template and fill in the content manually, or use the AI panel to generate specific sections.
                                     </p>
                                 </div>
                             </button>
@@ -336,12 +407,15 @@ export default function ProjectDetails() {
                                 onClick={() => setSelectedTemplate(null)}
                                 className="px-4 py-2 text-sm font-bold text-slate-600 hover:text-slate-900"
                             >
-                                Batal
+                                Cancel
                             </button>
                         </div>
                     </div>
                 </div>
             )}
+
+            {dialog}
+            {notificationBanner}
         </div>
     );
 }

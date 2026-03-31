@@ -42,13 +42,28 @@ src/
       VersionHistory.tsx
       VersionViewer.tsx          # Dual-path: docx-preview (OO) or legacy block renderer
       CommentsSidebar.tsx
+    ConfirmDialog.tsx              # Reusable confirm modal (danger/default variants)
+    EmbeddingStatusBadge.tsx      # Unified RAG indexing status badge (pending/processing/processed/failed)
+    ProjectMembers.tsx            # Collaborator management UI (invite, remove, role change)
     Layout.tsx
     PresenceIndicator.tsx
+    project-tabs/
+      DashboardTab.tsx
+      WorkspaceTab.tsx
+      LibraryTab.tsx               # Tabbed container for supporting files, user stories, diagrams
+      LibrarySupportingFiles.tsx   # File upload, embedding, download, delete
+      LibraryUserStories.tsx       # User story template CRUD with auto-indexing
+      LibraryDiagramNotes.tsx      # Diagram note CRUD
+      CollaboratorsTab.tsx
+      PrototypeTab.tsx
   context/
     AuthContext.tsx
     ProjectContext.tsx           # Projects + collaboration (userRole, memberCount, ownerName)
   hooks/
     useProjectMembers.ts         # Invite/remove/update members with role management
+    useUserStories.ts            # User story CRUD + RAG embedding + chunk cleanup on delete
+    useDiagramNotes.ts           # Diagram note CRUD
+    useConfirmDialog.ts          # Promise-based confirm dialog + toast notification hook
   lib/
     onlyoffice/
       documentService.ts         # OO config builder, template registry, storage URL helpers
@@ -191,6 +206,9 @@ supabase secrets set ONLYOFFICE_CALLBACK_SECRET=... SUPABASE_SERVICE_ROLE_KEY=..
 - `CommentsSidebar`: requires `activeSectionIndex: number | null`; no `onClose`
 - `SectionTOC`: accepts `DocHeading[]` (not a Tiptap editor instance)
 - `AutoGenerateProgress`: modal component, receives project/doc IDs and streams progress
+- `useConfirmDialog`: returns `{ dialog, notificationBanner, confirm, notify }` — render `dialog` and `notificationBanner` in JSX
+- `EmbeddingStatusBadge`: accepts `status: string` — unified badge used by both supporting files and user stories
+- `ProjectDetails`: uses URL search param `?tab=` for tab persistence; computes RAG readiness from indexed files + stories
 
 ## Coding Conventions
 - TypeScript strict mode — zero errors required before committing
@@ -199,7 +217,7 @@ supabase secrets set ONLYOFFICE_CALLBACK_SECRET=... SUPABASE_SERVICE_ROLE_KEY=..
 - Supabase client imported from `src/lib/supabase.ts` (singleton)
 - Edge functions in `supabase/functions/<name>/index.ts` (Deno)
 - Shared edge function modules in `supabase/functions/_shared/` (imported across functions)
-- BRS documents use Bahasa Malaysia (Malay); SRS/SDS use English
+- BRS document content uses Bahasa Malaysia (Malay); UI labels and prompts use English
 - Do not auto-commit; do not force-push
 
 ## Server Setup

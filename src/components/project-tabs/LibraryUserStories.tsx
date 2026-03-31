@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import {
-    Plus, X, ChevronDown, ChevronUp, CheckCircle2, AlertCircle,
-    Loader2, Clock, BookOpen, Edit, Trash2, Cpu
+    Plus, X, ChevronDown, ChevronUp, CheckCircle2,
+    Loader2, BookOpen, Edit, Trash2
 } from 'lucide-react';
 import { useUserStories, type UserStory } from '../../hooks/useUserStories';
+import EmbeddingStatusBadge from '../EmbeddingStatusBadge';
+import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 
-const USER_STORY_TEMPLATE = [
+export const USER_STORY_TEMPLATE = [
     {
         id: 'q1',
         title: 'System Overview',
@@ -72,36 +74,24 @@ function completionPercent(responses: Record<string, string>): number {
     return Math.round((filled / USER_STORY_TEMPLATE.length) * 100);
 }
 
-function EmbeddingBadge({ status }: { status: string }) {
-    if (status === 'processed') return (
-        <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">
-            <CheckCircle2 size={10} /> Indexed
-        </span>
-    );
-    if (status === 'processing') return (
-        <span className="flex items-center gap-1 text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">
-            <Loader2 size={10} className="animate-spin" /> Processing
-        </span>
-    );
-    if (status === 'failed') return (
-        <span className="flex items-center gap-1 text-[10px] font-bold text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded">
-            <AlertCircle size={10} /> Failed
-        </span>
-    );
-    return (
-        <span className="flex items-center gap-1 text-[10px] font-bold text-slate-400 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded">
-            <Clock size={10} /> Not Indexed
-        </span>
-    );
+function getPreviewLines(responses: Record<string, string>): { title: string; text: string }[] {
+    const lines: { title: string; text: string }[] = [];
+    for (const section of USER_STORY_TEMPLATE) {
+        const answer = responses[section.id]?.trim();
+        if (answer) {
+            lines.push({ title: section.title, text: answer.replace(/\s+/g, ' ') });
+        }
+    }
+    return lines;
 }
 
-interface SlideOverProps {
+interface StoryModalProps {
     story: Partial<UserStory> | null;
     onClose: () => void;
     onSave: (title: string, responses: Record<string, string>) => Promise<void>;
 }
 
-function SlideOver({ story, onClose, onSave }: SlideOverProps) {
+function StoryModal({ story, onClose, onSave }: StoryModalProps) {
     const [title, setTitle] = useState(story?.title || 'User Stories');
     const [responses, setResponses] = useState<Record<string, string>>(story?.responses || {});
     const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>(
@@ -126,12 +116,8 @@ function SlideOver({ story, onClose, onSave }: SlideOverProps) {
     const filled = USER_STORY_TEMPLATE.filter(q => responses[q.id]?.trim().length > 0).length;
 
     return (
-        <>
-            {/* Overlay */}
-            <div className="fixed inset-0 bg-slate-900/40 z-40" onClick={onClose} />
-
-            {/* Panel */}
-            <div className="fixed inset-y-0 right-0 w-full max-w-xl bg-white z-50 flex flex-col shadow-2xl border-l border-slate-200 animate-in slide-in-from-right duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+            <div className="bg-white rounded-lg w-full max-w-2xl shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in duration-200 flex flex-col max-h-[85vh]">
                 {/* Header */}
                 <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 bg-slate-50 shrink-0">
                     <div>
@@ -217,7 +203,7 @@ function SlideOver({ story, onClose, onSave }: SlideOverProps) {
                     </button>
                 </div>
             </div>
-        </>
+        </div>
     );
 }
 
@@ -228,29 +214,46 @@ interface Props {
 export default function LibraryUserStories({ projectId }: Props) {
     const { stories, loading, createStory, updateStory, deleteStory, embedStory } = useUserStories(projectId);
     const [panelStory, setPanelStory] = useState<Partial<UserStory> | null>(null);
-    const [isPanelOpen, setIsPanelOpen] = useState(false);
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const { dialog, notificationBanner, confirm, notify } = useConfirmDialog();
 
     const openNew = () => {
         setPanelStory(null);
-        setIsPanelOpen(true);
+        setIsModalOpen(true);
     };
 
     const openEdit = (story: UserStory) => {
         setPanelStory(story);
-        setIsPanelOpen(true);
+        setIsModalOpen(true);
     };
 
     const handleSave = async (title: string, responses: Record<string, string>) => {
+        let story: UserStory | null = null;
         if (panelStory?.id) {
             await updateStory(panelStory.id, { title, responses });
+            story = { ...(panelStory as UserStory), title, responses };
         } else {
-            await createStory(title, responses);
+            story = await createStory(title, responses);
+        }
+        // Auto-index after save
+        if (story) {
+            try {
+                await embedStory(story);
+            } catch {
+                // Silent — badge will show failed state
+            }
         }
     };
 
     const handleDelete = async (e: React.MouseEvent, id: string) => {
         e.stopPropagation();
-        if (!window.confirm('Delete this user story?')) return;
+        const ok = await confirm({
+            title: 'Delete User Story',
+            message: 'This will permanently delete this user story and remove it from the AI knowledge base.',
+            confirmLabel: 'Delete',
+            variant: 'danger',
+        });
+        if (!ok) return;
         await deleteStory(id);
     };
 
@@ -259,7 +262,7 @@ export default function LibraryUserStories({ projectId }: Props) {
         try {
             await embedStory(story);
         } catch {
-            alert('Failed to index user story.');
+            notify({ message: 'Failed to index user story.', variant: 'error' });
         }
     };
 
@@ -299,65 +302,82 @@ export default function LibraryUserStories({ projectId }: Props) {
                 <div className="space-y-2">
                     {stories.map(story => {
                         const pct = completionPercent(story.responses);
+                        const preview = getPreviewLines(story.responses);
                         return (
                             <div
                                 key={story.id}
-                                className="bg-white border border-slate-200 rounded p-3 flex items-center gap-3 hover:border-slate-300 transition-colors group"
+                                className="bg-white border border-slate-200 rounded p-3 hover:border-slate-300 transition-colors group overflow-hidden"
                             >
-                                <div className="w-9 h-9 rounded bg-slate-50 border border-slate-200 flex items-center justify-center shrink-0 text-slate-400">
-                                    <BookOpen size={16} />
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-2">
-                                        <p className="text-xs font-bold text-slate-900 truncate">{story.title}</p>
-                                        <EmbeddingBadge status={story.embeddingStatus} />
+                                <div className="flex items-center gap-3">
+                                    <div className="w-9 h-9 rounded bg-slate-50 border border-slate-200 flex items-center justify-center shrink-0 text-slate-400">
+                                        <BookOpen size={16} />
                                     </div>
-                                    <div className="flex items-center gap-3 mt-1">
-                                        <div className="flex-1 h-1 bg-slate-100 rounded overflow-hidden max-w-[80px]">
-                                            <div className="h-full bg-slate-400 rounded transition-all" style={{ width: `${pct}%` }} />
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-2">
+                                            <p className="text-xs font-bold text-slate-900 truncate">{story.title}</p>
+                                            <EmbeddingStatusBadge status={story.embeddingStatus} />
                                         </div>
-                                        <span className="text-[10px] text-slate-400 font-medium">{pct}% complete</span>
-                                        <span className="text-[10px] text-slate-400">{new Date(story.updatedAt).toLocaleDateString()}</span>
+                                        <div className="flex items-center gap-3 mt-1">
+                                            <div className="flex-1 h-1 bg-slate-100 rounded overflow-hidden max-w-[80px]">
+                                                <div className="h-full bg-slate-400 rounded transition-all" style={{ width: `${pct}%` }} />
+                                            </div>
+                                            <span className="text-[10px] text-slate-400 font-medium">{pct}% complete</span>
+                                            <span className="text-[10px] text-slate-400">{new Date(story.updatedAt).toLocaleDateString()}</span>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        {story.embeddingStatus !== 'processed' && story.embeddingStatus !== 'processing' && (
+                                            <button
+                                                onClick={e => handleEmbed(e, story)}
+                                                className="p-1.5 text-slate-400 hover:text-purple-600 border border-slate-200 rounded hover:border-purple-200 hover:bg-purple-50 transition-colors"
+                                                title="Index to AI"
+                                            >
+                                                <Loader2 size={13} />
+                                            </button>
+                                        )}
+                                        <button
+                                            onClick={() => openEdit(story)}
+                                            className="p-1.5 text-slate-400 hover:text-slate-900 border border-slate-200 rounded hover:border-slate-300 transition-colors"
+                                            title="Edit"
+                                        >
+                                            <Edit size={13} />
+                                        </button>
+                                        <button
+                                            onClick={e => handleDelete(e, story.id)}
+                                            className="p-1.5 text-slate-400 hover:text-red-600 border border-slate-200 rounded hover:border-red-200 hover:bg-red-50 transition-colors"
+                                            title="Delete"
+                                        >
+                                            <Trash2 size={13} />
+                                        </button>
                                     </div>
                                 </div>
-                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    {story.embeddingStatus !== 'processed' && story.embeddingStatus !== 'processing' && (
-                                        <button
-                                            onClick={e => handleEmbed(e, story)}
-                                            className="p-1.5 text-slate-400 hover:text-purple-600 border border-slate-200 rounded hover:border-purple-200 hover:bg-purple-50 transition-colors"
-                                            title="Index to AI"
-                                        >
-                                            <Cpu size={13} />
-                                        </button>
-                                    )}
-                                    <button
-                                        onClick={() => openEdit(story)}
-                                        className="p-1.5 text-slate-400 hover:text-slate-900 border border-slate-200 rounded hover:border-slate-300 transition-colors"
-                                        title="Edit"
-                                    >
-                                        <Edit size={13} />
-                                    </button>
-                                    <button
-                                        onClick={e => handleDelete(e, story.id)}
-                                        className="p-1.5 text-slate-400 hover:text-red-600 border border-slate-200 rounded hover:border-red-200 hover:bg-red-50 transition-colors"
-                                        title="Delete"
-                                    >
-                                        <Trash2 size={13} />
-                                    </button>
-                                </div>
+                                {/* Brief preview of answers */}
+                                {preview.length > 0 && (
+                                    <div className="mt-2 ml-12 space-y-0.5">
+                                        {preview.map((line, i) => (
+                                            <p key={i} className="text-[11px] text-slate-500 truncate">
+                                                <span className="font-bold text-slate-400">{line.title}:</span>{' '}
+                                                {line.text}
+                                            </p>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
                         );
                     })}
                 </div>
             )}
 
-            {isPanelOpen && (
-                <SlideOver
+            {isModalOpen && (
+                <StoryModal
                     story={panelStory}
-                    onClose={() => setIsPanelOpen(false)}
+                    onClose={() => setIsModalOpen(false)}
                     onSave={handleSave}
                 />
             )}
+
+            {dialog}
+            {notificationBanner}
         </div>
     );
 }

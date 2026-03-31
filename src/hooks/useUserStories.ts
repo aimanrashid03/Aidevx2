@@ -103,6 +103,13 @@ export function useUserStories(projectId: string) {
 
     const deleteStory = async (id: string): Promise<void> => {
         try {
+            // Clean up RAG chunks (matches pattern from embedStory: `user-story/${id}`)
+            await supabase
+                .from('document_chunks')
+                .delete()
+                .eq('project_id', projectId)
+                .eq('document_path', `user-story/${id}`);
+
             const { error } = await supabase
                 .from('user_stories')
                 .delete()
@@ -122,15 +129,33 @@ export function useUserStories(projectId: string) {
         await supabase.from('user_stories').update({ embedding_status: 'processing' }).eq('id', story.id);
 
         try {
-            // Format Q&A text for embedding
+            // Section title lookup for meaningful RAG context
+            const SECTION_TITLES: Record<string, { title: string; prompts: string[] }> = {
+                q1: { title: 'System Overview', prompts: ['What is the system name and purpose?', 'What are the expected outcomes?'] },
+                q2: { title: 'Users & Roles', prompts: ['Who will be using this system?', 'What roles/responsibilities?', 'Current issues?', 'Impact?'] },
+                q3: { title: 'Modules & Features', prompts: ['Main modules?', 'Purpose of each?', 'Which users use each?'] },
+                q4: { title: 'Current Workflow (AS-IS)', prompts: ['Current workflow?', 'Where do delays/errors occur?'] },
+                q5: { title: 'Proposed Workflow (TO-BE)', prompts: ['How should it work after?', 'Steps automated/improved?'] },
+                q6: { title: 'User Actions & Permissions', prompts: ['Actions per user?', 'Approval/verification needed?'] },
+                q7: { title: 'Validations', prompts: ['Required validations?', 'Mandatory fields?'] },
+            };
+
+            // Format with section headings and question context for better RAG retrieval
             const content = Object.entries(story.responses)
-                .map(([key, value]) => `${key.toUpperCase()}: ${value}`)
+                .filter(([, value]) => value?.trim())
+                .map(([key, value]) => {
+                    const section = SECTION_TITLES[key];
+                    if (section) {
+                        return `## ${section.title}\n${section.prompts.join(' ')}\n${value.trim()}`;
+                    }
+                    return `## ${key}\n${value.trim()}`;
+                })
                 .join('\n\n');
 
             const documentPath = `user-story/${story.id}`;
 
             const { error } = await supabase.functions.invoke('embed_document', {
-                body: { projectId, documentPath, content },
+                body: { projectId, documentPath, content, extraMetadata: { fileName: story.title } },
             });
 
             if (error) throw error;
