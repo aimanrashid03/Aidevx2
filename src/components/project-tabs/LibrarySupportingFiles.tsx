@@ -177,14 +177,14 @@ export default function LibrarySupportingFiles({ project, onFilesChanged }: Prop
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                     <h3 className="text-sm font-bold text-slate-900">Supporting Files</h3>
-                    <span className="bg-purple-100 text-purple-700 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border border-purple-200">AI Indexed</span>
+                    <span className="rounded-full bg-[var(--accent-100)] text-[var(--accent-700)] px-2.5 py-0.5 text-[10px] font-medium border border-[var(--accent-200)]">AI Indexed</span>
                 </div>
                 <p className="text-[11px] text-slate-500">PDF, DOCX, TXT — used by AI for context</p>
             </div>
 
             {/* Fixed Upload Zone */}
             <div
-                className={`h-36 border-2 border-dashed rounded flex flex-col items-center justify-center text-center transition-colors ${isDragging ? 'border-purple-400 bg-purple-50' : 'border-slate-300 bg-slate-50 hover:bg-slate-100 hover:border-slate-400'}`}
+                className={`h-36 border-2 border-dashed rounded-lg flex flex-col items-center justify-center text-center transition-colors ${isDragging ? 'border-[var(--accent-500)] bg-[var(--accent-50)]' : 'border-slate-300 bg-slate-50 hover:bg-[var(--accent-50)] hover:border-[var(--accent-400)]'}`}
                 onDragOver={handleDragOver}
                 onDragLeave={handleDragLeave}
                 onDrop={handleDrop}
@@ -223,7 +223,7 @@ export default function LibrarySupportingFiles({ project, onFilesChanged }: Prop
                             <div key={i} className="flex items-center gap-2 px-3 py-2">
                                 {item.state === 'queued' && <Clock size={12} className="text-slate-400 shrink-0" />}
                                 {item.state === 'uploading' && <Loader2 size={12} className="text-amber-500 animate-spin shrink-0" />}
-                                {item.state === 'embedding' && <Loader2 size={12} className="text-purple-500 animate-spin shrink-0" />}
+                                {item.state === 'embedding' && <Loader2 size={12} className="text-[var(--accent-500)] animate-spin shrink-0" />}
                                 {item.state === 'done' && <CheckCircle2 size={12} className="text-emerald-500 shrink-0" />}
                                 {item.state === 'failed' && <AlertCircle size={12} className="text-red-500 shrink-0" />}
                                 <span className="text-xs text-slate-700 truncate flex-1">{item.name}</span>
@@ -243,7 +243,7 @@ export default function LibrarySupportingFiles({ project, onFilesChanged }: Prop
             {/* File List */}
             {project.documents && project.documents.length > 0 ? (
                 <div className="bg-white rounded border border-slate-200 overflow-hidden shadow-sm">
-                    <div className="grid grid-cols-12 gap-2 p-2 bg-slate-50 border-b border-slate-200 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                    <div className="grid grid-cols-12 gap-2 p-2 bg-slate-50 border-b border-slate-200 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
                         <div className="col-span-5 pl-1">File</div>
                         <div className="col-span-4">AI Status</div>
                         <div className="col-span-3 text-right pr-1">Actions</div>
@@ -285,7 +285,7 @@ export default function LibrarySupportingFiles({ project, onFilesChanged }: Prop
                                     </button>
                                     <button
                                         onClick={(e) => handleDelete(e, doc.path)}
-                                        className="p-1 text-slate-400 hover:text-red-600 bg-white border border-slate-200 rounded hover:border-red-200 hover:bg-red-50 transition-colors"
+                                        className="p-1 text-slate-400 hover:text-rose-600 bg-white border border-slate-200 rounded hover:border-rose-200 hover:bg-rose-50 transition-colors"
                                         title="Delete File"
                                     >
                                         <Trash2 size={13} />

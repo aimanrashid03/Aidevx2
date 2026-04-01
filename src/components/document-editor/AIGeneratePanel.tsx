@@ -633,14 +633,14 @@ export default function AIGeneratePanel({
 
     const tabCls = (t: typeof tab) =>
         `flex-1 flex items-center justify-center gap-1 py-2 text-[11px] font-medium border-b-2 transition-colors cursor-pointer select-none ${tab === t
-            ? 'border-violet-500 text-violet-600'
+            ? 'border-[var(--accent-500)] text-[var(--accent-600)]'
             : 'border-transparent text-slate-400 hover:text-slate-600'
         }`
 
     const contentTypeCls = (t: ContentType) =>
         `flex items-center gap-1 px-2.5 py-1 rounded text-[11px] font-medium transition-colors cursor-pointer border ${contentType === t
-            ? 'bg-violet-600 text-white border-violet-600'
-            : 'bg-white text-slate-500 border-slate-200 hover:border-violet-300 hover:text-violet-600'
+            ? 'bg-[var(--accent-600)] text-white border-[var(--accent-600)]'
+            : 'bg-white text-slate-500 border-slate-200 hover:border-[var(--accent-300)] hover:text-[var(--accent-600)]'
         }`
 
     // Render mermaid preview live when generated HTML contains mermaid code
@@ -652,7 +652,7 @@ export default function AIGeneratePanel({
         <aside className="w-96 bg-white border-l border-slate-200 flex flex-col shrink-0 z-10">
             {/* Header */}
             <div className="flex items-center gap-1.5 px-3 py-2.5 border-b border-slate-200 shrink-0 bg-slate-900">
-                <Sparkles size={13} className="text-violet-400" />
+                <Sparkles size={13} className="text-[var(--accent-ring)]" />
                 <span className="text-[12px] font-semibold text-white">AI Assistant</span>
                 {docType && (
                     <span className="ml-auto text-[10px] text-slate-400 font-mono">{docType}</span>
@@ -693,7 +693,7 @@ export default function AIGeneratePanel({
                                             if (ctx.tableSchemas.length > 0) setTableColumns(ctx.tableSchemas[0].columns)
                                         }
                                     }}
-                                    className="w-full text-[12px] text-slate-700 bg-slate-50 border border-slate-200 rounded px-2 py-1.5 outline-none focus:border-violet-300 focus:ring-1 focus:ring-violet-100"
+                                    className="w-full text-[12px] text-slate-700 bg-slate-50 border border-slate-200 rounded px-2 py-1.5 outline-none focus:border-[var(--accent-ring)] focus:ring-1 focus:ring-[var(--accent-100)]"
                                 >
                                     <option value="">— Select a section —</option>
                                     {tocSections.map(s => (
@@ -709,7 +709,7 @@ export default function AIGeneratePanel({
                                     onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); generate() } }}
                                     placeholder="e.g. System Requirements, Risk Assessment…"
                                     rows={2}
-                                    className="w-full resize-none text-[12px] text-slate-700 bg-slate-50 border border-slate-200 rounded px-2 py-1.5 outline-none focus:border-violet-300 focus:ring-1 focus:ring-violet-100"
+                                    className="w-full resize-none text-[12px] text-slate-700 bg-slate-50 border border-slate-200 rounded px-2 py-1.5 outline-none focus:border-[var(--accent-ring)] focus:ring-1 focus:ring-[var(--accent-100)]"
                                 />
                             )}
                         </div>
@@ -741,13 +741,13 @@ export default function AIGeneratePanel({
                                 <div className="flex gap-1">
                                     <button
                                         onClick={() => setDiagramFormat('mermaid')}
-                                        className={`flex-1 py-1 text-[11px] rounded border transition-colors ${diagramFormat === 'mermaid' ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-slate-500 border-slate-200 hover:border-violet-300'}`}
+                                        className={`flex-1 py-1 text-[11px] rounded border transition-colors ${diagramFormat === 'mermaid' ? 'bg-[var(--accent-600)] text-white border-[var(--accent-600)]' : 'bg-white text-slate-500 border-slate-200 hover:border-[var(--accent-300)]'}`}
                                     >
                                         Mermaid
                                     </button>
                                     <button
                                         onClick={() => setDiagramFormat('drawio')}
-                                        className={`flex-1 py-1 text-[11px] rounded border transition-colors ${diagramFormat === 'drawio' ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-slate-500 border-slate-200 hover:border-violet-300'}`}
+                                        className={`flex-1 py-1 text-[11px] rounded border transition-colors ${diagramFormat === 'drawio' ? 'bg-[var(--accent-600)] text-white border-[var(--accent-600)]' : 'bg-white text-slate-500 border-slate-200 hover:border-[var(--accent-300)]'}`}
                                     >
                                         Draw.io
                                     </button>
@@ -764,7 +764,7 @@ export default function AIGeneratePanel({
                                     </label>
                                     <button
                                         onClick={addColumn}
-                                        className="text-[10px] text-violet-600 hover:text-violet-800"
+                                        className="text-[10px] text-[var(--accent-600)] hover:text-[var(--accent-700)]"
                                     >
                                         + Add
                                     </button>
@@ -775,7 +775,7 @@ export default function AIGeneratePanel({
                                             <input
                                                 value={col}
                                                 onChange={e => updateColumn(i, e.target.value)}
-                                                className="flex-1 text-[11px] bg-slate-50 border border-slate-200 rounded px-2 py-0.5 outline-none focus:border-violet-300"
+                                                className="flex-1 text-[11px] bg-slate-50 border border-slate-200 rounded px-2 py-0.5 outline-none focus:border-[var(--accent-ring)]"
                                             />
                                             <button
                                                 onClick={() => removeColumn(i)}
@@ -794,10 +794,10 @@ export default function AIGeneratePanel({
 
                         {/* Template guidance card */}
                         {sectionContext && sectionContext.instructions.length > 0 && (
-                            <div className="rounded border border-violet-100 bg-violet-50 overflow-hidden">
+                            <div className="rounded border border-[var(--accent-100)] bg-[var(--accent-50)] overflow-hidden">
                                 <button
                                     onClick={() => setShowGuidance(v => !v)}
-                                    className="flex items-center gap-1.5 w-full px-2.5 py-1.5 text-[10px] font-semibold text-violet-700 hover:bg-violet-100 transition-colors"
+                                    className="flex items-center gap-1.5 w-full px-2.5 py-1.5 text-[10px] font-semibold text-[var(--accent-700)] hover:bg-[var(--accent-100)] transition-colors"
                                 >
                                     <Info size={10} />
                                     <BookOpen size={10} />
@@ -807,10 +807,10 @@ export default function AIGeneratePanel({
                                 {showGuidance && (
                                     <div className="px-2.5 pb-2 flex flex-col gap-1">
                                         {sectionContext.instructions.map((inst, i) => (
-                                            <p key={i} className="text-[11px] text-violet-800 leading-relaxed">{inst}</p>
+                                            <p key={i} className="text-[11px] text-[var(--accent-700)] leading-relaxed">{inst}</p>
                                         ))}
                                         {sectionContext.parentSection && (
-                                            <p className="text-[10px] text-violet-500 mt-0.5">
+                                            <p className="text-[10px] text-[var(--accent-500)] mt-0.5">
                                                 Parent: {sectionContext.parentSection}
                                             </p>
                                         )}
@@ -835,7 +835,7 @@ export default function AIGeneratePanel({
                                             : 'e.g. Focus on scalability, use bullet points…'
                                 }
                                 rows={2}
-                                className="w-full resize-none text-[12px] text-slate-700 bg-slate-50 border border-slate-200 rounded px-2 py-1.5 outline-none focus:border-violet-300 focus:ring-1 focus:ring-violet-100"
+                                className="w-full resize-none text-[12px] text-slate-700 bg-slate-50 border border-slate-200 rounded px-2 py-1.5 outline-none focus:border-[var(--accent-ring)] focus:ring-1 focus:ring-[var(--accent-100)]"
                             />
                         </div>
 
@@ -849,7 +849,7 @@ export default function AIGeneratePanel({
                                     {docsExpanded ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
                                     Context Documents
                                     {selectedDocPaths.size > 0 && (
-                                        <span className="ml-auto normal-case font-normal text-violet-600">
+                                        <span className="ml-auto normal-case font-normal text-[var(--accent-600)]">
                                             {selectedDocPaths.size} selected
                                         </span>
                                     )}
@@ -862,7 +862,7 @@ export default function AIGeneratePanel({
                                                     type="checkbox"
                                                     checked={selectedDocPaths.has(doc.id)}
                                                     onChange={() => toggleDoc(doc.id)}
-                                                    className="accent-violet-600 shrink-0"
+                                                    className="accent-[var(--accent-600)] shrink-0"
                                                 />
                                                 <FileText size={10} className="text-slate-400 shrink-0" />
                                                 <span className="text-[11px] text-slate-600 truncate group-hover:text-slate-800" title={doc.file_name}>
@@ -905,7 +905,7 @@ export default function AIGeneratePanel({
                             <button
                                 onClick={generate}
                                 disabled={isGenerating || batchMode || !sectionTitle.trim()}
-                                className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded bg-violet-600 text-white text-[11px] font-medium hover:bg-violet-700 disabled:opacity-50 transition-colors"
+                                className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded bg-[var(--accent-600)] text-white text-[11px] font-medium hover:bg-[var(--accent-700)] disabled:opacity-50 transition-colors"
                             >
                                 {isGenerating ? <Loader2 size={11} className="animate-spin" /> : <Zap size={11} />}
                                 {isGenerating ? (genStatus || 'Generating…') : 'Generate'}
@@ -913,7 +913,7 @@ export default function AIGeneratePanel({
                             {isGenerating && (
                                 <button
                                     onClick={() => genAbortRef.current?.abort()}
-                                    className="flex items-center justify-center px-2.5 py-1.5 rounded border border-red-200 text-red-500 hover:bg-red-50 text-[11px] font-medium transition-colors"
+                                    className="flex items-center justify-center px-2.5 py-1.5 rounded border border-rose-200 text-rose-500 hover:bg-rose-50 text-[11px] font-medium transition-colors"
                                     title="Stop generation"
                                 >
                                     <Square size={10} />
@@ -928,7 +928,7 @@ export default function AIGeneratePanel({
                                     <div className="flex items-center gap-2">
                                         <div className="flex-1 bg-slate-200 rounded-full h-1.5 overflow-hidden">
                                             <div
-                                                className="h-full bg-violet-500 transition-all duration-300"
+                                                className="h-full bg-[var(--accent-500)] transition-all duration-300"
                                                 style={{ width: `${batchProgress.total > 0 ? (batchProgress.current / batchProgress.total) * 100 : 0}%` }}
                                             />
                                         </div>
@@ -936,7 +936,7 @@ export default function AIGeneratePanel({
                                     </div>
                                     <button
                                         onClick={cancelBatch}
-                                        className="flex items-center justify-center gap-1 py-1 rounded border border-red-200 text-red-500 hover:bg-red-50 text-[11px] transition-colors"
+                                        className="flex items-center justify-center gap-1 py-1 rounded border border-rose-200 text-rose-500 hover:bg-rose-50 text-[11px] transition-colors"
                                     >
                                         <Square size={10} /> Stop Batch
                                     </button>
@@ -944,7 +944,7 @@ export default function AIGeneratePanel({
                             ) : (
                                 <button
                                     onClick={startBatch}
-                                    className="flex items-center justify-center gap-1.5 py-1.5 rounded border border-violet-200 text-violet-600 hover:bg-violet-50 text-[11px] font-medium transition-colors"
+                                    className="flex items-center justify-center gap-1.5 py-1.5 rounded border border-[var(--accent-200)] text-[var(--accent-600)] hover:bg-[var(--accent-50)] text-[11px] font-medium transition-colors"
                                 >
                                     <Sparkles size={10} /> Generate All Sections ({tocSections.length})
                                 </button>
@@ -963,7 +963,7 @@ export default function AIGeneratePanel({
                                     {onInsert && (
                                         <button
                                             onClick={insertAllBatch}
-                                            className="text-[10px] font-medium text-violet-600 hover:text-violet-800"
+                                            className="text-[10px] font-medium text-[var(--accent-600)] hover:text-[var(--accent-700)]"
                                         >
                                             Insert All
                                         </button>
@@ -1071,7 +1071,7 @@ export default function AIGeneratePanel({
                                 </div>
                                 <div className="flex flex-wrap gap-1">
                                     {genSources.map(src => (
-                                        <span key={src} className="inline-flex items-center gap-1 text-[10px] bg-violet-50 text-violet-700 border border-violet-200 rounded px-1.5 py-0.5" title={src}>
+                                        <span key={src} className="inline-flex items-center gap-1 text-[10px] bg-[var(--accent-50)] text-[var(--accent-700)] border border-[var(--accent-200)] rounded px-1.5 py-0.5" title={src}>
                                             <FileText size={9} />
                                             <span className="max-w-[160px] truncate">{getSourceDisplayName(src)}</span>
                                         </span>
@@ -1103,7 +1103,7 @@ export default function AIGeneratePanel({
                                 placeholder="e.g. Make the language more formal, add two more rows…"
                                 rows={2}
                                 autoFocus
-                                className="w-full resize-none text-[12px] text-slate-700 bg-slate-50 border border-slate-200 rounded px-2 py-1.5 outline-none focus:border-violet-300 focus:ring-1 focus:ring-violet-100"
+                                className="w-full resize-none text-[12px] text-slate-700 bg-slate-50 border border-slate-200 rounded px-2 py-1.5 outline-none focus:border-[var(--accent-ring)] focus:ring-1 focus:ring-[var(--accent-100)]"
                             />
                             <div className="flex gap-1.5">
                                 <button
@@ -1115,7 +1115,7 @@ export default function AIGeneratePanel({
                                 <button
                                     onClick={refine}
                                     disabled={!refineFeedback.trim() || isGenerating}
-                                    className="flex-1 flex items-center justify-center gap-1 text-[11px] py-1 rounded bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50 transition-colors"
+                                    className="flex-1 flex items-center justify-center gap-1 text-[11px] py-1 rounded bg-[var(--accent-600)] text-white hover:bg-[var(--accent-700)] disabled:opacity-50 transition-colors"
                                 >
                                     <Send size={10} /> Send
                                 </button>
@@ -1140,7 +1140,7 @@ export default function AIGeneratePanel({
                             ) : (
                                 <button
                                     onClick={() => setShowRefineInput(v => !v)}
-                                    className={`flex items-center justify-center gap-1 px-2.5 text-[11px] py-1.5 rounded border transition-colors ${showRefineInput ? 'border-violet-400 text-violet-600 bg-violet-50' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                                    className={`flex items-center justify-center gap-1 px-2.5 text-[11px] py-1.5 rounded border transition-colors ${showRefineInput ? 'border-[var(--accent-400)] text-[var(--accent-600)] bg-[var(--accent-50)]' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}
                                     title={`Refine with feedback (${refineCount}/5)`}
                                 >
                                     <Sparkles size={10} />
@@ -1160,7 +1160,7 @@ export default function AIGeneratePanel({
                             <button
                                 onClick={handleInsert}
                                 disabled={!generatedHtml || isGenerating || isProcessingDiagram}
-                                className="flex items-center justify-center gap-1 px-3 text-[11px] py-1.5 rounded bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50 transition-colors"
+                                className="flex items-center justify-center gap-1 px-3 text-[11px] py-1.5 rounded bg-[var(--accent-600)] text-white hover:bg-[var(--accent-700)] disabled:opacity-50 transition-colors"
                                 title="Insert at cursor in document"
                             >
                                 {isProcessingDiagram
@@ -1186,7 +1186,7 @@ export default function AIGeneratePanel({
                             <div key={i} className={`flex flex-col gap-1 max-w-[92%] ${msg.role === 'user' ? 'self-end items-end' : 'self-start items-start'}`}>
                                 <div
                                     className={`text-[12px] leading-relaxed rounded-lg px-3 py-2 ${msg.role === 'user'
-                                        ? 'bg-violet-600 text-white rounded-br-sm'
+                                        ? 'bg-[var(--accent-600)] text-white rounded-br-sm'
                                         : 'bg-slate-100 text-slate-700 rounded-bl-sm prose prose-sm max-w-none [&_h3]:text-[12px] [&_h3]:font-semibold [&_p]:mb-1 [&_ul]:pl-4 [&_li]:mb-0.5 [&_table]:text-[11px] [&_td]:border [&_td]:border-slate-200 [&_td]:px-1 [&_th]:border [&_th]:border-slate-300 [&_th]:px-1'
                                     }`}
                                     {...(msg.role === 'assistant'
@@ -1197,7 +1197,7 @@ export default function AIGeneratePanel({
                                 {msg.role === 'assistant' && msg.content && onInsert && (
                                     <button
                                         onClick={() => onInsert(sanitizeHtml(msg.content))}
-                                        className="flex items-center gap-1 text-[10px] text-violet-600 hover:text-violet-800 transition-colors"
+                                        className="flex items-center gap-1 text-[10px] text-[var(--accent-600)] hover:text-[var(--accent-700)] transition-colors"
                                         title="Insert into document"
                                     >
                                         <CornerDownLeft size={10} /> Insert
@@ -1224,7 +1224,7 @@ export default function AIGeneratePanel({
                                 }}
                                 placeholder="Ask AI anything…"
                                 rows={1}
-                                className="flex-1 resize-none text-[12px] text-slate-700 bg-slate-50 border border-slate-200 rounded px-2 py-1.5 outline-none focus:border-violet-300 focus:ring-1 focus:ring-violet-100 min-h-[32px] max-h-[80px]"
+                                className="flex-1 resize-none text-[12px] text-slate-700 bg-slate-50 border border-slate-200 rounded px-2 py-1.5 outline-none focus:border-[var(--accent-ring)] focus:ring-1 focus:ring-[var(--accent-100)] min-h-[32px] max-h-[80px]"
                             />
                             <div className="flex gap-1 shrink-0">
                                 <button onClick={clearChat} className="p-1.5 rounded text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors" title="Clear chat">
@@ -1233,7 +1233,7 @@ export default function AIGeneratePanel({
                                 <button
                                     onClick={sendChat}
                                     disabled={!chatInput.trim() || isChatting}
-                                    className="p-1.5 rounded bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50 transition-colors"
+                                    className="p-1.5 rounded bg-[var(--accent-600)] text-white hover:bg-[var(--accent-700)] disabled:opacity-50 transition-colors"
                                 >
                                     <Send size={13} />
                                 </button>

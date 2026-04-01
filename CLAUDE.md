@@ -45,7 +45,7 @@ src/
     ConfirmDialog.tsx              # Reusable confirm modal (danger/default variants)
     EmbeddingStatusBadge.tsx      # Unified RAG indexing status badge (pending/processing/processed/failed)
     ProjectMembers.tsx            # Collaborator management UI (invite, remove, role change)
-    Layout.tsx
+    Layout.tsx                       # Sticky top header (logo, user avatar, theme picker, logout) — no sidebar
     PresenceIndicator.tsx
     project-tabs/
       DashboardTab.tsx
@@ -209,6 +209,23 @@ supabase secrets set ONLYOFFICE_CALLBACK_SECRET=... SUPABASE_SERVICE_ROLE_KEY=..
 - `useConfirmDialog`: returns `{ dialog, notificationBanner, confirm, notify }` — render `dialog` and `notificationBanner` in JSX
 - `EmbeddingStatusBadge`: accepts `status: string` — unified badge used by both supporting files and user stories
 - `ProjectDetails`: uses URL search param `?tab=` for tab persistence; computes RAG readiness from indexed files + stories
+
+## UI Design Reference
+The UI is being redesigned to closely mirror **CORRAD** (https://github.com/mfauzzury/corrad-laravel) — a Vue 3 + Laravel admin dashboard with a modern, gradient-forward aesthetic. Key design decisions to stay consistent with CORRAD:
+- Sticky top header (40px height) + collapsible sidebar for navigation
+- Six preset accent themes (violet/purple, blue, green, red, slate/black, grey)
+- Neutral base (`bg-slate-50`, `text-slate-900`) with accent-driven emphasis
+- Gradient text for page titles (`.page-title` utility class)
+- All accent colours driven by CSS variables — never hardcoded Tailwind colour classes
+
+## Theme System
+- CSS variable-based accent theming defined in `src/index.css`
+- Variables: `--accent-50` through `--accent-700`, `--accent-ring`
+- Default theme: **violet**; options: violet, blue, green, red, slate, grey
+- Applied via `data-theme-color` attribute on `document.documentElement` (e.g. `data-theme-color="blue"`)
+- `useTheme()` hook in `Layout.tsx` reads/writes `localStorage('themeColor')` and syncs the attribute
+- `.page-title` utility class in `index.css`: gradient text using accent CSS vars
+- **All UI accent colors must use `var(--accent-*)` CSS variables** — never hardcode `purple-*` or `blue-*` Tailwind classes for brand/accent colours
 
 ## Coding Conventions
 - TypeScript strict mode — zero errors required before committing

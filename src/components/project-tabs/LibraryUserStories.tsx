@@ -132,7 +132,7 @@ function StoryModal({ story, onClose, onSave }: StoryModalProps) {
                 {/* Progress bar */}
                 <div className="h-1 bg-slate-100 shrink-0">
                     <div
-                        className="h-full bg-slate-900 transition-all duration-300"
+                        className="h-full bg-[var(--accent-600)] transition-all duration-300"
                         style={{ width: `${(filled / USER_STORY_TEMPLATE.length) * 100}%` }}
                     />
                 </div>
@@ -143,7 +143,7 @@ function StoryModal({ story, onClose, onSave }: StoryModalProps) {
                         type="text"
                         value={title}
                         onChange={e => setTitle(e.target.value)}
-                        className="w-full text-sm font-bold text-slate-900 border border-slate-200 rounded px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-slate-900"
+                        className="w-full text-sm font-bold text-slate-900 border border-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-slate-200 focus:border-slate-400"
                         placeholder="Entry title..."
                     />
                 </div>
@@ -179,7 +179,7 @@ function StoryModal({ story, onClose, onSave }: StoryModalProps) {
                                     <textarea
                                         value={responses[section.id] || ''}
                                         onChange={e => setResponses(prev => ({ ...prev, [section.id]: e.target.value }))}
-                                        className="w-full h-24 border border-slate-200 rounded p-2 text-xs text-slate-700 resize-none focus:outline-none focus:ring-1 focus:ring-slate-900 mt-1"
+                                        className="w-full h-24 border border-slate-200 rounded-lg p-2 text-xs text-slate-700 resize-none focus:outline-none focus:ring-2 focus:ring-slate-200 focus:border-slate-400 mt-1"
                                         placeholder="Your answer..."
                                     />
                                 </div>
@@ -319,7 +319,7 @@ export default function LibraryUserStories({ projectId }: Props) {
                                         </div>
                                         <div className="flex items-center gap-3 mt-1">
                                             <div className="flex-1 h-1 bg-slate-100 rounded overflow-hidden max-w-[80px]">
-                                                <div className="h-full bg-slate-400 rounded transition-all" style={{ width: `${pct}%` }} />
+                                                <div className="h-full bg-[var(--accent-500)] rounded transition-all" style={{ width: `${pct}%` }} />
                                             </div>
                                             <span className="text-[10px] text-slate-400 font-medium">{pct}% complete</span>
                                             <span className="text-[10px] text-slate-400">{new Date(story.updatedAt).toLocaleDateString()}</span>
@@ -329,7 +329,7 @@ export default function LibraryUserStories({ projectId }: Props) {
                                         {story.embeddingStatus !== 'processed' && story.embeddingStatus !== 'processing' && (
                                             <button
                                                 onClick={e => handleEmbed(e, story)}
-                                                className="p-1.5 text-slate-400 hover:text-purple-600 border border-slate-200 rounded hover:border-purple-200 hover:bg-purple-50 transition-colors"
+                                                className="p-1.5 text-slate-400 hover:text-[var(--accent-600)] border border-slate-200 rounded hover:border-[var(--accent-200)] hover:bg-[var(--accent-50)] transition-colors"
                                                 title="Index to AI"
                                             >
                                                 <Loader2 size={13} />
@@ -344,7 +344,7 @@ export default function LibraryUserStories({ projectId }: Props) {
                                         </button>
                                         <button
                                             onClick={e => handleDelete(e, story.id)}
-                                            className="p-1.5 text-slate-400 hover:text-red-600 border border-slate-200 rounded hover:border-red-200 hover:bg-red-50 transition-colors"
+                                            className="p-1.5 text-slate-400 hover:text-rose-600 border border-slate-200 rounded hover:border-rose-200 hover:bg-rose-50 transition-colors"
                                             title="Delete"
                                         >
                                             <Trash2 size={13} />

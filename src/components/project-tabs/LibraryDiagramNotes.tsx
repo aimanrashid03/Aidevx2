@@ -13,7 +13,7 @@ const TYPE_LABELS: Record<DiagramType, string> = {
 
 const TYPE_COLORS: Record<DiagramType, string> = {
     mermaid: 'text-sky-700 bg-sky-50 border-sky-200',
-    drawio: 'text-violet-700 bg-violet-50 border-violet-200',
+    drawio: 'text-[var(--accent-700)] bg-[var(--accent-50)] border-[var(--accent-200)]',
     freeform: 'text-slate-600 bg-slate-100 border-slate-200',
 };
 
@@ -45,7 +45,7 @@ function InlineForm({ initial, onSave, onCancel }: InlineFormProps) {
                 type="text"
                 value={title}
                 onChange={e => setTitle(e.target.value)}
-                className="w-full text-xs font-bold text-slate-900 border border-slate-200 rounded px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-slate-900 bg-white"
+                className="w-full text-xs font-bold text-slate-900 border border-slate-200 rounded px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-slate-200 focus:border-slate-400 bg-white"
                 placeholder="Note title..."
                 autoFocus
             />
@@ -54,7 +54,7 @@ function InlineForm({ initial, onSave, onCancel }: InlineFormProps) {
                     <button
                         key={type}
                         onClick={() => setDiagramType(type)}
-                        className={`px-2 py-1 text-[10px] font-bold rounded border transition-colors ${diagramType === type ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-500 border-slate-200 hover:border-slate-400'}`}
+                        className={`px-2 py-1 text-[10px] font-bold rounded border transition-colors ${diagramType === type ? 'bg-[var(--accent-600)] text-white border-[var(--accent-600)]' : 'bg-white text-slate-500 border-slate-200 hover:border-[var(--accent-400)]'}`}
                     >
                         {TYPE_LABELS[type]}
                     </button>
@@ -63,7 +63,7 @@ function InlineForm({ initial, onSave, onCancel }: InlineFormProps) {
             <textarea
                 value={content}
                 onChange={e => setContent(e.target.value)}
-                className="w-full h-20 text-xs text-slate-700 border border-slate-200 rounded p-2 resize-none focus:outline-none focus:ring-1 focus:ring-slate-900 bg-white font-mono"
+                className="w-full h-20 text-xs text-slate-700 border border-slate-200 rounded p-2 resize-none focus:outline-none focus:ring-2 focus:ring-slate-200 focus:border-slate-400 bg-white font-mono"
                 placeholder={diagramType === 'mermaid' ? 'graph TD\n  A --> B' : diagramType === 'drawio' ? 'Paste draw.io XML...' : 'Diagram notes...'}
             />
             <div className="flex items-center justify-end gap-2">
@@ -183,7 +183,7 @@ export default function LibraryDiagramNotes({ projectId }: Props) {
                                         </button>
                                         <button
                                             onClick={e => handleDelete(e, note.id)}
-                                            className="p-1 text-slate-400 hover:text-red-600 rounded border border-slate-200 hover:border-red-200 hover:bg-red-50 transition-colors"
+                                            className="p-1 text-slate-400 hover:text-rose-600 rounded border border-slate-200 hover:border-rose-200 hover:bg-rose-50 transition-colors"
                                         >
                                             <Trash2 size={12} />
                                         </button>

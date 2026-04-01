@@ -368,10 +368,10 @@ export default function DocumentEditor() {
     }
 
     return (
-        <div className="flex flex-col h-screen bg-slate-100 overflow-hidden">
+        <div className="flex flex-col h-screen bg-[#f8f9fb] overflow-hidden">
 
             {/* ── Header ── */}
-            <header className="h-12 bg-white border-b border-slate-200 flex items-center gap-2 px-3 shrink-0 z-20 relative">
+            <header className="h-10 bg-white border-b border-slate-200 flex items-center gap-2 px-3 shrink-0 z-20 relative">
                 <button onClick={() => navigate(-1)} className="p-1.5 hover:bg-slate-100 rounded text-slate-500">
                     <ArrowLeft size={16} />
                 </button>
@@ -393,9 +393,9 @@ export default function DocumentEditor() {
 
                     <button
                         onClick={handleStatusToggle}
-                        className={`text-[11px] px-2 py-0.5 rounded border font-medium ${docStatus === 'final'
-                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                            : 'bg-slate-50 text-slate-500 border-slate-200'}`}
+                        className={`text-xs px-2.5 py-0.5 rounded-full font-medium transition-colors ${docStatus === 'final'
+                            ? 'bg-emerald-100 text-emerald-700'
+                            : 'bg-amber-100 text-amber-700'}`}
                     >
                         {docStatus}
                     </button>
@@ -416,7 +416,7 @@ export default function DocumentEditor() {
                     </button>
                     <button
                         onClick={() => setShowAiPanel(v => !v)}
-                        className={`p-1.5 rounded hover:bg-slate-100 transition-colors ${showAiPanel ? 'bg-violet-100 text-violet-600' : 'text-slate-500'}`}
+                        className={`p-1.5 rounded hover:bg-slate-100 transition-colors ${showAiPanel ? 'bg-[var(--accent-100)] text-[var(--accent-600)]' : 'text-slate-500'}`}
                         title="AI Assistant"
                     >
                         <Sparkles size={15} />
@@ -432,7 +432,7 @@ export default function DocumentEditor() {
 
                 {/* Export dropdown */}
                 {showExport && (
-                    <div ref={exportDropdownRef} className="absolute right-3 top-12 bg-white border border-slate-200 rounded-lg shadow-lg z-30 w-44 py-1">
+                    <div ref={exportDropdownRef} className="absolute right-3 top-10 bg-white border border-slate-200 rounded-lg shadow-lg z-30 w-44 py-1">
                         <button
                             onClick={handleDownload}
                             disabled={!docPublicUrl}

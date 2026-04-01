@@ -262,7 +262,7 @@ function CodeViewerModal({ proto, onClose, onRun, onDelete }: CodeViewerProps) {
                         </button>
                         <button
                             onClick={handleDelete}
-                            className="flex items-center gap-1.5 px-3 py-1.5 border border-red-200 text-red-600 rounded text-xs font-bold hover:bg-red-50 transition-colors"
+                            className="flex items-center gap-1.5 px-3 py-1.5 border border-rose-200 text-rose-600 rounded text-xs font-bold hover:bg-rose-50 transition-colors"
                         >
                             <Trash2 size={13} />
                             Delete
@@ -275,8 +275,8 @@ function CodeViewerModal({ proto, onClose, onRun, onDelete }: CodeViewerProps) {
 
                 {/* File tab bar */}
                 <div className="flex items-center gap-0 px-4 bg-slate-950 border-b border-slate-800 shrink-0">
-                    <div className="flex items-center gap-2 px-4 py-2 bg-slate-800 text-slate-200 text-[11px] font-bold border-t-2 border-violet-500 -mb-px">
-                        <span className="text-violet-400">{'</>'}</span>
+                    <div className="flex items-center gap-2 px-4 py-2 bg-slate-800 text-slate-200 text-[11px] font-bold border-t-2 border-[var(--accent-500)] -mb-px">
+                        <span className="text-[var(--accent-ring)]">{'</>'}</span>
                         index.html
                     </div>
                 </div>
@@ -359,9 +359,9 @@ function WizardModal({ project, onClose, onGenerated }: WizardProps) {
                 <div className="p-5 border-b border-slate-100 flex justify-between items-start">
                     <div>
                         <div className="flex items-center gap-2 mb-1">
-                            <FlaskConical size={16} className="text-violet-600" />
+                            <FlaskConical size={16} className="text-[var(--accent-600)]" />
                             <h2 className="text-base font-bold text-slate-900">New Prototype</h2>
-                            <span className="text-[10px] font-bold text-violet-600 bg-violet-50 border border-violet-200 px-1.5 py-0.5 rounded uppercase tracking-wide">Experimental</span>
+                            <span className="text-[10px] font-bold text-[var(--accent-700)] bg-[var(--accent-50)] border border-[var(--accent-200)] px-1.5 py-0.5 rounded-full uppercase tracking-wide">Experimental</span>
                         </div>
                         <p className="text-xs text-slate-500">Select a workspace document to generate a front-end prototype.</p>
                     </div>
@@ -411,8 +411,8 @@ function WizardModal({ project, onClose, onGenerated }: WizardProps) {
                     ) : (
                         <div className="py-4">
                             <div className="flex items-center gap-3 mb-4">
-                                <div className="w-8 h-8 rounded bg-violet-50 border border-violet-200 flex items-center justify-center shrink-0">
-                                    <Loader2 size={16} className="text-violet-600 animate-spin" />
+                                <div className="w-8 h-8 rounded bg-[var(--accent-50)] border border-[var(--accent-200)] flex items-center justify-center shrink-0">
+                                    <Loader2 size={16} className="text-[var(--accent-600)] animate-spin" />
                                 </div>
                                 <div>
                                     <p className="text-xs font-bold text-slate-900">Generating prototype…</p>
@@ -421,7 +421,7 @@ function WizardModal({ project, onClose, onGenerated }: WizardProps) {
                             </div>
                             <div className="h-1.5 bg-slate-100 rounded overflow-hidden">
                                 <div
-                                    className="h-full bg-violet-500 rounded transition-all duration-500"
+                                    className="h-full bg-[var(--accent-500)] rounded transition-all duration-500"
                                     style={{ width: `${progress}%` }}
                                 />
                             </div>
@@ -509,7 +509,7 @@ export default function PrototypeTab({ project }: Props) {
                 <div>
                     <div className="flex items-center gap-2 mb-1">
                         <h2 className="text-sm font-bold text-slate-900">Prototype Generation</h2>
-                        <span className="text-[10px] font-bold text-violet-600 bg-violet-50 border border-violet-200 px-1.5 py-0.5 rounded uppercase tracking-wide">Experimental</span>
+                        <span className="text-[10px] font-bold text-[var(--accent-700)] bg-[var(--accent-50)] border border-[var(--accent-200)] px-1.5 py-0.5 rounded-full uppercase tracking-wide">Experimental</span>
                     </div>
                     <p className="text-[11px] text-slate-500">Generate interactive front-end prototypes from your workspace documents. Full back-end integration coming soon.</p>
                 </div>
@@ -523,9 +523,9 @@ export default function PrototypeTab({ project }: Props) {
             </div>
 
             {/* Experimental notice */}
-            <div className="flex items-start gap-3 bg-violet-50 border border-violet-200 rounded p-3">
-                <FlaskConical size={15} className="text-violet-500 shrink-0 mt-0.5" />
-                <p className="text-[11px] text-violet-700 leading-relaxed">
+            <div className="flex items-start gap-3 bg-[var(--accent-50)] border border-[var(--accent-200)] rounded-lg p-3">
+                <FlaskConical size={15} className="text-[var(--accent-500)] shrink-0 mt-0.5" />
+                <p className="text-[11px] text-[var(--accent-700)] leading-relaxed">
                     Prototypes are generated locally and stored in your browser. Back-end persistence, version history, and AI-driven generation from document content will be added in a future release.
                 </p>
             </div>
@@ -586,7 +586,7 @@ export default function PrototypeTab({ project }: Props) {
                                 </button>
                                 <button
                                     onClick={() => handleDelete(proto.id)}
-                                    className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded border border-slate-200 hover:border-red-200 transition-colors"
+                                    className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded border border-slate-200 hover:border-rose-200 transition-colors"
                                     title="Delete prototype"
                                 >
                                     <Trash2 size={13} />

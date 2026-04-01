@@ -95,7 +95,7 @@ export default function DashboardTab({
             {/* Row 1: Stats */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {/* Documents stat */}
-                <div className="bg-white border border-slate-200 rounded p-4 shadow-sm">
+                <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-sm hover:shadow-md transition-all">
                     <div className="flex items-center gap-2 mb-3">
                         <div className="w-8 h-8 bg-slate-50 rounded border border-slate-200 flex items-center justify-center text-slate-500">
                             <FileText size={16} />
@@ -108,7 +108,7 @@ export default function DashboardTab({
                     {docCount > 0 && (
                         <div className="flex flex-wrap gap-1">
                             {Object.entries(docsByType).map(([type, count]) => (
-                                <span key={type} className={`px-1.5 py-0.5 rounded text-[10px] font-bold border ${DOC_TYPE_COLORS[type] || 'bg-slate-50 text-slate-600 border-slate-200'}`}>
+                                <span key={type} className={`rounded-full px-2.5 py-0.5 text-[10px] font-medium border ${DOC_TYPE_COLORS[type] || 'bg-slate-50 text-slate-600 border-slate-200'}`}>
                                     {count} {type}
                                 </span>
                             ))}
@@ -117,7 +117,7 @@ export default function DashboardTab({
                 </div>
 
                 {/* Knowledge base stat */}
-                <div className="bg-white border border-slate-200 rounded p-4 shadow-sm">
+                <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-sm hover:shadow-md transition-all">
                     <div className="flex items-center gap-2 mb-3">
                         <div className="w-8 h-8 bg-slate-50 rounded border border-slate-200 flex items-center justify-center text-slate-500">
                             <File size={16} />
@@ -136,7 +136,7 @@ export default function DashboardTab({
                 </div>
 
                 {/* Team stat */}
-                <div className="bg-white border border-slate-200 rounded p-4 shadow-sm">
+                <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-sm hover:shadow-md transition-all">
                     <div className="flex items-center gap-2 mb-3">
                         <div className="w-8 h-8 bg-slate-50 rounded border border-slate-200 flex items-center justify-center text-slate-500">
                             <Users size={16} />
@@ -155,8 +155,8 @@ export default function DashboardTab({
             {/* Row 2: Documents + Health */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                 {/* Recent Documents */}
-                <div className="lg:col-span-2 bg-white border border-slate-200 rounded shadow-sm overflow-hidden">
-                    <div className="p-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                <div className="lg:col-span-2 bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden">
+                    <div className="px-4 py-2.5 border-b border-slate-100 flex items-center justify-between">
                         <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wide">Requirement Documents</h3>
                         <button
                             onClick={onNewDraft}
@@ -187,7 +187,7 @@ export default function DashboardTab({
                                         onClick={() => navigate(`/editor/${project.id}/${doc.id}`)}
                                         className="flex items-center gap-3 px-3 py-2.5 hover:bg-slate-50 cursor-pointer transition-colors group"
                                     >
-                                        <div className="w-7 h-7 bg-slate-50 rounded border border-slate-200 flex items-center justify-center text-slate-400 shrink-0 group-hover:bg-slate-900 group-hover:text-white group-hover:border-slate-900 transition-colors">
+                                        <div className="w-7 h-7 bg-slate-50 rounded border border-slate-200 flex items-center justify-center text-slate-400 shrink-0 group-hover:bg-[var(--accent-600)] group-hover:text-white group-hover:border-[var(--accent-600)] transition-colors">
                                             <FileText size={13} />
                                         </div>
                                         <div className="flex-1 min-w-0">
@@ -198,11 +198,11 @@ export default function DashboardTab({
                                             </div>
                                         </div>
                                         <div className="flex items-center gap-2 shrink-0">
-                                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold border flex items-center gap-1 ${status.color}`}>
+                                                            <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-medium flex items-center gap-1 ${status.color}`}>
                                                 <StatusIcon size={10} />
                                                 {status.label}
                                             </span>
-                                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold border ${DOC_TYPE_COLORS[doc.type] || 'bg-slate-100 text-slate-600 border-slate-200'}`}>
+                                            <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-medium border ${DOC_TYPE_COLORS[doc.type] || 'bg-slate-100 text-slate-600 border-slate-200'}`}>
                                                 {doc.type}
                                             </span>
                                         </div>
@@ -219,11 +219,11 @@ export default function DashboardTab({
                 </div>
 
                 {/* Project Health */}
-                <div className="bg-white border border-slate-200 rounded shadow-sm overflow-hidden">
-                    <div className="p-3 bg-slate-50 border-b border-slate-200">
+                <div className="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden">
+                    <div className="px-4 py-2.5 border-b border-slate-100">
                         <div className="flex items-center justify-between">
                             <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wide">Project Health</h3>
-                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
                                 healthScore === 4 ? 'text-emerald-700 bg-emerald-50 border-emerald-200' :
                                 healthScore >= 2 ? 'text-amber-700 bg-amber-50 border-amber-200' :
                                 'text-rose-700 bg-rose-50 border-rose-200'
@@ -256,7 +256,7 @@ export default function DashboardTab({
             </div>
 
             {/* Row 3: Quick Actions */}
-            <div className="bg-white border border-slate-200 rounded p-4 shadow-sm">
+            <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-sm">
                 <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-3">Quick Actions</h3>
                 <div className="flex flex-wrap gap-2">
                     <button
@@ -287,8 +287,8 @@ export default function DashboardTab({
             </div>
 
             {/* Internal Notes */}
-            <div className="bg-white border border-slate-200 rounded shadow-sm overflow-hidden">
-                <div className="p-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+            <div className="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden">
+                <div className="px-4 py-2.5 border-b border-slate-100 flex items-center justify-between">
                     <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wide">Internal Notes</h3>
                     {!isEditing && (
                         <button
@@ -305,7 +305,7 @@ export default function DashboardTab({
                             <textarea
                                 value={editForm.notes}
                                 onChange={(e) => onEditFormChange('notes', e.target.value)}
-                                className="w-full h-24 border border-slate-300 rounded p-2 text-sm text-slate-700 focus:outline-none focus:ring-1 focus:ring-slate-900 resize-none"
+                                className="w-full h-24 border border-slate-300 rounded-lg p-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-200 focus:border-slate-400 resize-none"
                                 placeholder="Enter internal project notes..."
                             />
                             <div className="flex gap-2">
@@ -327,8 +327,8 @@ export default function DashboardTab({
 
             {/* Recent Activity */}
             {activity.length > 0 && (
-                <div className="bg-white border border-slate-200 rounded shadow-sm overflow-hidden">
-                    <div className="p-3 bg-slate-50 border-b border-slate-200">
+                <div className="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden">
+                    <div className="px-4 py-2.5 border-b border-slate-100">
                         <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wide">Recent Activity</h3>
                     </div>
                     <div className="divide-y divide-slate-100">

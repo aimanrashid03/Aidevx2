@@ -83,7 +83,7 @@ function CommentBubble({
                         {isAuthor && (
                             <button
                                 onClick={() => onDelete(comment.id)}
-                                className="text-[9px] font-bold text-red-400 hover:text-red-600 flex items-center gap-0.5 uppercase tracking-wider"
+                                className="text-[9px] font-bold text-rose-400 hover:text-rose-600 flex items-center gap-0.5 uppercase tracking-wider"
                             >
                                 <Trash2 size={9} />
                                 Delete
@@ -220,10 +220,10 @@ export default function CommentsSidebar({
 
             {/* Reply input (when replying to a specific comment) */}
             {replyingTo && (
-                <div className="px-4 py-2 border-t border-slate-200 bg-blue-50">
+                <div className="px-4 py-2 border-t border-slate-200 bg-[var(--accent-50)]">
                     <div className="flex items-center justify-between mb-1.5">
-                        <span className="text-[9px] font-bold text-blue-600 uppercase tracking-wider">Replying to comment</span>
-                        <button onClick={() => setReplyingTo(null)} className="text-blue-400 hover:text-blue-600">
+                        <span className="text-[9px] font-bold text-[var(--accent-600)] uppercase tracking-wider">Replying to comment</span>
+                        <button onClick={() => setReplyingTo(null)} className="text-[var(--accent-ring)] hover:text-[var(--accent-600)]">
                             <X size={12} />
                         </button>
                     </div>
@@ -234,13 +234,13 @@ export default function CommentsSidebar({
                             onChange={(e) => setReplyText(e.target.value)}
                             onKeyDown={(e) => e.key === 'Enter' && handleReply()}
                             placeholder="Write a reply..."
-                            className="flex-1 px-2 py-1.5 border border-blue-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white"
+                            className="flex-1 px-2 py-1.5 border border-[var(--accent-200)] rounded text-xs focus:outline-none focus:ring-1 focus:ring-[var(--accent-ring)] bg-white"
                             autoFocus
                         />
                         <button
                             onClick={handleReply}
                             disabled={!replyText.trim()}
-                            className="p-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                            className="p-1.5 bg-[var(--accent-600)] text-white rounded hover:bg-[var(--accent-700)] disabled:opacity-50 transition-colors"
                         >
                             <Send size={12} />
                         </button>
@@ -268,7 +268,7 @@ export default function CommentsSidebar({
                         onChange={(e) => setNewComment(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
                         placeholder="Add a comment..."
-                        className="flex-1 px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-slate-900 focus:border-slate-900"
+                        className="flex-1 px-2.5 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:ring-2 focus:ring-slate-200 focus:border-slate-400"
                     />
                     <button
                         onClick={handleSubmit}

@@ -185,7 +185,7 @@ export default function AutoGenerateProgress({
             <div className="w-full max-w-2xl mx-auto px-6">
                 {/* Header */}
                 <div className="text-center mb-8">
-                    <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-slate-900 text-white mb-4">
+                    <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl text-white mb-4" style={{ background: 'var(--accent-600)' }}>
                         <Sparkles size={28} />
                     </div>
                     <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
@@ -204,7 +204,7 @@ export default function AutoGenerateProgress({
                     </div>
                     <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
                         <div
-                            className="h-full bg-slate-900 rounded-full transition-all duration-500 ease-out"
+                            className="h-full bg-[var(--accent-600)] rounded-full transition-all duration-500 ease-out"
                             style={{ width: `${phase === 'building' ? 95 : phase === 'complete' ? 100 : progressPercent}%` }}
                         />
                     </div>
@@ -228,7 +228,7 @@ export default function AutoGenerateProgress({
                             {s.status === 'complete' && <CheckCircle2 size={16} className="text-emerald-500 flex-shrink-0" />}
                             {s.status === 'error' && <AlertTriangle size={16} className="text-amber-500 flex-shrink-0" />}
                             {(s.status === 'searching' || s.status === 'generating') && (
-                                <Loader2 size={16} className="text-slate-900 animate-spin flex-shrink-0" />
+                                <Loader2 size={16} className="text-[var(--accent-600)] animate-spin flex-shrink-0" />
                             )}
                             {s.status === 'pending' && <FileText size={16} className="text-slate-300 flex-shrink-0" />}
 

@@ -115,38 +115,38 @@ export default function ProjectDetails() {
     };
 
     return (
-        <div className="px-6 py-6 font-sans relative pb-10">
+        <div className="mx-auto max-w-7xl p-4 md:p-6 space-y-4 relative pb-10">
             {/* Back */}
             <button
                 onClick={() => navigate('/dashboard')}
-                className="flex items-center text-slate-500 hover:text-slate-900 mb-4 transition-colors text-xs font-medium"
+                className="flex items-center text-slate-500 hover:text-slate-900 transition-colors text-xs font-medium"
             >
                 <ArrowLeft size={12} className="mr-1.5" />
                 Back to Dashboard
             </button>
 
             {/* Header */}
-            <div className="flex justify-between items-start mb-4 pb-4 border-b border-slate-200">
+            <div className="flex justify-between items-start pb-4 border-b border-slate-200">
                 {isEditing ? (
                     <div className="flex-1 mr-4 space-y-3">
                         <input
                             type="text"
                             value={editForm.name}
                             onChange={(e) => setEditForm(prev => ({ ...prev, name: e.target.value }))}
-                            className="w-full text-xl md:text-2xl font-bold text-slate-900 tracking-tight border border-slate-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-slate-900"
+                            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm transition-colors focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
                             placeholder="Project Name"
                         />
                         <textarea
                             value={editForm.description}
                             onChange={(e) => setEditForm(prev => ({ ...prev, description: e.target.value }))}
-                            className="w-full h-16 border border-slate-300 rounded p-2 text-sm text-slate-700 focus:outline-none focus:ring-1 focus:ring-slate-900"
+                            className="w-full h-16 rounded-lg border border-slate-300 p-2 text-sm text-slate-700 shadow-sm transition-colors focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200 resize-none"
                             placeholder="Project Description..."
                         />
                         <div className="flex gap-2">
-                            <button onClick={handleSaveEdit} className="bg-slate-900 text-white px-3 py-1.5 rounded text-xs font-medium flex items-center gap-1">
+                            <button onClick={handleSaveEdit} className="bg-slate-900 text-white px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1 shadow-sm hover:bg-slate-800">
                                 <Check size={14} /> Save
                             </button>
-                            <button onClick={() => setIsEditing(false)} className="bg-slate-100 text-slate-700 px-3 py-1.5 rounded text-xs font-medium flex items-center gap-1">
+                            <button onClick={() => setIsEditing(false)} className="bg-slate-100 text-slate-700 px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1 hover:bg-slate-200 border border-slate-200">
                                 <X size={14} /> Cancel
                             </button>
                         </div>
@@ -154,9 +154,9 @@ export default function ProjectDetails() {
                 ) : (
                     <div className="flex-1 mr-4">
                         <div className="flex items-center gap-2 mb-1">
-                            <h1 className="text-xl md:text-2xl font-extrabold text-slate-900 tracking-tight">{project.name}</h1>
-                            <button onClick={handleEditClick} className="text-slate-400 hover:text-slate-900 transition-colors" title="Edit Project">
-                                <Edit size={16} />
+                            <h1 className="page-title">{project.name}</h1>
+                            <button onClick={handleEditClick} className="text-slate-400 hover:text-slate-900 transition-colors mt-1" title="Edit Project">
+                                <Edit size={15} />
                             </button>
                         </div>
                         <div className="flex flex-wrap items-center gap-3 text-[11px] md:text-xs text-slate-500 font-medium leading-none mb-2">
@@ -176,7 +176,7 @@ export default function ProjectDetails() {
                             </div>
                         </div>
                         {project.description && (
-                            <p className="text-slate-700 text-xs leading-relaxed max-w-3xl mt-1.5">
+                            <p className="text-slate-600 text-xs leading-relaxed max-w-3xl mt-1.5">
                                 {project.description}
                             </p>
                         )}
@@ -185,7 +185,7 @@ export default function ProjectDetails() {
             </div>
 
             {/* Tabs */}
-            <div className="flex border-b border-slate-200 mb-5 space-x-4 overflow-x-auto">
+            <div className="flex border-b border-slate-200 space-x-1 overflow-x-auto">
                 {TABS.map(tab => {
                     const Icon = tab.icon;
                     const badge = tabBadge(tab.key);
@@ -194,16 +194,16 @@ export default function ProjectDetails() {
                         <button
                             key={tab.key}
                             onClick={() => handleTabChange(tab.key)}
-                            className={`pb-3 text-sm font-bold transition-colors relative flex items-center gap-2 whitespace-nowrap ${
+                            className={`pb-3 px-1 text-sm font-semibold transition-colors relative flex items-center gap-2 whitespace-nowrap ${
                                 active
-                                    ? 'text-slate-900 before:absolute before:bottom-0 before:left-0 before:w-full before:h-0.5 before:bg-slate-900'
+                                    ? 'text-[var(--accent-700)] before:absolute before:bottom-0 before:left-0 before:w-full before:h-0.5 before:bg-[var(--accent-600)]'
                                     : 'text-slate-500 hover:text-slate-700'
                             }`}
                         >
-                            <Icon size={16} className={active ? 'text-slate-900' : 'text-slate-400'} />
+                            <Icon size={15} className={active ? 'text-[var(--accent-700)]' : 'text-slate-400'} />
                             {tab.label}
                             {badge !== undefined && badge > 0 && (
-                                <span className="bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded text-[10px] font-bold ml-1">
+                                <span className="rounded-full bg-slate-100 text-slate-600 px-2 py-0.5 text-xs font-medium ml-0.5">
                                     {badge}
                                 </span>
                             )}
@@ -277,13 +277,13 @@ export default function ProjectDetails() {
                                             className={`w-full flex items-center gap-4 p-3 rounded border text-left group transition-all ${
                                                 disabled
                                                     ? 'border-slate-100 bg-slate-50 opacity-50 cursor-not-allowed'
-                                                    : 'border-slate-200 hover:border-slate-900 hover:bg-slate-50'
+                                                    : 'border-slate-200 hover:border-[var(--accent-600)] hover:bg-slate-50'
                                             }`}
                                         >
                                             <div className={`w-10 h-10 rounded flex items-center justify-center border transition-colors ${
                                                 disabled
                                                     ? 'bg-slate-100 text-slate-300 border-slate-100'
-                                                    : 'bg-slate-100 text-slate-500 border-slate-200 group-hover:bg-slate-900 group-hover:text-white'
+                                                    : 'bg-slate-100 text-slate-500 border-slate-200 group-hover:bg-[var(--accent-600)] group-hover:text-white group-hover:border-[var(--accent-600)]'
                                             }`}>
                                                 <LayoutTemplate size={18} />
                                             </div>
@@ -348,15 +348,18 @@ export default function ProjectDetails() {
                                     setIsCreateModalOpen(false);
                                     navigate(`/editor/${projectId}/BRS?autoGenerate=true`);
                                 }}
-                                className="w-full flex items-start gap-4 p-4 rounded border-2 border-slate-900 bg-slate-50 hover:bg-slate-100 transition-all text-left group"
+                                className="w-full flex items-start gap-4 p-4 rounded-lg border-2 bg-[var(--accent-50)] hover:bg-[var(--accent-100)] transition-all text-left group"
+                                style={{ borderColor: 'var(--accent-600)' }}
                             >
-                                <div className="w-10 h-10 rounded bg-slate-900 text-white flex items-center justify-center flex-shrink-0 mt-0.5">
+                                <div className="w-10 h-10 rounded-lg text-white flex items-center justify-center flex-shrink-0 mt-0.5"
+                                     style={{ background: 'var(--accent-600)' }}>
                                     <Sparkles size={18} />
                                 </div>
                                 <div className="flex-1">
                                     <div className="flex items-center gap-2">
                                         <h3 className="text-sm font-bold text-slate-900">Auto-Generate with AI</h3>
-                                        <span className="text-[10px] font-bold text-white bg-slate-900 px-1.5 py-0.5 rounded">RECOMMENDED</span>
+                                        <span className="text-[10px] font-bold text-white px-1.5 py-0.5 rounded"
+                                              style={{ background: 'var(--accent-600)' }}>RECOMMENDED</span>
                                     </div>
                                     <p className="text-xs text-slate-500 mt-1">
                                         AI will analyse your uploaded project files and automatically generate all BRS sections. This process takes about 2–5 minutes.

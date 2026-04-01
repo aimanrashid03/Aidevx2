@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
+import { AlertCircle } from 'lucide-react';
 
 type Mode = 'signin' | 'signup' | 'forgot';
 
@@ -17,9 +18,7 @@ export default function Login() {
     const [message, setMessage] = useState<string | null>(null);
 
     useEffect(() => {
-        if (session) {
-            navigate('/dashboard', { replace: true });
-        }
+        if (session) navigate('/dashboard', { replace: true });
     }, [session, navigate]);
 
     const switchMode = (next: Mode) => {
@@ -35,7 +34,6 @@ export default function Login() {
         setLoading(true);
         setError(null);
         setMessage(null);
-
         try {
             if (mode === 'signup') {
                 const { data, error } = await supabase.auth.signUp({
@@ -44,7 +42,6 @@ export default function Login() {
                     options: { data: { full_name: fullName } },
                 });
                 if (error) throw error;
-
                 if (data.session) {
                     navigate('/dashboard', { replace: true });
                 } else {
@@ -75,99 +72,128 @@ export default function Login() {
     };
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
-            <div className="max-w-md w-full bg-white p-8 rounded-xl shadow-sm border border-slate-200">
-                <div className="text-center mb-8 flex flex-col items-center">
-                    <img src="/logo.png" alt="Aidevx Logo" className="h-[4.5rem] w-auto object-contain mb-3" />
-                    <p className="text-slate-500">{subtitle[mode]}</p>
+        <div className="flex min-h-screen flex-col items-center justify-center bg-[#f6f9fc] px-4">
+            <div className="w-full max-w-[400px]">
+                {/* Logo */}
+                <div className="mb-7 flex justify-center">
+                    <img
+                        src="/logo.png"
+                        alt="Aidevx"
+                        className="h-9 w-auto"
+                        onError={e => {
+                            const el = e.target as HTMLImageElement;
+                            el.style.display = 'none';
+                            const fallback = el.nextElementSibling as HTMLElement;
+                            if (fallback) fallback.style.display = 'block';
+                        }}
+                    />
+                    <span className="hidden text-2xl font-black tracking-tight text-[#1a1f36]">Aidevx</span>
                 </div>
 
-                {error && (
-                    <div className="mb-4 p-3 bg-red-50 text-red-700 text-sm rounded border border-red-100">
-                        {error}
-                    </div>
-                )}
+                {/* Card */}
+                <div className="rounded-lg border border-[#e3e8ee] bg-white px-10 pb-10 pt-8"
+                     style={{ boxShadow: '0 2px 4px rgba(0,0,0,0.05), 0 1px 2px rgba(0,0,0,0.06)' }}>
 
-                {message && (
-                    <div className="mb-4 p-3 bg-green-50 text-green-700 text-sm rounded border border-green-100">
-                        {message}
-                    </div>
-                )}
+                    <h1 className="mb-1 text-center text-xl font-semibold tracking-tight text-[#1a1f36]">Aidevx</h1>
+                    <p className="mb-8 text-center text-[13px] text-[#697386]">{subtitle[mode]}</p>
 
-                <form onSubmit={handleAuth} className="space-y-4">
-                    {mode === 'signup' && (
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1">Full Name</label>
+                    {error && (
+                        <div className="mb-5 flex items-center gap-2 rounded-md border border-[#f8d7da] bg-[#fdf2f2] px-3.5 py-2.5 text-[13px] text-[#cd3d64]">
+                            <AlertCircle className="h-4 w-4 shrink-0" />
+                            {error}
+                        </div>
+                    )}
+
+                    {message && (
+                        <div className="mb-5 flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3.5 py-2.5 text-[13px] text-emerald-700">
+                            {message}
+                        </div>
+                    )}
+
+                    <form onSubmit={handleAuth} className="space-y-5">
+                        {mode === 'signup' && (
+                            <div className="space-y-1.5">
+                                <label className="block text-[13px] font-medium text-[#1a1f36]">Full Name</label>
+                                <input
+                                    type="text"
+                                    value={fullName}
+                                    onChange={e => setFullName(e.target.value)}
+                                    className="w-full rounded-md border border-[#d8dee4] bg-white px-3 py-[9px] text-sm text-[#1a1f36] shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-shadow placeholder:text-[#a3acb9] focus:border-[var(--accent-600)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-ring)]/20"
+                                    placeholder="Jane Smith"
+                                    required
+                                />
+                            </div>
+                        )}
+
+                        <div className="space-y-1.5">
+                            <label className="block text-[13px] font-medium text-[#1a1f36]">Email</label>
                             <input
-                                type="text"
-                                value={fullName}
-                                onChange={(e) => setFullName(e.target.value)}
-                                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition-all"
-                                placeholder="Jane Smith"
+                                type="email"
+                                value={email}
+                                onChange={e => setEmail(e.target.value)}
+                                className="w-full rounded-md border border-[#d8dee4] bg-white px-3 py-[9px] text-sm text-[#1a1f36] shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-shadow placeholder:text-[#a3acb9] focus:border-[var(--accent-600)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-ring)]/20"
+                                placeholder="you@company.com"
                                 required
                             />
                         </div>
-                    )}
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
-                        <input
-                            type="email"
-                            value={email}
-                            onChange={(e) => setEmail(e.target.value)}
-                            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition-all"
-                            placeholder="you@company.com"
-                            required
-                        />
-                    </div>
-                    {mode !== 'forgot' && (
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1">Password</label>
-                            <input
-                                type="password"
-                                value={password}
-                                onChange={(e) => setPassword(e.target.value)}
-                                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition-all"
-                                placeholder="••••••••"
-                                required
-                            />
-                            {mode === 'signin' && (
-                                <button
-                                    type="button"
-                                    onClick={() => switchMode('forgot')}
-                                    className="mt-1.5 text-xs text-slate-500 hover:text-slate-900 hover:underline focus:outline-none"
-                                >
-                                    Forgot password?
-                                </button>
-                            )}
-                        </div>
-                    )}
-                    <button
-                        type="submit"
-                        disabled={loading}
-                        className="w-full bg-slate-900 text-white font-medium py-2.5 rounded-lg hover:bg-slate-800 transition-colors focus:ring-2 focus:ring-offset-2 focus:ring-slate-900 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                        {loading ? 'Processing...' : mode === 'signup' ? 'Sign Up' : mode === 'forgot' ? 'Send Reset Link' : 'Sign In'}
-                    </button>
-                </form>
 
-                <div className="text-center mt-6 text-sm text-slate-500">
-                    {mode === 'forgot' ? (
-                        <button onClick={() => switchMode('signin')} className="text-slate-900 font-medium hover:underline focus:outline-none">
-                            Back to sign in
+                        {mode !== 'forgot' && (
+                            <div className="space-y-1.5">
+                                <label className="block text-[13px] font-medium text-[#1a1f36]">Password</label>
+                                <input
+                                    type="password"
+                                    value={password}
+                                    onChange={e => setPassword(e.target.value)}
+                                    className="w-full rounded-md border border-[#d8dee4] bg-white px-3 py-[9px] text-sm text-[#1a1f36] shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-shadow placeholder:text-[#a3acb9] focus:border-[var(--accent-600)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-ring)]/20"
+                                    placeholder="••••••••"
+                                    required
+                                />
+                                {mode === 'signin' && (
+                                    <button
+                                        type="button"
+                                        onClick={() => switchMode('forgot')}
+                                        className="mt-1 text-[12px] text-[#697386] hover:text-[#1a1f36] focus:outline-none transition-colors"
+                                    >
+                                        Forgot password?
+                                    </button>
+                                )}
+                            </div>
+                        )}
+
+                        <button
+                            type="submit"
+                            disabled={loading}
+                            className="flex w-full items-center justify-center gap-2 rounded-md px-4 py-[9px] text-sm font-medium text-white transition-all disabled:opacity-60"
+                            style={{
+                                background: 'var(--accent-600)',
+                                boxShadow: '0 1px 2px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04)',
+                            }}
+                            onMouseEnter={e => (e.currentTarget.style.filter = 'brightness(0.9)')}
+                            onMouseLeave={e => (e.currentTarget.style.filter = '')}
+                        >
+                            {loading ? 'Processing…' : mode === 'signup' ? 'Sign Up' : mode === 'forgot' ? 'Send Reset Link' : 'Sign In'}
                         </button>
-                    ) : mode === 'signup' ? (
-                        <>Already have an account?{' '}
-                            <button onClick={() => switchMode('signin')} className="text-slate-900 font-medium hover:underline focus:outline-none">
-                                Sign in
+                    </form>
+
+                    <div className="mt-8 text-center text-[12px] text-[#8792a2]">
+                        {mode === 'forgot' ? (
+                            <button onClick={() => switchMode('signin')} className="font-medium text-[#1a1f36] hover:underline focus:outline-none">
+                                Back to sign in
                             </button>
-                        </>
-                    ) : (
-                        <>Don&apos;t have an account?{' '}
-                            <button onClick={() => switchMode('signup')} className="text-slate-900 font-medium hover:underline focus:outline-none">
-                                Sign up
-                            </button>
-                        </>
-                    )}
+                        ) : mode === 'signup' ? (
+                            <>Already have an account?{' '}
+                                <button onClick={() => switchMode('signin')} className="font-medium text-[#1a1f36] hover:underline focus:outline-none">
+                                    Sign in
+                                </button>
+                            </>
+                        ) : (
+                            <>Don&apos;t have an account?{' '}
+                                <button onClick={() => switchMode('signup')} className="font-medium text-[#1a1f36] hover:underline focus:outline-none">
+                                    Sign up
+                                </button>
+                            </>
+                        )}
+                    </div>
                 </div>
             </div>
         </div>

@@ -17,7 +17,7 @@ function Section({ title, icon: Icon, badge, defaultOpen = true, children }: Sec
     const [open, setOpen] = useState(defaultOpen);
 
     return (
-        <div className="border border-slate-200 rounded overflow-hidden bg-white">
+        <div className="border border-slate-200 rounded-lg overflow-hidden bg-white">
             <button
                 onClick={() => setOpen(o => !o)}
                 className="w-full flex items-center justify-between px-4 py-3 bg-slate-50 hover:bg-slate-100 transition-colors text-left"
@@ -26,7 +26,7 @@ function Section({ title, icon: Icon, badge, defaultOpen = true, children }: Sec
                     <Icon size={15} className="text-slate-500" />
                     <span className="text-sm font-bold text-slate-900">{title}</span>
                     {badge !== undefined && badge > 0 && (
-                        <span className="bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded text-[10px] font-bold">
+                        <span className="rounded-full bg-slate-100 text-slate-600 px-2.5 py-0.5 text-xs font-medium">
                             {badge}
                         </span>
                     )}
