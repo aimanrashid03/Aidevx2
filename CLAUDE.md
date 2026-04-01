@@ -90,6 +90,7 @@ supabase/
   functions/
     generate_section/            # Per-section AI generation (streaming SSE, chat mode, RAG)
     auto_generate_document/      # Full-document auto-generation (BRS) with progress streaming
+    generate_prototype/          # UI prototype generation from requirement docs (SSE progress events)
     onlyoffice_callback/         # OO save callback — rotates documentKey
     embed_document/              # Document embedding for RAG pipeline
     admin-users/
@@ -101,6 +102,7 @@ supabase/
       markdownToOoxml.ts         # Markdown → raw OOXML fragments (preserves template styles)
       docxTemplateBuilder.ts     # Template-based DOCX builder (PizZip, preserves formatting)
       docxServerBuilder.ts       # From-scratch DOCX builder (markdown → docx library nodes)
+      docxTextExtractor.ts       # DOCX → plaintext extractor (PizZip, strips XML) for LLM prompts
       brsStructure.ts            # Server-side BRS structure with autoGenerate flags
       brsExamples.ts             # Few-shot examples for BRS generation
       srsExamples.ts             # Few-shot examples for SRS generation
@@ -170,6 +172,15 @@ public/
 - RAG-enhanced: uses embedded project documents as context
 - `AIGeneratePanel` is the primary UI — supports doc type selection, document path picker, content type choice, source attribution display
 
+### UI Prototype Generation (`generate_prototype`)
+- Generates a single self-contained HTML/CSS UI prototype from any requirement document (BRS/URS/SRS/SDS)
+- Three-phase pipeline: (1) extract doc text from DOCX storage or JSON content field via `docxTextExtractor.ts`, (2) optional RAG context from embedded project documents, (3) non-streaming Claude Haiku call (`max_tokens: 7000`, `temp: 0.4`)
+- Design prompt instructs Claude to produce a CORRAD-inspired admin dashboard (dark gradient sidebar, violet accent, clean cards)
+- Saves completed HTML to `prototypes` table; returns via SSE `complete` event so frontend displays immediately
+- SSE events: `progress` (status text), `complete` (prototypeId + html), `error`
+- `PrototypeTab` component: loads prototypes from DB on mount, shows WizardModal for doc selection, CodeViewerModal for viewing/copying HTML, "Run" opens prototype in new tab via Blob URL
+- **Migration**: `20260402000000_create_prototypes.sql` — `prototypes` table with RLS matching user_stories/diagram_notes pattern
+
 ### Full-Document Auto-Generation (`auto_generate_document`)
 - Server-side pipeline that generates all auto-generate sections for a document
 - Three-phase pipeline: (1) batch-embed all sections + pre-fetch template in parallel, (2) vector search + LLM for all sections concurrently (max 8 at a time), (3) DOCX build using pre-fetched template
@@ -216,10 +227,21 @@ public/
 ```bash
 supabase functions deploy generate_section
 supabase functions deploy auto_generate_document
+supabase functions deploy generate_prototype
 supabase functions deploy onlyoffice_callback
 supabase functions deploy embed_document
 supabase secrets set ONLYOFFICE_CALLBACK_SECRET=... SUPABASE_SERVICE_ROLE_KEY=...
 ```
+
+## Edge Function Auth Pattern
+- All functions use `SUPABASE_SERVICE_ROLE_KEY` for DB/storage operations (bypasses RLS)
+- **Do NOT use `createClient` + `auth.getUser()` to resolve the caller** — this creates an extra round-trip that fails if `SUPABASE_ANON_KEY` is unavailable in the function env
+- Instead, decode the JWT payload directly — the API gateway already validates the signature before the function runs:
+  ```typescript
+  const token = req.headers.get('authorization')?.replace(/^bearer\s+/i, '') ?? ''
+  const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')))
+  const userId = payload.sub  // safe — gateway already verified the signature
+  ```
 
 ## Component Prop Contracts (non-obvious)
 - `PresenceIndicator`: requires both `otherUsers` and `totalViewers` props
