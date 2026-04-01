@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import "https://deno.land/x/xhr@0.1.0/mod.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.38.0'
-import { getLlmConfig, getEmbeddingConfig, getRagConfig, getContentTypeConfig } from '../_shared/llmConfig.ts'
+import { getLlmConfig, getEmbeddingConfig, getRagConfig, getContentTypeConfig, buildLlmHeaders, buildLlmEndpoint, buildLlmRequestBody, pipeAnthropicStream } from '../_shared/llmConfig.ts'
 import { URS_TEXT_EXAMPLE, URS_TABLE_EXAMPLE, URS_DIAGRAM_EXAMPLE } from '../_shared/ursExamples.ts'
 import { BRS_TEXT_EXAMPLE, BRS_TABLE_EXAMPLE, BRS_DIAGRAM_EXAMPLE } from '../_shared/brsExamples.ts'
 import { SRS_TEXT_EXAMPLE, SRS_TABLE_EXAMPLE, SRS_DIAGRAM_EXAMPLE } from '../_shared/srsExamples.ts'
@@ -87,7 +87,7 @@ serve(async (req) => {
         const ctConfig = getContentTypeConfig(contentType, !!chatMode)
 
         if (!llmConfig.apiKey) {
-            throw new Error('No LLM API key configured (set LLM_API_KEY or OPENAI_API_KEY)')
+            throw new Error('No LLM API key configured (set LLM_API_KEY or ANTHROPIC_API_KEY)')
         }
 
         // ── Helper: embed a single query ──────────────────────────────────────
@@ -101,7 +101,6 @@ serve(async (req) => {
                 body: JSON.stringify({
                     model: embeddingConfig.model,
                     input: query,
-                    ...(embeddingConfig.dimensions !== 1536 ? { dimensions: embeddingConfig.dimensions } : {}),
                 }),
             })
             if (!res.ok) throw new Error('Failed to generate query embedding')
@@ -380,19 +379,14 @@ ${contextText}
         }
 
         // ── 7. Stream LLM response ────────────────────────────────────────────
-        const completionResponse = await fetch(`${llmConfig.baseUrl}/chat/completions`, {
+        const completionResponse = await fetch(buildLlmEndpoint(llmConfig), {
             method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${llmConfig.apiKey}`,
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                model: llmConfig.model,
-                messages,
+            headers: buildLlmHeaders(llmConfig),
+            body: JSON.stringify(buildLlmRequestBody(messages, llmConfig, {
                 temperature: ctConfig.temperature,
-                max_tokens: ctConfig.max_tokens,
+                maxTokens: ctConfig.max_tokens,
                 stream: true,
-            }),
+            })),
         })
 
         if (!completionResponse.ok || !completionResponse.body) {
@@ -414,14 +408,20 @@ ${contextText}
         const reader = completionResponse.body.getReader()
         ;(async () => {
             try {
-                while (true) {
-                    const { done, value } = await reader.read()
-                    if (done) break
-                    await writer.write(value)
+                if (llmConfig.provider === 'anthropic') {
+                    // Transform Anthropic SSE → OpenAI-compatible SSE format
+                    await pipeAnthropicStream(reader, writer, encoder)
+                } else {
+                    // OpenAI: pass through raw SSE
+                    while (true) {
+                        const { done, value } = await reader.read()
+                        if (done) break
+                        await writer.write(value)
+                    }
+                    writer.close().catch(() => {})
                 }
             } catch {
                 // client disconnected — ignore
-            } finally {
                 writer.close().catch(() => {})
             }
         })()

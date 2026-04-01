@@ -35,7 +35,7 @@ serve(async (req) => {
 
         const embeddingConfig = getEmbeddingConfig()
         if (!embeddingConfig.apiKey) {
-            throw new Error('No embedding API key configured (set EMBEDDING_API_KEY or OPENAI_API_KEY)')
+            throw new Error('No embedding API key configured (set EMBEDDING_API_KEY or VOYAGE_API_KEY)')
         }
 
         // ── 1. Delete existing chunks for this document (dedup on re-upload) ──
@@ -74,7 +74,6 @@ serve(async (req) => {
                 body: JSON.stringify({
                     model: embeddingConfig.model,
                     input: inputs,
-                    ...(embeddingConfig.dimensions !== 1536 ? { dimensions: embeddingConfig.dimensions } : {}),
                 }),
             })
 
@@ -131,11 +130,12 @@ serve(async (req) => {
 
         // Best-effort: mark status as 'failed'
         if (documentId && supabaseAdmin) {
-            await supabaseAdmin
-                .from('project_documents')
-                .update({ embedding_status: 'failed' })
-                .eq('id', documentId)
-                .catch(() => { /* ignore */ })
+            try {
+                await supabaseAdmin
+                    .from('project_documents')
+                    .update({ embedding_status: 'failed' })
+                    .eq('id', documentId)
+            } catch { /* ignore */ }
         }
 
         return new Response(

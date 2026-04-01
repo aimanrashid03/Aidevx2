@@ -162,7 +162,7 @@ public/
 ## AI Generation
 
 ### Per-Section Generation (`generate_section`)
-- Streams OpenAI SSE responses for individual sections
+- Streams SSE responses; Anthropic SSE is translated to OpenAI-compatible format via `pipeAnthropicStream()` so the frontend stays unchanged
 - Supports all doc types: BRS, URS, SRS, SDS
 - Content types: text, table, diagram (mermaid or draw.io format)
 - Chat mode with multi-turn conversation history
@@ -187,13 +187,17 @@ public/
 - Structure-aware chunker: preserves heading boundaries, keeps tables intact
 - Context quality assessment: none/low/medium/high
 - Default config: match threshold 0.30, match count 18, embedding dimensions 512
+- **DB migration** `20260401000000_voyage_embeddings.sql`: resizes pgvector column from 1536d → 512d, truncates `document_chunks`, resets `embedding_status → pending`. All documents must be re-embedded after applying this migration.
 
 ### LLM Configuration (`llmConfig.ts`)
-- Provider: Anthropic (Claude Haiku `claude-haiku-4-5-20251001`), configurable via `LLM_PROVIDER` env var
-- Embedding: Voyage AI (`voyage-3-lite`, 512 dimensions)
+- Provider: Anthropic (Claude Haiku `claude-haiku-4-5-20251001`), configurable via `LLM_PROVIDER` env var (set to `openai` for OpenAI-compatible/self-hosted endpoints)
+- Embedding: Voyage AI (`voyage-3-lite`, 512 dimensions) via `VOYAGE_API_KEY`; Voyage AI does **not** accept a `dimensions` param in the request body (unlike OpenAI `text-embedding-3-small`)
 - Per-content-type settings: tables (temp 0.2, 1500 tokens), diagrams (temp 0.2, 1800 tokens), text (temp 0.3, 2500 tokens)
-- Helper functions handle Anthropic vs OpenAI differences (headers, request body, SSE streaming format)
+- Typed interfaces: `LlmConfig`, `EmbeddingConfig` — passed through all helper functions
+- Provider-abstraction helpers: `buildLlmHeaders`, `buildLlmEndpoint`, `buildLlmRequestBody`, `parseLlmResponse` — branch on `config.provider` to handle Anthropic vs OpenAI-compatible differences
+- `pipeAnthropicStream()`: translates Anthropic SSE events (`content_block_delta → delta.text`) into OpenAI-format SSE (`choices[0].delta.content`) — used by `generate_section` so the frontend SSE parser needs no changes
 - Supports custom endpoints for self-hosted models (Ollama, etc.) via `LLM_PROVIDER=openai`
+- Env vars: `ANTHROPIC_API_KEY` (LLM), `VOYAGE_API_KEY` (embeddings) — see `supabase/.env.local.example`
 
 ## Collaboration
 - `project_members` table: roles are `owner`, `editor`, `viewer`
