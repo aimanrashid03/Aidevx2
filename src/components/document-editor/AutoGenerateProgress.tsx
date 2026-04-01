@@ -46,11 +46,16 @@ export default function AutoGenerateProgress({
 
     const abortRef = useRef<AbortController | null>(null)
     const startedRef = useRef(false)
+    // Stable refs for volatile props so useCallback doesn't depend on them.
+    // Parent re-renders (real-time hooks) would otherwise recreate these on
+    // every render, causing startGeneration to get a new identity, the effect
+    // to re-run, and duplicate requests to fire.
+    const onCompleteRef = useRef(onComplete)
+    onCompleteRef.current = onComplete
+    const selectedDocumentPathsRef = useRef(selectedDocumentPaths)
+    selectedDocumentPathsRef.current = selectedDocumentPaths
 
     const startGeneration = useCallback(async () => {
-        if (startedRef.current) return
-        startedRef.current = true
-
         const controller = new AbortController()
         abortRef.current = controller
 
@@ -73,7 +78,7 @@ export default function AutoGenerateProgress({
                     body: JSON.stringify({
                         projectId,
                         docType,
-                        selectedDocumentPaths,
+                        selectedDocumentPaths: selectedDocumentPathsRef.current,
                         projectName,
                         docTitle,
                     }),
@@ -141,7 +146,7 @@ export default function AutoGenerateProgress({
                             )
                         } else if (event.type === 'complete') {
                             setPhase('complete')
-                            onComplete({
+                            onCompleteRef.current({
                                 docId: event.docId,
                                 storagePath: event.storagePath,
                                 documentKey: event.documentKey,
@@ -161,15 +166,18 @@ export default function AutoGenerateProgress({
             setPhase('error')
             setFatalError((err as Error).message || 'Connection failed')
         }
-    }, [projectId, docType, selectedDocumentPaths, projectName, docTitle, onComplete])
+    }, [projectId, docType, projectName, docTitle])
 
     useEffect(() => {
-        // Reset startedRef on each effect invocation so React StrictMode
-        // double-fire (mount → cleanup → re-mount) works correctly.
-        startedRef.current = false
+        if (startedRef.current) return
+        startedRef.current = true
         startGeneration()
         return () => {
             abortRef.current?.abort()
+            // Reset so StrictMode remount (synchronous) can restart.
+            // Safe because startGeneration is now stable — cleanup only fires
+            // on StrictMode double-invoke or genuine unmount, never on parent re-render.
+            startedRef.current = false
         }
     }, [startGeneration])
 

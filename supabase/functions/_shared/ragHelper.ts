@@ -5,12 +5,7 @@
 
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.38.0'
 
-export interface EmbeddingConfig {
-    baseUrl: string
-    apiKey: string
-    model: string
-    dimensions: number
-}
+import type { EmbeddingConfig } from './llmConfig.ts'
 
 export interface RagConfig {
     matchThreshold: number
@@ -43,12 +38,34 @@ export async function embedQuery(query: string, config: EmbeddingConfig): Promis
         body: JSON.stringify({
             model: config.model,
             input: query,
-            ...(config.dimensions !== 1536 ? { dimensions: config.dimensions } : {}),
         }),
     })
     if (!res.ok) throw new Error('Failed to generate query embedding')
     const data = await res.json()
     return data.data[0].embedding
+}
+
+/**
+ * Embed multiple queries in a single API call.
+ * Voyage AI (and OpenAI-compatible) endpoints accept `input` as a string array,
+ * so N queries cost 1 round-trip instead of N.
+ */
+export async function embedBatch(queries: string[], config: EmbeddingConfig): Promise<number[][]> {
+    const res = await fetch(`${config.baseUrl}/embeddings`, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${config.apiKey}`,
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            model: config.model,
+            input: queries,
+        }),
+    })
+    if (!res.ok) throw new Error('Failed to generate batch embeddings')
+    const data = await res.json()
+    // deno-lint-ignore no-explicit-any
+    return data.data.map((d: any) => d.embedding)
 }
 
 /** Search document chunks with a given embedding vector. */
@@ -143,6 +160,31 @@ export function assessContextQuality(chunks: MatchedChunk[]): 'none' | 'low' | '
     if (avg > 0.6) return 'high'
     if (avg > 0.4) return 'medium'
     return 'low'
+}
+
+/**
+ * RAG search using pre-computed embeddings — skips the embedding API call.
+ * Use this when embeddings have been pre-fetched in batch via embedBatch().
+ */
+export async function performRagWithEmbeddings(
+    sectionTitle: string,
+    embeddings: [number[], number[]],
+    projectId: string,
+    selectedDocumentPaths: string[] | undefined,
+    ragConfig: RagConfig,
+    supabaseClient: SupabaseClient,
+): Promise<RagResult> {
+    const searchResults = await Promise.all(
+        embeddings.map(e => searchChunks(e, projectId, selectedDocumentPaths, ragConfig, supabaseClient))
+    )
+    const chunks = deduplicateChunks(searchResults)
+    console.log(`RAG: ${chunks.length} chunks matched for project ${projectId}, section "${sectionTitle}"`)
+    return {
+        contextText: buildContextText(chunks),
+        sources: getSources(chunks),
+        contextQuality: assessContextQuality(chunks),
+        chunkCount: chunks.length,
+    }
 }
 
 /**

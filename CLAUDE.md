@@ -7,7 +7,7 @@
 - **Frontend**: React 19, TypeScript, Vite, Tailwind CSS
 - **Editor**: OnlyOffice Document Server (self-hosted via Docker) — replaced Tiptap WYSIWYG
 - **Backend**: Supabase (Postgres, Auth, Storage, Edge Functions)
-- **AI**: OpenAI GPT-4o (streaming SSE), text-embedding-3-small for RAG
+- **AI**: Anthropic Claude Haiku (streaming SSE), Voyage AI voyage-3-lite for RAG embeddings
 - **Document processing**: mammoth (DOCX→HTML), docx (DOCX generation), docx-preview, PizZip (template manipulation)
 - **Diagrams**: Mermaid (client-side rendering), draw.io (via public viewer API)
 - **Routing**: React Router v7
@@ -119,6 +119,18 @@ public/
 - `docPublicUrl` — Supabase public URL used by OO editor and TOC extraction
 - `documentKey` — unique per-save string for OO cache-busting; rotated by `onlyoffice_callback`
 - Version snapshots stored at: `documents/{projectId}/{docId}/v{n}.docx`
+- **Local setup**: bucket is created by migration `20260305000001_create_documents_bucket.sql`; templates must be uploaded manually after `supabase db reset`:
+  ```bash
+  SERVICE_KEY=$(npx supabase status --output env | grep SERVICE_ROLE_KEY | cut -d'"' -f2)
+  curl -X POST "http://127.0.0.1:54404/storage/v1/object/documents/templates/BRS.docx" \
+    -H "Authorization: Bearer $SERVICE_KEY" \
+    -H "Content-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document" \
+    --data-binary @public/templates/BRS.docx
+  curl -X POST "http://127.0.0.1:54404/storage/v1/object/documents/templates/URS.docx" \
+    -H "Authorization: Bearer $SERVICE_KEY" \
+    -H "Content-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document" \
+    --data-binary @public/templates/URS.docx
+  ```
 
 ## Document Templates
 - Template registry in `documentService.ts`: `FILE_TEMPLATE_TYPES = new Set(['URS', 'BRS'])`
@@ -160,22 +172,28 @@ public/
 
 ### Full-Document Auto-Generation (`auto_generate_document`)
 - Server-side pipeline that generates all auto-generate sections for a document
+- Three-phase pipeline: (1) batch-embed all sections + pre-fetch template in parallel, (2) vector search + LLM for all sections concurrently (max 8 at a time), (3) DOCX build using pre-fetched template
 - Two-phase DOCX builder: template-based (preserves exact formatting) with from-scratch fallback
-- Streams SSE progress events per section back to frontend
+- Streams SSE progress events per section back to frontend; keep-alive heartbeat every 20s prevents connection drops on long runs
 - `AutoGenerateProgress` modal shows real-time section completion status
 - Currently supports BRS documents
+- **`AutoGenerateProgress` design note**: `onComplete` and `selectedDocumentPaths` props are stored in refs inside the component — do NOT add them back to the `useCallback` dep array. The parent (`DocumentEditor`) re-renders frequently (real-time hooks) and creating new function references causes duplicate requests.
 
 ### RAG Pipeline
 - `embed_document` edge function chunks and embeds uploaded project files
 - Dual-query embedding strategy (direct + template-aware) for better recall
+- `embedBatch()` in `ragHelper.ts`: batch-embeds N queries in a single Voyage AI API call — used by auto-generate to reduce 40 individual calls to 2
+- `performRagWithEmbeddings()` in `ragHelper.ts`: search-only variant that accepts pre-computed embeddings, skipping the embed step
 - Structure-aware chunker: preserves heading boundaries, keeps tables intact
 - Context quality assessment: none/low/medium/high
-- Default config: match threshold 0.30, match count 18, embedding dimensions 1536
+- Default config: match threshold 0.30, match count 18, embedding dimensions 512
 
 ### LLM Configuration (`llmConfig.ts`)
-- Model: `gpt-4o` (configurable via env vars)
+- Provider: Anthropic (Claude Haiku `claude-haiku-4-5-20251001`), configurable via `LLM_PROVIDER` env var
+- Embedding: Voyage AI (`voyage-3-lite`, 512 dimensions)
 - Per-content-type settings: tables (temp 0.2, 1500 tokens), diagrams (temp 0.2, 1800 tokens), text (temp 0.3, 2500 tokens)
-- Supports custom endpoints for self-hosted models (Ollama, etc.)
+- Helper functions handle Anthropic vs OpenAI differences (headers, request body, SSE streaming format)
+- Supports custom endpoints for self-hosted models (Ollama, etc.) via `LLM_PROVIDER=openai`
 
 ## Collaboration
 - `project_members` table: roles are `owner`, `editor`, `viewer`
