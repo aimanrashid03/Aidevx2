@@ -71,112 +71,191 @@ async function callLlm(
 }
 
 function buildSystemPrompt(): string {
-    return `You are a UI/UX prototype generator. Given a requirement document, you create a self-contained multi-page HTML file that demonstrates how the described system's user interface would look across multiple screens.
+    return `You generate self-contained multi-page HTML admin dashboard prototypes. You MUST use the EXACT HTML structure, CSS, and JavaScript scaffold below — do NOT change the layout, colors, or styles. You only fill in the {{PLACEHOLDERS}}.
 
-DESIGN SYSTEM — CORRAD Admin Dashboard (light mode, exact replication):
-Match the CORRAD design language as closely as possible. This is a LIGHT MODE design — no dark backgrounds anywhere.
+Output ONLY a complete HTML document starting with <!DOCTYPE html>. No markdown fences, no explanations.
 
-COLOR PALETTE:
-- Accent (violet): --accent-50: #f5f3ff; --accent-100: #ede9fe; --accent-200: #ddd6fe; --accent-500: #8b5cf6; --accent-600: #7c3aed; --accent-700: #6d28d9; --accent-ring: #a78bfa
-- Neutral base: slate palette exclusively — bg: #f8fafc (page), white (cards/sidebar), text: #0f172a (primary), #64748b (muted), #94a3b8 (placeholder)
-- Status: success: bg #ecfdf5 text #15803d; warning: bg #fffbeb text #b45309; error: bg #fef2f2 text #b91c1c; info: bg #eff6ff text #1d4ed8
+=== SCAFFOLD (use this EXACTLY) ===
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>{{SYSTEM_NAME}} — Prototype</title>
+<style>
+:root{--ac50:#f5f3ff;--ac100:#ede9fe;--ac200:#ddd6fe;--ac500:#8b5cf6;--ac600:#7c3aed;--ac700:#6d28d9;--acring:#a78bfa;color-scheme:light}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:14px;line-height:1.5;color:#0f172a;background:#f8f9fb}
+.wrapper{display:flex;min-height:100vh}
+/* Sidebar — light gray background like CORRAD */
+.sidebar{width:256px;min-height:100vh;background:rgba(248,250,252,0.5);border-right:1px solid #e2e8f0;position:fixed;top:0;left:0;bottom:0;display:flex;flex-direction:column;z-index:30}
+.sidebar-logo{padding:12px 16px;border-bottom:1px solid #e2e8f0;background:#fff}
+.sidebar-logo h2{font-size:15px;font-weight:700;color:#0f172a}
+.sidebar-logo p{font-size:11px;color:#94a3b8;margin-top:2px}
+.sidebar-nav{flex:1;padding:12px;overflow-y:auto}
+.nav-group-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:#94a3b8;padding:0 12px;margin:16px 0 4px}
+.nav-group-label:first-child{margin-top:0}
+.nav-item{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;font-size:14px;color:#334155;cursor:pointer;transition:all 150ms;border:1px solid transparent;font-weight:500;text-decoration:none}
+.nav-item:hover{background:var(--ac50)}
+.nav-item.active{background:var(--ac50);border-color:var(--ac200);color:var(--ac700);font-weight:600}
+.nav-item svg{width:16px;height:16px;flex-shrink:0}
+.nav-item.active svg{color:var(--ac700)}
+.nav-item:not(.active) svg{color:#94a3b8}
+/* Header — 40px sticky white bar */
+.main-area{margin-left:256px;flex:1;display:flex;flex-direction:column}
+.header{height:40px;background:#fff;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;padding:0 20px;position:sticky;top:0;z-index:20}
+.page-title{font-size:1.45rem;font-weight:700;letter-spacing:-0.01em;background:linear-gradient(to right,var(--ac600),var(--ac500),var(--ac700));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.header-right{display:flex;align-items:center;gap:8px}
+.header-btn{width:32px;height:32px;display:flex;align-items:center;justify-content:center;border-radius:8px;border:none;background:transparent;color:#64748b;cursor:pointer;transition:all 150ms;position:relative}
+.header-btn:hover{background:var(--ac600);color:#fff}
+.header-btn svg{width:16px;height:16px}
+.avatar{width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,var(--ac600),var(--ac500));color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600}
+.badge-proto{font-size:11px;padding:2px 10px;border-radius:9999px;background:var(--ac50);color:var(--ac700);font-weight:500}
+.notif-dot{position:absolute;top:4px;right:4px;width:7px;height:7px;background:#ef4444;border-radius:50%;border:2px solid #fff}
+/* Content */
+.content{flex:1;padding:16px;background:#fff}
+.content-inner{max-width:1200px}
+/* Cards */
+.card{background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,0.05);overflow:hidden}
+.card-header{padding:10px 16px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between;font-weight:600;font-size:14px;color:#0f172a}
+.card-body{padding:16px}
+/* Stat cards */
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:16px}
+.stat-card{background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:12px;box-shadow:0 1px 2px rgba(0,0,0,0.05)}
+.stat-card .stat-top{display:flex;align-items:center;justify-content:space-between}
+.stat-icon{width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center}
+.stat-icon svg{width:14px;height:14px}
+.stat-val{font-size:22px;font-weight:700;color:#0f172a;margin-top:8px}
+.stat-label{font-size:12px;color:#64748b;margin-top:2px}
+/* Tables */
+table{width:100%;border-collapse:collapse}
+thead th{background:#f8fafc;text-transform:uppercase;font-size:11px;font-weight:600;letter-spacing:0.05em;color:#64748b;padding:8px 16px;text-align:left}
+tbody td{padding:12px 16px;border-bottom:1px solid #f1f5f9;font-size:14px;color:#334155}
+tbody tr{transition:background 150ms}
+tbody tr:hover{background:#f8fafc}
+/* Badges */
+.badge{display:inline-block;padding:2px 10px;border-radius:9999px;font-size:12px;font-weight:500}
+.badge-active{background:#ecfdf5;color:#15803d}
+.badge-draft{background:#fffbeb;color:#b45309}
+.badge-inactive{background:#f1f5f9;color:#64748b}
+.badge-cat{background:var(--ac50);color:var(--ac700)}
+/* Buttons */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:8px;font-size:14px;font-weight:500;cursor:pointer;transition:all 150ms;border:none}
+.btn-primary{background:#0f172a;color:#fff}.btn-primary:hover{background:#1e293b}
+.btn-accent{background:var(--ac600);color:#fff}.btn-accent:hover{background:var(--ac700)}
+.btn-secondary{background:#fff;border:1px solid #cbd5e1;color:#334155}.btn-secondary:hover{background:#f8fafc}
+.btn-ghost{background:transparent;color:#64748b}.btn-ghost:hover{background:#f1f5f9}
+.btn-danger{background:#dc2626;color:#fff}.btn-danger:hover{background:#b91c1c}
+.btn-sm{padding:6px 12px;font-size:13px}
+.btn-icon{width:32px;height:32px;padding:0;justify-content:center;border-radius:8px;background:transparent;border:none;color:#64748b;cursor:pointer}.btn-icon:hover{background:#f1f5f9}
+.btn-icon svg{width:16px;height:16px}
+/* Forms */
+.form-group{margin-bottom:16px}
+.form-label{display:block;font-size:14px;font-weight:500;color:#334155;margin-bottom:4px}
+.form-input,.form-select,.form-textarea{width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:8px 12px;font-size:14px;font-family:inherit;color:#0f172a;background:#fff;transition:all 150ms}
+.form-input:focus,.form-select:focus,.form-textarea:focus{outline:none;border-color:#94a3b8;box-shadow:0 0 0 3px rgba(148,163,184,0.2)}
+.form-textarea{min-height:80px;resize:vertical}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+/* Tabs */
+.tabs{display:inline-flex;background:rgba(226,232,240,0.6);border-radius:8px;padding:4px;margin-bottom:16px}
+.tab{padding:6px 16px;border-radius:6px;font-size:14px;font-weight:500;color:#64748b;cursor:pointer;transition:all 150ms;border:none;background:transparent}
+.tab.active{background:#fff;color:#0f172a;box-shadow:0 1px 2px rgba(0,0,0,0.05)}
+.tab:hover:not(.active){color:#334155}
+/* Search */
+.search-bar{display:flex;gap:8px;margin-bottom:16px;align-items:center}
+.search-input{flex:1;border:1px solid #cbd5e1;border-radius:8px;padding:8px 12px;font-size:14px;font-family:inherit}
+.search-input:focus{outline:none;border-color:#94a3b8;box-shadow:0 0 0 3px rgba(148,163,184,0.2)}
+/* Pagination */
+.pagination{display:flex;align-items:center;gap:4px;justify-content:flex-end;padding:12px 16px}
+.page-btn{padding:6px 12px;border-radius:8px;border:1px solid #cbd5e1;background:#fff;font-size:13px;font-weight:500;cursor:pointer;color:#334155;transition:all 150ms}
+.page-btn:hover{background:#f8fafc}
+.page-btn.active{background:var(--ac600);color:#fff;border-color:var(--ac600)}
+.page-btn:disabled{opacity:0.5;cursor:not-allowed}
+/* Grid helpers */
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.flex-between{display:flex;align-items:center;justify-content:space-between}
+.mb-16{margin-bottom:16px}
+.mb-12{margin-bottom:12px}
+.mt-16{margin-top:16px}
+.text-muted{color:#64748b;font-size:13px}
+.text-mono{font-family:monospace;color:#64748b;font-size:13px}
+/* Chart helpers */
+.bar-chart{display:flex;flex-direction:column;gap:8px}
+.bar-row{display:flex;align-items:center;gap:12px}
+.bar-label{width:120px;font-size:13px;color:#334155;text-align:right;flex-shrink:0}
+.bar-track{flex:1;height:24px;background:#f1f5f9;border-radius:6px;overflow:hidden}
+.bar-fill{height:100%;border-radius:6px;background:linear-gradient(90deg,var(--ac500),var(--ac600));transition:width 300ms}
+.bar-val{width:48px;font-size:13px;color:#64748b;flex-shrink:0}
+.donut{width:120px;height:120px;border-radius:50%;position:relative}
+.donut-label{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:#0f172a}
+/* Breadcrumb */
+.breadcrumb{display:flex;align-items:center;gap:6px;font-size:13px;color:#64748b;margin-bottom:12px}
+.breadcrumb a{color:var(--ac600);text-decoration:none;cursor:pointer}
+.breadcrumb span{color:#94a3b8}
+</style>
+</head>
+<body>
+<div class="wrapper">
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <h2>{{SYSTEM_NAME}}</h2>
+      <p>{{SHORT_DESCRIPTION}}</p>
+    </div>
+    <nav class="sidebar-nav">
+      {{NAV_ITEMS — use <div class="nav-group-label"> for groups, <a class="nav-item" data-page="key"> for items. First item gets class="nav-item active". Each item needs an inline SVG icon.}}
+    </nav>
+  </aside>
+  <div class="main-area">
+    <header class="header">
+      <h1 class="page-title" id="page-title">Dashboard</h1>
+      <div class="header-right">
+        <span class="badge-proto">AI Prototype</span>
+        <button class="header-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg><span class="notif-dot"></span></button>
+        <div class="avatar">AD</div>
+      </div>
+    </header>
+    <div class="content">
+      <div class="content-inner" id="page-content">
+        {{Initial page content — rendered by JavaScript on load}}
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+const pageTitles = { {{key: 'Title', ...}} };
+const pages = { {{key: renderFunction, ...}} };
+function navigate(page) {
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  const target = document.querySelector('[data-page="'+page+'"]');
+  if (target) target.classList.add('active');
+  document.getElementById('page-content').innerHTML = pages[page]();
+  document.getElementById('page-title').textContent = pageTitles[page];
+}
+document.querySelectorAll('.nav-item').forEach(n => {
+  n.addEventListener('click', function(e) { e.preventDefault(); navigate(this.dataset.page); });
+});
+{{RENDER FUNCTIONS — one function per page, returning HTML strings using the CSS classes above}}
+navigate('dashboard');
+</script>
+</body>
+</html>
+=== END SCAFFOLD ===
 
-LAYOUT:
-- Sidebar: width 256px, background WHITE, border-right: 1px solid #e2e8f0, position fixed, full height
-- Sidebar logo area: padding 16px, system name in bold, small tagline text in slate-400
-- Sidebar nav items: padding 8px 12px, border-radius 8px, font-size 14px, color #334155
-  - Hover: background #f5f3ff (accent-50)
-  - Active: background #f5f3ff, border-left: 3px solid #7c3aed, color #7c3aed, font-weight 600
-  - Icon: 16x16 inline SVG before label
-- Sidebar section dividers: 1px solid #e2e8f0 with section labels in uppercase text-xs text-slate-400 tracking-wider
-- Top bar: height 40px, background white, border-bottom: 1px solid #e2e8f0, sticky top, flex center between
-  - Left: page title with gradient text (background: linear-gradient(to right, #7c3aed, #8b5cf6, #6d28d9); -webkit-background-clip: text; color: transparent), font-size 1.45rem, font-weight 700, tracking tight
-  - Right: notification bell icon, user avatar circle (32px, bg accent-100, initials), "AI Prototype" pill badge
-- Content area: margin-left 256px, padding 16px, background #f8fafc
-
-COMPONENTS:
-- Cards: background white, border: 1px solid #e2e8f0, border-radius 8px, box-shadow: 0 1px 2px rgba(0,0,0,0.05), padding 0 (header has own padding)
-  - Card header: padding 10px 16px, border-bottom: 1px solid #f1f5f9, flex between center, font-weight 600 text-sm
-  - Card body: padding 16px
-- Stat/KPI cards: same card base but with colored left border (4px solid accent), icon in accent-50 circle
-- Tables: inside cards, no outer border
-  - Header: background #f8fafc, text-transform uppercase, font-size 11px, font-weight 600, letter-spacing 0.05em, color #64748b, padding 8px 16px
-  - Rows: border-bottom: 1px solid #f1f5f9, padding 12px 16px, hover: background #f8fafc, transition 150ms
-  - Action buttons: 32x32 rounded-lg, hover bg-slate-100, icon only
-- Buttons:
-  - Primary: background #0f172a (slate-900), color white, border-radius 8px, padding 8px 16px, font-size 14px, font-weight 500, hover: #1e293b
-  - Secondary: background white, border: 1px solid #cbd5e1, color #334155, hover: bg #f8fafc
-  - Accent: background #7c3aed, color white, hover: #6d28d9
-  - Ghost: no border/bg, color #64748b, hover: bg #f1f5f9
-  - Destructive: background #dc2626, color white, hover: #b91c1c
-- Badges: border-radius 9999px, padding 2px 10px, font-size 12px, font-weight 500
-  - Published/Active: bg #ecfdf5 text #15803d
-  - Draft/Pending: bg #fffbeb text #b45309
-  - Archived/Inactive: bg #f1f5f9 text #64748b
-  - Category: bg #f5f3ff text #6d28d9
-- Form inputs: width 100%, border: 1px solid #cbd5e1, border-radius 8px, padding 8px 12px, font-size 14px
-  - Focus: border-color #94a3b8, outline none, box-shadow: 0 0 0 3px rgba(148,163,184,0.2)
-  - Label: font-size 14px, font-weight 500, color #334155, margin-bottom 4px
-- Tabs (pill style): container bg #e2e8f0/60, border-radius 8px, padding 4px
-  - Active: bg white, color #0f172a, box-shadow: 0 1px 2px rgba(0,0,0,0.05), border-radius 6px
-  - Inactive: color #64748b, hover color #334155
-- Pagination: rounded-lg border border-slate-300 bg white, disabled: opacity 50%
-- Modals: overlay bg rgba(15,23,42,0.5) backdrop-blur-sm, content: white bg, border-radius 8px, shadow-2xl, max-width 28rem
-- Toasts: gradient backgrounds (success: emerald-200 to emerald-100, error: rose-200 to rose-100)
-
-TYPOGRAPHY:
-- Font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif
-- Base: 14px, line-height 1.5, color #0f172a
-- Page title: .page-title class — gradient text as described above, 1.45rem, font-weight 700
-- Section headings: 18px font-weight 600 color #0f172a
-- Card headings: 14px font-weight 600
-- Muted: color #64748b
-- Table headers: 11px uppercase tracking-wider #64748b
-- Monospace (for IDs/codes): font-family monospace, color #64748b
-
-MULTI-PAGE ARCHITECTURE:
-You MUST generate multiple navigable pages (5-8 pages minimum) with client-side routing. Each sidebar nav item navigates to a different page/view. Implementation:
-- Create a JavaScript object mapping route keys to page content functions
-- Each sidebar nav item has a data-page attribute; clicking sets the active page
-- The content area re-renders based on the selected page
-- Sidebar highlights the active nav item
-- On initial load, show the Dashboard/Overview page
-- Use this pattern:
-  \`\`\`
-  <script>
-  const pages = { dashboard: renderDashboard, users: renderUsers, ... };
-  function navigate(page) {
-    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-    document.querySelector('[data-page="'+page+'"]').classList.add('active');
-    document.getElementById('page-content').innerHTML = pages[page]();
-    document.querySelector('.page-title').textContent = pageTitles[page];
-  }
-  </script>
-  \`\`\`
-
-PAGES TO GENERATE (adapt names/content from the document):
-1. **Dashboard/Overview** — stat cards (3-4 KPI metrics from the document), recent activity table, quick action buttons, summary chart placeholder (CSS-only bar chart or progress bars)
-2. **Primary Entity List** — full data table with search bar, filter dropdowns, column headers, sample rows (8-10), status badges, action buttons (view/edit/delete), pagination
-3. **Primary Entity Detail/Form** — form layout with sections, text inputs, select dropdowns, textareas, toggle switches, save/cancel buttons, breadcrumb navigation
-4. **Secondary Entity List** — another data table for a related entity from the document
-5. **Reports/Analytics** — CSS-only charts (horizontal bar charts using div widths, donut charts using conic-gradient), summary statistics, date range filter
-6. **Settings/Configuration** — tabbed settings form (General, Notifications, Security tabs), profile section with avatar placeholder
-- For BRS: add Objectives page, Stakeholders page, Scope & Milestones page
-- For URS: add User Management page, Requests/Approvals page, Role Permissions page
-- For SRS: add Requirements Matrix page, Use Cases page, Interface Specs page
-- For SDS: add Architecture Overview page, API Documentation page, Database Schema page
-
-OUTPUT RULES:
-- Output a COMPLETE, valid HTML5 document starting with <!DOCTYPE html>
-- Include <meta name="color-scheme" content="light"> in head
-- ALL CSS in a single <style> tag in <head> — no external stylesheets, no CDN links, no imports
-- JavaScript for page navigation, sidebar toggle, tab switching, dropdown menus — keep it vanilla
-- SVG icons inline (simple 16x16 or 20x20 path-based icons for nav items, actions, stats)
-- Use realistic sample data derived from the document content — real entity names, module names, business terminology, field names
-- Every page must have substantive content — no empty states or "coming soon" placeholders
-- Do NOT include comments like "<!-- more items -->" or TODO notes
-- Do NOT use any dark mode styles — everything must be light mode
-- Output ONLY the HTML document — no markdown fences, no explanations before or after`
+RULES FOR FILLING THE SCAFFOLD:
+1. Keep ALL the CSS exactly as provided — do not modify, remove, or override any styles
+2. Fill {{NAV_ITEMS}} with 5-8 sidebar links derived from the document content. Use simple inline SVG icons (24x24 viewBox, stroke-based). Group related items with .nav-group-label dividers
+3. Fill {{RENDER FUNCTIONS}} with one JavaScript function per page. Each function returns an HTML string using the CSS classes defined above (.card, .stat-grid, .stat-card, table/thead/tbody, .badge-*, .btn-*, .form-*, .tabs, .tab, .bar-chart, etc.)
+4. Use REAL entity names, field names, and business terms from the document
+5. Dashboard page: 3-4 .stat-card items + a recent activity table in a .card + a .bar-chart
+6. List pages: .search-bar + .card wrapping a full table (8-10 rows) with .badge status columns + .pagination
+7. Form pages: .breadcrumb + .card with .form-grid containing .form-group items
+8. Reports page: .grid-2 with .donut charts (use conic-gradient) + .bar-chart
+9. Settings page: .tabs for switching sub-sections + form fields
+10. Populate tables with realistic sample data — names, dates, IDs, statuses
+11. Do NOT add any new CSS rules or override existing ones
+12. Do NOT use dark backgrounds anywhere — the scaffold is light mode only`
 }
 
 function buildUserPrompt(
@@ -190,27 +269,22 @@ function buildUserPrompt(
         ? `\n--- PROJECT CONTEXT ---\n${ragContext}\n---`
         : ''
 
-    return `Generate a multi-page UI prototype for the following system:
+    return `Fill the HTML scaffold from the system prompt for this system:
 
-DOCUMENT: ${docTitle}
-TYPE: ${docType} (${fullType})
+SYSTEM NAME: ${docTitle}
+DOC TYPE: ${docType} (${fullType})
 
 --- DOCUMENT CONTENT ---
 ${docText || 'No document content available. Generate a generic prototype based on the document title and type.'}
 ---${contextSection}
 
-Create a realistic, production-quality multi-page admin dashboard prototype based on this ${docType} document.
-
-REQUIREMENTS:
-1. Extract ALL key entities, modules, features, and workflows from the document content
-2. Create 5-8 navigable pages with sidebar navigation — each page must have full, substantive content
-3. Use the EXACT entity names, field names, module names, and business terms from the document
-4. Populate tables with 8-10 realistic sample rows using domain-appropriate data
-5. Dashboard page should have 3-4 KPI stat cards with numbers that make sense for this domain
-6. Include forms with fields that match the actual data requirements described in the document
-7. Follow the CORRAD light-mode design system EXACTLY as specified in the system prompt
-8. Every interactive element (nav items, tabs, buttons) must work via JavaScript
-9. The prototype should look like a real, polished admin application — not a wireframe`
+Instructions:
+1. Set {{SYSTEM_NAME}} to a short system name derived from the document title
+2. Create 5-8 sidebar nav items based on the key modules/entities in the document
+3. Write a render function for each page with substantive content (tables with 8-10 rows, forms with real fields, stat cards with realistic numbers)
+4. Use ONLY the CSS classes defined in the scaffold — do not add new styles
+5. Use the exact entity names, field names, and terminology from the document
+6. Output the complete HTML document — no explanations, no markdown fences`
 }
 
 /** Ensure the LLM output is a complete HTML document */
