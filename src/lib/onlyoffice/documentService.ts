@@ -243,9 +243,12 @@ export async function getOnlyOfficeConfig(params: OnlyOfficeConfigParams): Promi
         },
     };
 
-    const secret = import.meta.env.VITE_ONLYOFFICE_CALLBACK_SECRET as string;
-    if (secret) {
-        config.token = await signJwt(config, secret);
+    // JWT signing for OO uses VITE_ONLYOFFICE_JWT_SECRET (must match JWT_SECRET on the OO server).
+    // This is separate from VITE_ONLYOFFICE_CALLBACK_SECRET (callback URL auth).
+    // Only sign if explicitly configured — leave out token when OO has JWT_ENABLED=false.
+    const jwtSecret = import.meta.env.VITE_ONLYOFFICE_JWT_SECRET as string | undefined;
+    if (jwtSecret) {
+        config.token = await signJwt(config, jwtSecret);
     }
 
     return config;
