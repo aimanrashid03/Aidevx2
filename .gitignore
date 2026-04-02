@@ -36,3 +36,6 @@ supabase/.temp
 
 # Claude Code local settings (may contain tokens)
 .claude/settings.local.json
+
+# Local template files
+User Stories Template.docx
