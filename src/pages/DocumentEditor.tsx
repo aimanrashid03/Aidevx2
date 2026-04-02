@@ -275,7 +275,7 @@ export default function DocumentEditor() {
             publicUrl: ooDocUrl,
             documentKey,
             callbackUrl,
-            mode: viewingVersion ? 'view' : 'edit',
+            mode: (viewingVersion || project?.userRole === 'viewer') ? 'view' : 'edit',
             userId: user?.id ?? 'anonymous',
             userDisplayName: profile?.full_name || user?.email || 'User',
         }).then(setOnlyOfficeConfig)
@@ -514,7 +514,12 @@ export default function DocumentEditor() {
                             projectId={projectId}
                             docType={docType}
                             tocSections={tocSections}
+                            docId={docId ?? undefined}
+                            storagePath={existingDoc?.storagePath ?? undefined}
+                            documentKey={documentKey ?? undefined}
+                            hasUnsavedChanges={hasUnsavedChanges}
                             onInsert={(html) => editorRef.current?.pasteHtml(html)}
+                            onDocumentKeyRotated={(newKey) => setDocumentKey(newKey)}
                         />
                     </div>
                 )}

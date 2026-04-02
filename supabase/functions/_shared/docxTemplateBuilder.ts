@@ -11,7 +11,7 @@ import { markdownToOoxml } from './markdownToOoxml.ts'
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
-interface BodyElement {
+export interface BodyElement {
     index: number
     xml: string
     tag: 'p' | 'tbl' | 'other'
@@ -43,7 +43,7 @@ function findExactTag(xml: string, tag: string, from: number): number {
 }
 
 /** Extract all top-level <w:p> and <w:tbl> elements from <w:body>. */
-function parseBodyElements(bodyXml: string): BodyElement[] {
+export function parseBodyElements(bodyXml: string): BodyElement[] {
     const elements: BodyElement[] = []
     let i = 0
     let elementIndex = 0
@@ -156,7 +156,7 @@ function parseBodyElements(bodyXml: string): BodyElement[] {
 }
 
 /** Normalize a section title for matching: strip leading numbers like "1.0 ", "3.2.1 " */
-function normalizeTitle(title: string): string {
+export function normalizeTitle(title: string): string {
     return title
         .replace(/^\d+(\.\d+)*\s+/, '')  // strip "1.0 ", "3.2.1 " prefixes
         .trim()
@@ -172,7 +172,7 @@ function headingLevel(element: BodyElement): number | null {
 
 // ── Section mapping ─────────────────────────────────────────────────────────
 
-interface SectionRange {
+export interface SectionRange {
     section: ServerDocSection
     headingIndex: number        // index in elements array
     contentStart: number        // first content element index (after heading)
@@ -183,7 +183,7 @@ interface SectionRange {
  * Map each structure section to its element range in the template.
  * Matches by normalizing both template heading text and structure title.
  */
-function buildSectionMap(
+export function buildSectionMap(
     elements: BodyElement[],
     structure: ServerDocSection[],
 ): SectionRange[] {
@@ -249,7 +249,7 @@ function buildSectionMap(
  * Replace the content range of a section with generated OOXML.
  * Returns a new elements array with the content elements replaced.
  */
-function replaceContentRange(
+export function replaceContentRange(
     elements: BodyElement[],
     range: SectionRange,
     ooxmlFragment: string,

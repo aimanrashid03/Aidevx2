@@ -2,16 +2,20 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import {
     Sparkles, Loader2, Copy, Check, MessageSquare, Zap, Send,
     Trash2, CornerDownLeft, ChevronDown, ChevronRight, FileText, Code,
-    Table, GitFork, BookOpen, Info, Square,
+    Table, GitFork, BookOpen, Info, Square, Database, BookmarkPlus, Library,
 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { getSectionContext, type SectionContext, type TableSchema } from '../../lib/ai/sectionContext'
 import { renderMermaidToBase64 } from '../../lib/ai/diagramRenderer'
 import { renderDrawioToBase64 } from '../../lib/ai/drawioRenderer'
 import type { DocHeading } from '../../lib/onlyoffice/extractSections'
+import { useSectionContent } from '../../hooks/useSectionContent'
+import { useDiagramNotes } from '../../hooks/useDiagramNotes'
+import { useActivityLog } from '../../hooks/useActivityLog'
 
 type ContentType = 'text' | 'table' | 'diagram'
 type DiagramFormat = 'mermaid' | 'drawio'
+type DiagramSource = 'mermaid' | 'drawio' | 'library'
 
 interface ChatMessage {
     role: 'user' | 'assistant'
@@ -33,6 +37,12 @@ export interface AIGeneratePanelProps {
     activeSectionId?: string
     /** Called with HTML to paste at cursor in OO */
     onInsert?: (html: string) => void
+    // Section persistence + replace props
+    docId?: string
+    storagePath?: string
+    documentKey?: string
+    hasUnsavedChanges?: boolean
+    onDocumentKeyRotated?: (newKey: string) => void
 }
 
 // Minimal HTML sanitiser — keep only safe formatting tags + base64 images
@@ -74,7 +84,6 @@ function extractDrawioXml(html: string): string | null {
 
 /** Replace diagram pre blocks with base64 images */
 async function resolveDiagrams(html: string): Promise<string> {
-    // Mermaid
     const mermaidCode = extractMermaidCode(html)
     if (mermaidCode) {
         try {
@@ -83,7 +92,6 @@ async function resolveDiagrams(html: string): Promise<string> {
                 `<img src="${base64}" style="max-width:100%">`)
         } catch { /* leave as-is if rendering fails */ }
     }
-    // Draw.io
     const drawioXml = extractDrawioXml(html)
     if (drawioXml) {
         try {
@@ -102,18 +110,35 @@ export default function AIGeneratePanel({
     prefillTitle,
     activeSectionId,
     onInsert,
+    docId,
+    storagePath,
+    documentKey,
+    hasUnsavedChanges = false,
+    onDocumentKeyRotated,
 }: AIGeneratePanelProps) {
-    const [tab, setTab] = useState<'generate' | 'chat'>('generate')
+    const [tab, setTab] = useState<'generate' | 'chat' | 'stored'>('generate')
+
+    // ── Section content persistence ─────────────────────────────────────────
+    const { getRecord, upsertRecord, markInDocument, getSectionStatus } =
+        useSectionContent(projectId, docId ?? null)
+    const { notes: diagramNotes, createNote: createDiagramNote } =
+        useDiagramNotes(projectId)
+    const { logAction } = useActivityLog(projectId, docId)
 
     // ── Generate tab state ──────────────────────────────────────────────────
     const [sectionTitle, setSectionTitle] = useState('')
     const [contentType, setContentType] = useState<ContentType>('text')
     const [diagramFormat, setDiagramFormat] = useState<DiagramFormat>('mermaid')
+    const [diagramSource, setDiagramSource] = useState<DiagramSource>('mermaid')
     const [instructions, setInstructions] = useState('')
     const [tableColumns, setTableColumns] = useState<string[]>([])
     const [generatedHtml, setGeneratedHtml] = useState('')
     const [isGenerating, setIsGenerating] = useState(false)
     const [isProcessingDiagram, setIsProcessingDiagram] = useState(false)
+    const [isReplacing, setIsReplacing] = useState(false)
+    const [replaceError, setReplaceError] = useState<string | null>(null)
+    const [savingToLibrary, setSavingToLibrary] = useState(false)
+    const [savedToLibrary, setSavedToLibrary] = useState(false)
     const [genError, setGenError] = useState<string | null>(null)
     const [genStatus, setGenStatus] = useState<string>('')
     const [copied, setCopied] = useState(false)
@@ -176,6 +201,7 @@ export default function AIGeneratePanel({
             setSectionTitle(prefillTitle)
             setTab('generate')
             setGenError(null)
+            setReplaceError(null)
             // Auto-suggest content type from template context
             const ctx = getSectionContext(docType, prefillTitle)
             if (ctx) {
@@ -184,14 +210,26 @@ export default function AIGeneratePanel({
                 else setContentType('text')
                 if (ctx.tableSchemas.length > 0) setTableColumns(ctx.tableSchemas[0].columns)
             }
-            // Restore from cache if available, otherwise clear
+            // Restore from in-memory cache first, then from DB record
             const cached = generationCache.get(prefillTitle.trim())
             if (cached) {
                 setGeneratedHtml(cached.html)
                 setGenSources(cached.sources)
             } else {
-                setGeneratedHtml('')
-                setGenSources([])
+                // Try DB record
+                const stored = getRecord(prefillTitle.trim())
+                if (stored) {
+                    setGeneratedHtml(stored.html)
+                    setGenSources(stored.sources)
+                    setGenerationCache(prev => {
+                        const next = new Map(prev)
+                        next.set(prefillTitle.trim(), { html: stored.html, sources: stored.sources, timestamp: new Date(stored.updatedAt).getTime() })
+                        return next
+                    })
+                } else {
+                    setGeneratedHtml('')
+                    setGenSources([])
+                }
             }
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -303,6 +341,7 @@ export default function AIGeneratePanel({
         setIsGenerating(true)
         setGeneratedHtml('')
         setGenError(null)
+        setReplaceError(null)
         setCopied(false)
         setGenSources([])
         setContextQuality(null)
@@ -316,7 +355,6 @@ export default function AIGeneratePanel({
             ? projectDocs.filter(d => selectedDocPaths.has(d.id)).map(d => d.file_path)
             : undefined
 
-        // Build table schema to pass if content type is table
         const tableSchema: TableSchema | null = contentType === 'table' && tableColumns.length > 0
             ? { columns: tableColumns }
             : null
@@ -355,13 +393,28 @@ export default function AIGeneratePanel({
                 (msg) => setGenStatus(msg),
             )
             setGenStatus('')
-            // Cache the result
+            // Update in-memory cache
             if (acc) {
                 setGenerationCache(prev => {
                     const next = new Map(prev)
                     next.set(sectionTitle.trim(), { html: acc, sources: cachedSources, timestamp: Date.now() })
                     return next
                 })
+                // Persist to DB
+                if (docId) {
+                    upsertRecord({
+                        projectId, docId, sectionTitle: sectionTitle.trim(),
+                        html: acc, sources: cachedSources,
+                        contentType: contentType as 'text' | 'table' | 'diagram',
+                        diagramType: contentType === 'diagram' ? diagramFormat : null,
+                        isInDocument: false,
+                    }).catch(() => {}) // non-fatal
+                    logAction('section_generated', {
+                        sectionTitle: sectionTitle.trim(),
+                        contentType,
+                        source: 'ai_panel',
+                    }).catch(() => {})
+                }
             }
         } catch (err) {
             if ((err as Error).name !== 'AbortError')
@@ -370,7 +423,7 @@ export default function AIGeneratePanel({
         } finally {
             setIsGenerating(false)
         }
-    }, [sectionTitle, instructions, projectId, selectedDocPaths, projectDocs, contentType, diagramFormat, docType, sectionContext, tableColumns, tocSections, getAuthHeaders])
+    }, [sectionTitle, instructions, projectId, selectedDocPaths, projectDocs, contentType, diagramFormat, docType, sectionContext, tableColumns, tocSections, getAuthHeaders, docId, upsertRecord, logAction])
 
     const handleCopy = async () => {
         try {
@@ -383,7 +436,6 @@ export default function AIGeneratePanel({
     const handleInsert = async () => {
         if (!generatedHtml) return
         let html = generatedHtml
-        // For diagram content types, convert pre blocks to images before inserting
         if (contentType === 'diagram') {
             setIsProcessingDiagram(true)
             try {
@@ -394,6 +446,71 @@ export default function AIGeneratePanel({
         }
         onInsert?.(sanitizeHtml(html))
     }
+
+    // ── Replace in Document ──────────────────────────────────────────────────
+    const handleReplace = useCallback(async () => {
+        const stored = getRecord(sectionTitle.trim())
+        if (!stored || !docId || !documentKey || !storagePath) return
+        if (hasUnsavedChanges) return
+
+        setIsReplacing(true)
+        setReplaceError(null)
+        try {
+            const headers = await getAuthHeaders()
+            const res = await fetch(
+                `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/replace_section`,
+                {
+                    method: 'POST',
+                    headers,
+                    body: JSON.stringify({
+                        projectId, docId,
+                        sectionTitle: sectionTitle.trim(),
+                        html: stored.html,
+                        storagePath,
+                        currentDocumentKey: documentKey,
+                    }),
+                }
+            )
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({ error: res.statusText }))
+                throw new Error(err.error || 'Replace failed')
+            }
+            const { newDocumentKey } = await res.json()
+            await markInDocument(sectionTitle.trim())
+            onDocumentKeyRotated?.(newDocumentKey)
+        } catch (err) {
+            setReplaceError((err as Error).message)
+        } finally {
+            setIsReplacing(false)
+        }
+    }, [sectionTitle, getRecord, docId, documentKey, storagePath, hasUnsavedChanges, getAuthHeaders, projectId, markInDocument, onDocumentKeyRotated])
+
+    // ── Save diagram to Library ──────────────────────────────────────────────
+    const handleSaveDiagramToLibrary = useCallback(async () => {
+        if (!generatedHtml || savingToLibrary) return
+        const code = extractMermaidCode(generatedHtml) || extractDrawioXml(generatedHtml)
+        if (!code) return
+        const type = extractMermaidCode(generatedHtml) ? 'mermaid' : 'drawio'
+        const title = `${sectionTitle || 'Diagram'} — ${new Date().toLocaleDateString()}`
+        setSavingToLibrary(true)
+        try {
+            await createDiagramNote(title, code, type)
+            setSavedToLibrary(true)
+            setTimeout(() => setSavedToLibrary(false), 2500)
+        } catch { /* ignore */ }
+        finally { setSavingToLibrary(false) }
+    }, [generatedHtml, sectionTitle, createDiagramNote, savingToLibrary])
+
+    // ── Load diagram from Library ────────────────────────────────────────────
+    const handleLoadFromLibrary = useCallback((noteId: string) => {
+        const note = diagramNotes.find(n => n.id === noteId)
+        if (!note || note.diagramType === 'freeform') return
+        const tag = note.diagramType === 'mermaid' ? 'mermaid' : 'drawio'
+        setGeneratedHtml(`<pre class="${tag}">${note.content}</pre>`)
+        setDiagramFormat(note.diagramType as DiagramFormat)
+        setGenSources([])
+        setGenError(null)
+    }, [diagramNotes])
 
     // ── Refine ──────────────────────────────────────────────────────────────
     const refine = useCallback(async () => {
@@ -419,6 +536,7 @@ export default function AIGeneratePanel({
 
         try {
             let acc = ''
+            let cachedSources: string[] = []
             await streamSSE(
                 {
                     projectId,
@@ -443,12 +561,28 @@ export default function AIGeneratePanel({
                 },
                 ctrl.signal,
                 (token) => { acc += token; setGeneratedHtml(acc) },
-                (sources) => setGenSources(sources),
+                (sources) => { setGenSources(sources); cachedSources = sources },
                 (msg) => setGenStatus(msg),
             )
             setRefineCount(c => c + 1)
             setRefineFeedback('')
             setGenStatus('')
+            if (acc) {
+                setGenerationCache(prev => {
+                    const next = new Map(prev)
+                    next.set(sectionTitle.trim(), { html: acc, sources: cachedSources, timestamp: Date.now() })
+                    return next
+                })
+                if (docId) {
+                    upsertRecord({
+                        projectId, docId, sectionTitle: sectionTitle.trim(),
+                        html: acc, sources: cachedSources,
+                        contentType: contentType as 'text' | 'table' | 'diagram',
+                        diagramType: contentType === 'diagram' ? diagramFormat : null,
+                        isInDocument: false,
+                    }).catch(() => {})
+                }
+            }
         } catch (err) {
             setGeneratedHtml(prevHtml)
             if ((err as Error).name !== 'AbortError')
@@ -458,7 +592,7 @@ export default function AIGeneratePanel({
             setIsGenerating(false)
         }
     }, [refineFeedback, generatedHtml, isGenerating, refineCount, sectionTitle, instructions, projectId,
-        selectedDocPaths, projectDocs, contentType, diagramFormat, docType, sectionContext, tableColumns, tocSections, getAuthHeaders])
+        selectedDocPaths, projectDocs, contentType, diagramFormat, docType, sectionContext, tableColumns, tocSections, getAuthHeaders, docId, upsertRecord])
 
     // ── Batch Generate ─────────────────────────────────────────────────────
     const startBatch = useCallback(async () => {
@@ -486,6 +620,8 @@ export default function AIGeneratePanel({
             setGenStatus(`Generating ${i + 1}/${queue.length}: ${section.title}`)
 
             const ctx = getSectionContext(docType, section.title)
+            const batchContentType: ContentType = ctx?.expectedFormat === 'table' ? 'table'
+                : ctx?.expectedFormat === 'diagram' ? 'diagram' : 'text'
             try {
                 let acc = ''
                 let sources: string[] = []
@@ -493,8 +629,7 @@ export default function AIGeneratePanel({
                     {
                         projectId,
                         sectionTitle: section.title,
-                        contentType: ctx?.expectedFormat === 'table' ? 'table'
-                            : ctx?.expectedFormat === 'diagram' ? 'diagram' : 'text',
+                        contentType: batchContentType,
                         docType,
                         sectionContext: ctx ? {
                             instructions: ctx.instructions,
@@ -514,23 +649,30 @@ export default function AIGeneratePanel({
                 if (acc) {
                     results.set(section.sectionId, acc)
                     setBatchResults(new Map(results))
-                    // Also cache
                     setGenerationCache(prev => {
                         const next = new Map(prev)
                         next.set(section.title.trim(), { html: acc, sources, timestamp: Date.now() })
                         return next
                     })
+                    if (docId) {
+                        upsertRecord({
+                            projectId, docId, sectionTitle: section.title.trim(),
+                            html: acc, sources,
+                            contentType: batchContentType,
+                            diagramType: batchContentType === 'diagram' ? 'mermaid' : null,
+                            isInDocument: false,
+                        }).catch(() => {})
+                    }
                 }
             } catch (err) {
                 if ((err as Error).name === 'AbortError') break
-                // Skip failed section, continue batch
                 results.set(section.sectionId, `<p class="text-red-500">[Generation failed: ${(err as Error).message}]</p>`)
                 setBatchResults(new Map(results))
             }
         }
         setGenStatus('')
         setBatchMode(false)
-    }, [tocSections, batchMode, selectedDocPaths, projectDocs, docType, projectId, getAuthHeaders])
+    }, [tocSections, batchMode, selectedDocPaths, projectDocs, docType, projectId, getAuthHeaders, docId, upsertRecord])
 
     const cancelBatch = useCallback(() => {
         batchAbortRef.current?.abort()
@@ -540,7 +682,6 @@ export default function AIGeneratePanel({
 
     const insertAllBatch = useCallback(() => {
         if (!onInsert || batchResults.size === 0) return
-        // Insert in section order
         const allHtml = tocSections
             .map(s => batchResults.get(s.sectionId))
             .filter(Boolean)
@@ -617,7 +758,6 @@ export default function AIGeneratePanel({
         })
     }
 
-    // Resolve raw source paths to user-friendly display names
     const getSourceDisplayName = (src: string) => {
         const doc = projectDocs.find(d =>
             d.file_name === src ||
@@ -643,10 +783,31 @@ export default function AIGeneratePanel({
             : 'bg-white text-slate-500 border-slate-200 hover:border-[var(--accent-300)] hover:text-[var(--accent-600)]'
         }`
 
+    const diagramSourceCls = (s: DiagramSource) =>
+        `flex-1 py-1 text-[11px] rounded border transition-colors ${diagramSource === s
+            ? 'bg-[var(--accent-600)] text-white border-[var(--accent-600)]'
+            : 'bg-white text-slate-500 border-slate-200 hover:border-[var(--accent-300)]'
+        }`
+
+    // Status dot helper
+    const statusDotCls = (title: string) => {
+        const status = getSectionStatus(title.trim())
+        if (status === 'in_document') return 'bg-emerald-500'
+        if (status === 'generated_saved') return 'bg-amber-400'
+        return 'bg-slate-200'
+    }
+
     // Render mermaid preview live when generated HTML contains mermaid code
     const mermaidCode = extractMermaidCode(generatedHtml)
     const drawioXml = extractDrawioXml(generatedHtml)
     const hasDiagramCode = !!(mermaidCode || drawioXml)
+
+    // Can "Replace in Document"?
+    const canReplace = !!(docId && documentKey && storagePath && getRecord(sectionTitle.trim())) && !hasUnsavedChanges
+    const replaceDisabledReason = !docId ? 'No document loaded'
+        : hasUnsavedChanges ? 'Save the document first (Ctrl+S in editor)'
+        : !getRecord(sectionTitle.trim()) ? 'Generate content first'
+        : null
 
     return (
         <aside className="w-96 bg-white border-l border-slate-200 flex flex-col shrink-0 z-10">
@@ -667,6 +828,13 @@ export default function AIGeneratePanel({
                 <button className={tabCls('chat')} onClick={() => setTab('chat')}>
                     <MessageSquare size={11} /> Chat
                 </button>
+                <button className={`${tabCls('stored')} relative`} onClick={() => setTab('stored')}>
+                    <Database size={11} /> Stored
+                    {/* Dot badge if any section has stored content */}
+                    {sectionTitle.trim() && getRecord(sectionTitle.trim()) && (
+                        <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-[var(--accent-500)]" />
+                    )}
+                </button>
             </div>
 
             {/* ── GENERATE TAB ── */}
@@ -685,12 +853,28 @@ export default function AIGeneratePanel({
                                     onChange={e => {
                                         const val = e.target.value
                                         setSectionTitle(val)
+                                        setReplaceError(null)
                                         const ctx = getSectionContext(docType, val)
                                         if (ctx) {
                                             if (ctx.expectedFormat === 'diagram') setContentType('diagram')
                                             else if (ctx.expectedFormat === 'table') setContentType('table')
                                             else setContentType('text')
                                             if (ctx.tableSchemas.length > 0) setTableColumns(ctx.tableSchemas[0].columns)
+                                        }
+                                        // Restore from cache or DB
+                                        const cached = generationCache.get(val.trim())
+                                        if (cached) {
+                                            setGeneratedHtml(cached.html)
+                                            setGenSources(cached.sources)
+                                        } else {
+                                            const stored = getRecord(val.trim())
+                                            if (stored) {
+                                                setGeneratedHtml(stored.html)
+                                                setGenSources(stored.sources)
+                                            } else {
+                                                setGeneratedHtml('')
+                                                setGenSources([])
+                                            }
                                         }
                                     }}
                                     className="w-full text-[12px] text-slate-700 bg-slate-50 border border-slate-200 rounded px-2 py-1.5 outline-none focus:border-[var(--accent-ring)] focus:ring-1 focus:ring-[var(--accent-100)]"
@@ -711,6 +895,17 @@ export default function AIGeneratePanel({
                                     rows={2}
                                     className="w-full resize-none text-[12px] text-slate-700 bg-slate-50 border border-slate-200 rounded px-2 py-1.5 outline-none focus:border-[var(--accent-ring)] focus:ring-1 focus:ring-[var(--accent-100)]"
                                 />
+                            )}
+                            {/* Section status badge */}
+                            {sectionTitle.trim() && (
+                                <div className="flex items-center gap-1 mt-1">
+                                    <span className={`w-1.5 h-1.5 rounded-full inline-block ${statusDotCls(sectionTitle)}`} />
+                                    <span className="text-[9px] text-slate-400">
+                                        {getSectionStatus(sectionTitle.trim()) === 'in_document' ? 'In document' :
+                                         getSectionStatus(sectionTitle.trim()) === 'generated_saved' ? 'Generated, not yet in document' :
+                                         'Not generated'}
+                                    </span>
+                                </div>
                             )}
                         </div>
 
@@ -736,22 +931,53 @@ export default function AIGeneratePanel({
                         {contentType === 'diagram' && (
                             <div>
                                 <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide block mb-1.5">
-                                    Diagram Format
+                                    Diagram Source
                                 </label>
                                 <div className="flex gap-1">
                                     <button
-                                        onClick={() => setDiagramFormat('mermaid')}
-                                        className={`flex-1 py-1 text-[11px] rounded border transition-colors ${diagramFormat === 'mermaid' ? 'bg-[var(--accent-600)] text-white border-[var(--accent-600)]' : 'bg-white text-slate-500 border-slate-200 hover:border-[var(--accent-300)]'}`}
+                                        onClick={() => { setDiagramSource('mermaid'); setDiagramFormat('mermaid') }}
+                                        className={diagramSourceCls('mermaid')}
                                     >
                                         Mermaid
                                     </button>
                                     <button
-                                        onClick={() => setDiagramFormat('drawio')}
-                                        className={`flex-1 py-1 text-[11px] rounded border transition-colors ${diagramFormat === 'drawio' ? 'bg-[var(--accent-600)] text-white border-[var(--accent-600)]' : 'bg-white text-slate-500 border-slate-200 hover:border-[var(--accent-300)]'}`}
+                                        onClick={() => { setDiagramSource('drawio'); setDiagramFormat('drawio') }}
+                                        className={diagramSourceCls('drawio')}
                                     >
                                         Draw.io
                                     </button>
+                                    <button
+                                        onClick={() => setDiagramSource('library')}
+                                        className={diagramSourceCls('library')}
+                                        title="Load a saved diagram from library"
+                                    >
+                                        <Library size={10} className="inline mr-0.5" />Library
+                                    </button>
                                 </div>
+
+                                {/* From Library picker */}
+                                {diagramSource === 'library' && (
+                                    <div className="mt-2 flex flex-col gap-1 max-h-32 overflow-y-auto">
+                                        {diagramNotes.filter(n => n.diagramType === 'mermaid' || n.diagramType === 'drawio').length === 0 ? (
+                                            <p className="text-[11px] text-slate-400 italic">No diagrams saved to library yet</p>
+                                        ) : (
+                                            diagramNotes
+                                                .filter(n => n.diagramType === 'mermaid' || n.diagramType === 'drawio')
+                                                .map(note => (
+                                                    <button
+                                                        key={note.id}
+                                                        onClick={() => handleLoadFromLibrary(note.id)}
+                                                        className="flex items-center gap-2 text-left px-2 py-1.5 rounded border border-slate-200 hover:border-[var(--accent-300)] hover:bg-[var(--accent-50)] transition-colors"
+                                                    >
+                                                        <span className={`text-[9px] px-1 py-0.5 rounded font-medium ${note.diagramType === 'mermaid' ? 'bg-violet-100 text-violet-700' : 'bg-blue-100 text-blue-700'}`}>
+                                                            {note.diagramType}
+                                                        </span>
+                                                        <span className="text-[11px] text-slate-600 truncate flex-1">{note.title}</span>
+                                                    </button>
+                                                ))
+                                        )}
+                                    </div>
+                                )}
                             </div>
                         )}
 
@@ -820,24 +1046,26 @@ export default function AIGeneratePanel({
                         )}
 
                         {/* Instructions */}
-                        <div>
-                            <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide block mb-1">
-                                Instructions <span className="font-normal normal-case">(optional)</span>
-                            </label>
-                            <textarea
-                                value={instructions}
-                                onChange={e => setInstructions(e.target.value)}
-                                placeholder={
-                                    contentType === 'diagram'
-                                        ? 'e.g. Show the login flow with SSO and MFA steps…'
-                                        : contentType === 'table'
-                                            ? 'e.g. Fill from uploaded SOW document, use MoSCoW priorities…'
-                                            : 'e.g. Focus on scalability, use bullet points…'
-                                }
-                                rows={2}
-                                className="w-full resize-none text-[12px] text-slate-700 bg-slate-50 border border-slate-200 rounded px-2 py-1.5 outline-none focus:border-[var(--accent-ring)] focus:ring-1 focus:ring-[var(--accent-100)]"
-                            />
-                        </div>
+                        {(contentType !== 'diagram' || diagramSource !== 'library') && (
+                            <div>
+                                <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide block mb-1">
+                                    Instructions <span className="font-normal normal-case">(optional)</span>
+                                </label>
+                                <textarea
+                                    value={instructions}
+                                    onChange={e => setInstructions(e.target.value)}
+                                    placeholder={
+                                        contentType === 'diagram'
+                                            ? 'e.g. Show the login flow with SSO and MFA steps…'
+                                            : contentType === 'table'
+                                                ? 'e.g. Fill from uploaded SOW document, use MoSCoW priorities…'
+                                                : 'e.g. Focus on scalability, use bullet points…'
+                                    }
+                                    rows={2}
+                                    className="w-full resize-none text-[12px] text-slate-700 bg-slate-50 border border-slate-200 rounded px-2 py-1.5 outline-none focus:border-[var(--accent-ring)] focus:ring-1 focus:ring-[var(--accent-100)]"
+                                />
+                            </div>
+                        )}
 
                         {/* Context document selector */}
                         {projectDocs.length > 0 && (
@@ -901,32 +1129,34 @@ export default function AIGeneratePanel({
                             </div>
                         )}
 
-                        <div className="flex gap-1.5">
-                            <button
-                                onClick={generate}
-                                disabled={isGenerating || batchMode || !sectionTitle.trim()}
-                                className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded bg-[var(--accent-600)] text-white text-[11px] font-medium hover:bg-[var(--accent-700)] disabled:opacity-50 transition-colors"
-                            >
-                                {isGenerating ? <Loader2 size={11} className="animate-spin" /> : <Zap size={11} />}
-                                {isGenerating ? (genStatus || 'Generating…') : 'Generate'}
-                            </button>
-                            {isGenerating && (
+                        {(contentType !== 'diagram' || diagramSource !== 'library') && (
+                            <div className="flex gap-1.5">
                                 <button
-                                    onClick={() => genAbortRef.current?.abort()}
-                                    className="flex items-center justify-center px-2.5 py-1.5 rounded border border-rose-200 text-rose-500 hover:bg-rose-50 text-[11px] font-medium transition-colors"
-                                    title="Stop generation"
+                                    onClick={generate}
+                                    disabled={isGenerating || batchMode || !sectionTitle.trim()}
+                                    className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded bg-[var(--accent-600)] text-white text-[11px] font-medium hover:bg-[var(--accent-700)] disabled:opacity-50 transition-colors"
                                 >
-                                    <Square size={10} />
+                                    {isGenerating ? <Loader2 size={11} className="animate-spin" /> : <Zap size={11} />}
+                                    {isGenerating ? (genStatus || 'Generating…') : 'Generate'}
                                 </button>
-                            )}
-                        </div>
+                                {isGenerating && (
+                                    <button
+                                        onClick={() => genAbortRef.current?.abort()}
+                                        className="flex items-center justify-center px-2.5 py-1.5 rounded border border-rose-200 text-rose-500 hover:bg-rose-50 text-[11px] font-medium transition-colors"
+                                        title="Stop generation"
+                                    >
+                                        <Square size={10} />
+                                    </button>
+                                )}
+                            </div>
+                        )}
 
                         {/* Batch Generate All */}
                         {tocSections.length > 0 && !isGenerating && (
                             batchMode ? (
                                 <div className="flex flex-col gap-1.5">
                                     <div className="flex items-center gap-2">
-                                        <div className="flex-1 bg-slate-200 rounded-full h-1.5 overflow-hidden">
+                                        <div className="flex-1 h-1.5 rounded-full bg-slate-200 overflow-hidden">
                                             <div
                                                 className="h-full bg-[var(--accent-500)] transition-all duration-300"
                                                 style={{ width: `${batchProgress.total > 0 ? (batchProgress.current / batchProgress.total) * 100 : 0}%` }}
@@ -1022,7 +1252,6 @@ export default function AIGeneratePanel({
                                     className="w-full h-full resize-none text-[11px] font-mono text-slate-600 bg-slate-50 p-2 outline-none leading-relaxed"
                                 />
                             ) : hasDiagramCode && !isGenerating ? (
-                                // Diagram preview — render live
                                 <DiagramPreview html={generatedHtml} mermaidCode={mermaidCode} drawioXml={drawioXml} />
                             ) : (
                                 <div
@@ -1087,6 +1316,7 @@ export default function AIGeneratePanel({
                         )}
 
                         {genError && <p className="text-[11px] text-red-500 shrink-0">{genError}</p>}
+                        {replaceError && <p className="text-[11px] text-red-500 shrink-0">{replaceError}</p>}
                     </div>
 
                     {/* Refine input */}
@@ -1124,11 +1354,11 @@ export default function AIGeneratePanel({
                     )}
 
                     {/* Footer */}
-                    <div className="px-3 pb-3 flex gap-2 shrink-0 border-t border-slate-100 pt-2">
+                    <div className="px-3 pb-3 flex flex-wrap gap-1.5 shrink-0 border-t border-slate-100 pt-2">
                         <button
                             onClick={generate}
                             disabled={isGenerating || !sectionTitle.trim()}
-                            className="flex-1 text-[11px] py-1.5 rounded border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-50 transition-colors"
+                            className="text-[11px] px-2.5 py-1.5 rounded border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-50 transition-colors"
                         >
                             ↺ Regen
                         </button>
@@ -1151,22 +1381,46 @@ export default function AIGeneratePanel({
                         <button
                             onClick={handleCopy}
                             disabled={!generatedHtml || isGenerating}
-                            className="flex items-center justify-center gap-1 px-3 text-[11px] py-1.5 rounded border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-50 transition-colors"
+                            className="flex items-center justify-center gap-1 px-2.5 text-[11px] py-1.5 rounded border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-50 transition-colors"
                         >
                             {copied ? <Check size={11} /> : <Copy size={11} />}
                             {copied ? 'Copied!' : 'Copy'}
                         </button>
+                        {/* Save to Library — diagrams only */}
+                        {generatedHtml && !isGenerating && contentType === 'diagram' && hasDiagramCode && diagramSource !== 'library' && (
+                            <button
+                                onClick={handleSaveDiagramToLibrary}
+                                disabled={savingToLibrary}
+                                className="flex items-center justify-center gap-1 px-2.5 text-[11px] py-1.5 rounded border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-50 transition-colors"
+                                title="Save diagram to Library"
+                            >
+                                {savedToLibrary ? <Check size={11} className="text-emerald-500" /> : <BookmarkPlus size={11} />}
+                                {savedToLibrary ? 'Saved!' : 'Library'}
+                            </button>
+                        )}
                         {onInsert && (
                             <button
                                 onClick={handleInsert}
                                 disabled={!generatedHtml || isGenerating || isProcessingDiagram}
-                                className="flex items-center justify-center gap-1 px-3 text-[11px] py-1.5 rounded bg-[var(--accent-600)] text-white hover:bg-[var(--accent-700)] disabled:opacity-50 transition-colors"
+                                className="flex items-center justify-center gap-1 px-2.5 text-[11px] py-1.5 rounded bg-slate-600 text-white hover:bg-slate-700 disabled:opacity-50 transition-colors"
                                 title="Insert at cursor in document"
                             >
                                 {isProcessingDiagram
                                     ? <Loader2 size={11} className="animate-spin" />
                                     : <CornerDownLeft size={11} />}
                                 Insert
+                            </button>
+                        )}
+                        {/* Replace in Document */}
+                        {docId && (
+                            <button
+                                onClick={handleReplace}
+                                disabled={!canReplace || isReplacing}
+                                title={replaceDisabledReason ?? 'Replace section content in document (server-side)'}
+                                className="flex items-center justify-center gap-1 px-2.5 text-[11px] py-1.5 rounded bg-[var(--accent-600)] text-white hover:bg-[var(--accent-700)] disabled:opacity-50 transition-colors"
+                            >
+                                {isReplacing ? <Loader2 size={11} className="animate-spin" /> : <Database size={11} />}
+                                {isReplacing ? 'Replacing…' : 'Replace'}
                             </button>
                         )}
                     </div>
@@ -1243,6 +1497,140 @@ export default function AIGeneratePanel({
                     </div>
                 </div>
             )}
+
+            {/* ── STORED TAB ── */}
+            {tab === 'stored' && (
+                <div className="flex flex-col flex-1 overflow-hidden">
+                    <div className="flex flex-col gap-2.5 p-3 border-b border-slate-100 shrink-0">
+                        <div>
+                            <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide block mb-1">
+                                Section
+                            </label>
+                            {tocSections.length > 0 ? (
+                                <select
+                                    value={sectionTitle}
+                                    onChange={e => setSectionTitle(e.target.value)}
+                                    className="w-full text-[12px] text-slate-700 bg-slate-50 border border-slate-200 rounded px-2 py-1.5 outline-none focus:border-[var(--accent-ring)] focus:ring-1 focus:ring-[var(--accent-100)]"
+                                >
+                                    <option value="">— Select a section —</option>
+                                    {tocSections.map(s => {
+                                        const status = getSectionStatus(s.title.trim())
+                                        return (
+                                            <option key={s.sectionId} value={s.title}>
+                                                {'\u00A0\u00A0'.repeat(s.level - 1)}{s.title}
+                                                {status === 'in_document' ? ' ✓' : status === 'generated_saved' ? ' •' : ''}
+                                            </option>
+                                        )
+                                    })}
+                                </select>
+                            ) : (
+                                <input
+                                    value={sectionTitle}
+                                    onChange={e => setSectionTitle(e.target.value)}
+                                    placeholder="Section title…"
+                                    className="w-full text-[12px] text-slate-700 bg-slate-50 border border-slate-200 rounded px-2 py-1.5 outline-none focus:border-[var(--accent-ring)]"
+                                />
+                            )}
+                        </div>
+
+                        {/* Status badge */}
+                        {sectionTitle.trim() && (
+                            <div className="flex items-center gap-2">
+                                <span className={`w-2 h-2 rounded-full inline-block ${statusDotCls(sectionTitle)}`} />
+                                <span className={`text-[10px] font-medium ${
+                                    getSectionStatus(sectionTitle.trim()) === 'in_document' ? 'text-emerald-700' :
+                                    getSectionStatus(sectionTitle.trim()) === 'generated_saved' ? 'text-amber-600' :
+                                    'text-slate-400'
+                                }`}>
+                                    {getSectionStatus(sectionTitle.trim()) === 'in_document' ? 'In document' :
+                                     getSectionStatus(sectionTitle.trim()) === 'generated_saved' ? 'Generated — not yet in document' :
+                                     'No stored content'}
+                                </span>
+                            </div>
+                        )}
+                    </div>
+
+                    {sectionTitle.trim() && getRecord(sectionTitle.trim()) ? (
+                        <>
+                            <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-2">
+                                {/* Stored content preview */}
+                                <div
+                                    className="text-[12px] text-slate-700 leading-relaxed prose prose-sm max-w-none
+                                        [&_h3]:text-[12px] [&_h3]:font-semibold [&_h3]:mt-2 [&_h3]:mb-1
+                                        [&_p]:mb-2 [&_ul]:pl-4 [&_ol]:pl-4 [&_li]:mb-0.5
+                                        [&_table]:w-full [&_table]:border-collapse [&_table]:text-[11px]
+                                        [&_th]:border [&_th]:border-slate-300 [&_th]:bg-slate-100 [&_th]:px-1.5 [&_th]:py-1 [&_th]:text-left
+                                        [&_td]:border [&_td]:border-slate-200 [&_td]:px-1.5 [&_td]:py-1"
+                                    dangerouslySetInnerHTML={{ __html: getRecord(sectionTitle.trim())!.html }}
+                                />
+
+                                {/* Source pills */}
+                                {getRecord(sectionTitle.trim())!.sources.length > 0 && (
+                                    <div>
+                                        <p className="text-[10px] text-slate-400 mb-1">Sources:</p>
+                                        <div className="flex flex-wrap gap-1">
+                                            {getRecord(sectionTitle.trim())!.sources.map(src => (
+                                                <span key={src} className="inline-flex items-center gap-1 text-[10px] bg-[var(--accent-50)] text-[var(--accent-700)] border border-[var(--accent-200)] rounded px-1.5 py-0.5" title={src}>
+                                                    <FileText size={9} />
+                                                    <span className="max-w-[140px] truncate">{getSourceDisplayName(src)}</span>
+                                                </span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Timestamps */}
+                                <p className="text-[10px] text-slate-400">
+                                    Saved {new Date(getRecord(sectionTitle.trim())!.updatedAt).toLocaleString()}
+                                </p>
+
+                                {replaceError && <p className="text-[11px] text-red-500">{replaceError}</p>}
+                            </div>
+
+                            {/* Stored tab footer */}
+                            <div className="px-3 pb-3 pt-2 flex gap-1.5 shrink-0 border-t border-slate-100">
+                                {onInsert && (
+                                    <button
+                                        onClick={async () => {
+                                            const record = getRecord(sectionTitle.trim())
+                                            if (!record) return
+                                            let html = record.html
+                                            if (record.contentType === 'diagram') {
+                                                setIsProcessingDiagram(true)
+                                                try { html = await resolveDiagrams(html) }
+                                                finally { setIsProcessingDiagram(false) }
+                                            }
+                                            onInsert(sanitizeHtml(html))
+                                        }}
+                                        disabled={isProcessingDiagram}
+                                        className="flex-1 flex items-center justify-center gap-1 text-[11px] py-1.5 rounded border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-50 transition-colors"
+                                    >
+                                        {isProcessingDiagram ? <Loader2 size={11} className="animate-spin" /> : <CornerDownLeft size={11} />}
+                                        Insert at Cursor
+                                    </button>
+                                )}
+                                {docId && (
+                                    <button
+                                        onClick={handleReplace}
+                                        disabled={!canReplace || isReplacing}
+                                        title={replaceDisabledReason ?? 'Replace section in document (server-side)'}
+                                        className="flex-1 flex items-center justify-center gap-1 text-[11px] py-1.5 rounded bg-[var(--accent-600)] text-white hover:bg-[var(--accent-700)] disabled:opacity-50 transition-colors"
+                                    >
+                                        {isReplacing ? <Loader2 size={11} className="animate-spin" /> : <Database size={11} />}
+                                        {isReplacing ? 'Replacing…' : 'Replace in Document'}
+                                    </button>
+                                )}
+                            </div>
+                        </>
+                    ) : (
+                        <div className="flex-1 flex items-center justify-center text-center text-[11px] text-slate-400 px-6 py-10">
+                            {sectionTitle.trim()
+                                ? 'No stored content for this section. Generate content in the Generate tab first.'
+                                : 'Select a section to see its stored content.'}
+                        </div>
+                    )}
+                </div>
+            )}
         </aside>
     )
 }
@@ -1264,7 +1652,6 @@ function DiagramPreview({ html, mermaidCode, drawioXml }: {
                 mermaid.initialize({ startOnLoad: false, theme: 'neutral' })
                 mermaid.render(`preview-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, mermaidCode)
                     .then(({ svg }) => {
-                        // Force SVG to fill container width and remove fixed max-width
                         const patched = svg
                             .replace(/style="[^"]*max-width[^"]*"/gi, 'style="width:100%;height:auto;"')
                             .replace(/<svg /, '<svg style="width:100%;height:auto;" ')
@@ -1304,7 +1691,6 @@ function DiagramPreview({ html, mermaidCode, drawioXml }: {
         )
     }
 
-    // Fallback to HTML render
     return (
         <div
             className="p-2 text-[12px] text-slate-700 leading-relaxed"

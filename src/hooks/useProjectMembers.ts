@@ -105,6 +105,13 @@ export function useProjectMembers(projectId: string | undefined) {
             if (insertError) throw insertError;
 
             await fetchMembers();
+            // Log activity (non-fatal)
+            supabase.from('activity_log').insert({
+                project_id: projectId,
+                user_id: user.id,
+                action: 'member_invited',
+                details: { memberEmail: email, role },
+            }).then(({ error: logErr }) => { if (logErr) console.error('activity_log:', logErr) });
             return { success: true, error: null };
         } catch (error: any) {
             console.error('Error inviting member:', error);
@@ -116,6 +123,7 @@ export function useProjectMembers(projectId: string | undefined) {
         if (!projectId || !user) return;
 
         try {
+            const memberToRemove = members.find(m => m.id === memberId);
             const { error } = await supabase
                 .from('project_members')
                 .delete()
@@ -123,6 +131,15 @@ export function useProjectMembers(projectId: string | undefined) {
 
             if (error) throw error;
             await fetchMembers();
+            // Log activity (non-fatal)
+            if (memberToRemove) {
+                supabase.from('activity_log').insert({
+                    project_id: projectId,
+                    user_id: user.id,
+                    action: 'member_removed',
+                    details: { memberEmail: memberToRemove.email },
+                }).then(({ error: logErr }) => { if (logErr) console.error('activity_log:', logErr) });
+            }
         } catch (error) {
             console.error('Error removing member:', error);
         }

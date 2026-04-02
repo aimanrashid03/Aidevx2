@@ -320,7 +320,48 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
         if (!user || !version.storagePath) return;
 
         try {
-            const currentPath = `documents/${projectId}/${version.docId}/current.docx`;
+            const currentRelPath = `${projectId}/${version.docId}/current.docx`;
+            const currentPath = `documents/${currentRelPath}`;
+
+            // ── Snapshot current.docx → v{n}.docx before overwriting ────────────
+            const { data: currentDocRow } = await supabase
+                .from('requirement_docs')
+                .select('current_version, title, status, section_statuses')
+                .eq('id', version.docId)
+                .eq('project_id', projectId)
+                .single();
+
+            let nextVersion = (currentDocRow?.current_version ?? 1) + 1;
+
+            if (currentDocRow) {
+                const snapshotVersion = currentDocRow.current_version ?? 1;
+                const { data: currentBlob } = await supabase.storage
+                    .from('documents')
+                    .download(currentRelPath);
+
+                if (currentBlob) {
+                    const versionPath = `${projectId}/${version.docId}/v${snapshotVersion}.docx`;
+                    await supabase.storage
+                        .from('documents')
+                        .upload(versionPath, currentBlob, {
+                            contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                            upsert: true,
+                        });
+                    await supabase.from('doc_versions').insert({
+                        doc_id: version.docId,
+                        project_id: projectId,
+                        version_number: snapshotVersion,
+                        content: null,
+                        storage_path: `documents/${versionPath}`,
+                        section_statuses: currentDocRow.section_statuses,
+                        title: currentDocRow.title,
+                        status: currentDocRow.status,
+                        created_by: user.id,
+                        change_summary: `Snapshot before restoring to v${version.versionNumber}`,
+                    });
+                }
+            }
+            // ── End snapshot ──────────────────────────────────────────────────────
 
             // Download the version snapshot DOCX
             const versionRelPath = version.storagePath.startsWith('documents/')
@@ -336,14 +377,14 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
             // Upload it as the new current.docx
             const { error: uploadErr } = await supabase.storage
                 .from('documents')
-                .upload(currentPath.slice('documents/'.length), versionFile, {
+                .upload(currentRelPath, versionFile, {
                     contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
                     upsert: true,
                 });
 
             if (uploadErr) throw uploadErr;
 
-            // Rotate the document key so OnlyOffice reloads
+            // Rotate the document key so OnlyOffice reloads and increment version
             const newKey = `${version.docId}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
             const { error: dbErr } = await supabase
@@ -351,6 +392,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
                 .update({
                     storage_path: currentPath,
                     document_key: newKey,
+                    current_version: nextVersion,
                     last_modified: new Date().toISOString(),
                 })
                 .eq('id', version.docId)

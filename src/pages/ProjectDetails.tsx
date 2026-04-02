@@ -3,7 +3,7 @@ import { useProjects } from '../context/ProjectContext';
 import {
     ArrowLeft, FileText, File, Calendar, X,
     LayoutTemplate, ChevronRight, LayoutDashboard,
-    CirclePlay, LibraryBig, Users, Sparkles, FileEdit, Check, Edit, FlaskConical
+    CirclePlay, LibraryBig, Users, Sparkles, FileEdit, Check, Edit, FlaskConical, Activity
 } from 'lucide-react';
 import { useState } from 'react';
 import { useConfirmDialog } from '../hooks/useConfirmDialog';
@@ -13,6 +13,7 @@ import WorkspaceTab from '../components/project-tabs/WorkspaceTab';
 import LibraryTab from '../components/project-tabs/LibraryTab';
 import CollaboratorsTab from '../components/project-tabs/CollaboratorsTab';
 import PrototypeTab from '../components/project-tabs/PrototypeTab';
+import ActivityTab from '../components/project-tabs/ActivityTab';
 
 const TEMPLATES = [
     { id: 'BRS', name: 'Business Requirement Spec (BRS)', desc: 'High-level business goals and scope.' },
@@ -21,7 +22,7 @@ const TEMPLATES = [
     { id: 'SDS', name: 'Software Design Spec (SDS)', desc: 'Technical architecture and system design.' },
 ];
 
-type TabKey = 'dashboard' | 'workspace' | 'library' | 'prototype' | 'collaborators';
+type TabKey = 'dashboard' | 'workspace' | 'library' | 'prototype' | 'collaborators' | 'activity';
 
 const TABS: { key: TabKey; label: string; icon: React.ElementType }[] = [
     { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -29,6 +30,7 @@ const TABS: { key: TabKey; label: string; icon: React.ElementType }[] = [
     { key: 'library', label: 'Library', icon: LibraryBig },
     { key: 'prototype', label: 'Prototype', icon: FlaskConical },
     { key: 'collaborators', label: 'Collaborators', icon: Users },
+    { key: 'activity', label: 'Activity', icon: Activity },
 ];
 
 export default function ProjectDetails() {
@@ -246,6 +248,9 @@ export default function ProjectDetails() {
                 )}
                 {activeTab === 'collaborators' && (
                     <CollaboratorsTab projectId={project.id} />
+                )}
+                {activeTab === 'activity' && (
+                    <ActivityTab projectId={project.id} />
                 )}
             </div>
 

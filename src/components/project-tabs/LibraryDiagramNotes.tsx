@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Plus, Edit, Trash2, Loader2, GitBranch, X, Check } from 'lucide-react';
 import { useDiagramNotes, type DiagramNote } from '../../hooks/useDiagramNotes';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
+import { renderDrawioToBase64 } from '../../lib/ai/drawioRenderer';
 
 type DiagramType = DiagramNote['diagramType'];
 
@@ -16,6 +17,92 @@ const TYPE_COLORS: Record<DiagramType, string> = {
     drawio: 'text-[var(--accent-700)] bg-[var(--accent-50)] border-[var(--accent-200)]',
     freeform: 'text-slate-600 bg-slate-100 border-slate-200',
 };
+
+// ── Diagram Preview Card ───────────────────────────────────────────────────────
+
+function DiagramPreviewCard({ note }: { note: DiagramNote }) {
+    const [renderedSvg, setRenderedSvg] = useState<string | null>(null)
+    const [drawioImg, setDrawioImg] = useState<string | null>(null)
+    const [previewError, setPreviewError] = useState(false)
+    const [isVisible, setIsVisible] = useState(false)
+    const cardRef = useRef<HTMLDivElement>(null)
+
+    // Lazy-load preview only when card scrolls into view
+    useEffect(() => {
+        const el = cardRef.current
+        if (!el) return
+        const observer = new IntersectionObserver(
+            ([entry]) => { if (entry.isIntersecting) setIsVisible(true) },
+            { threshold: 0.1 }
+        )
+        observer.observe(el)
+        return () => observer.disconnect()
+    }, [])
+
+    useEffect(() => {
+        if (!isVisible) return
+        if (note.diagramType === 'mermaid' && note.content) {
+            import('mermaid').then(mod => {
+                const mermaid = mod.default
+                mermaid.initialize({ startOnLoad: false, theme: 'neutral' })
+                mermaid.render(`lib-preview-${note.id}-${Date.now()}`, note.content)
+                    .then(({ svg }) => {
+                        const patched = svg
+                            .replace(/style="[^"]*max-width[^"]*"/gi, 'style="width:100%;height:auto;"')
+                            .replace(/<svg /, '<svg style="width:100%;height:auto;" ')
+                        setRenderedSvg(patched)
+                    })
+                    .catch(() => setPreviewError(true))
+            }).catch(() => setPreviewError(true))
+        } else if (note.diagramType === 'drawio' && note.content) {
+            renderDrawioToBase64(note.content)
+                .then(base64 => setDrawioImg(base64))
+                .catch(() => setPreviewError(true))
+        }
+    }, [isVisible, note.id, note.diagramType, note.content])
+
+    const hasPreview = note.diagramType === 'mermaid' || note.diagramType === 'drawio'
+
+    if (!hasPreview) {
+        // Freeform: single column
+        return (
+            <div ref={cardRef}>
+                {note.content && (
+                    <pre className="mt-2 text-[11px] text-slate-600 font-mono bg-slate-50 rounded p-2 overflow-x-auto max-h-24 overflow-y-auto whitespace-pre-wrap border border-slate-100">
+                        {note.content}
+                    </pre>
+                )}
+            </div>
+        )
+    }
+
+    // Split-view: code left, preview right
+    return (
+        <div ref={cardRef} className="mt-2 grid grid-cols-2 gap-2">
+            {/* Code panel */}
+            <pre className="text-[10px] text-slate-600 font-mono bg-slate-50 rounded p-2 overflow-auto max-h-28 whitespace-pre-wrap border border-slate-100">
+                {note.content || '—'}
+            </pre>
+            {/* Preview panel */}
+            <div className="rounded border border-slate-100 bg-white flex items-center justify-center overflow-hidden min-h-[7rem]">
+                {previewError ? (
+                    <span className="text-[10px] text-slate-400 italic px-2 text-center">Preview unavailable</span>
+                ) : note.diagramType === 'mermaid' && renderedSvg ? (
+                    <div
+                        className="w-full h-full p-1 overflow-auto [&_svg]:w-full [&_svg]:h-auto"
+                        dangerouslySetInnerHTML={{ __html: renderedSvg }}
+                    />
+                ) : note.diagramType === 'drawio' && drawioImg ? (
+                    <img src={drawioImg} alt="Diagram preview" className="max-w-full max-h-28 object-contain" />
+                ) : (
+                    <Loader2 size={14} className="animate-spin text-slate-300" />
+                )}
+            </div>
+        </div>
+    )
+}
+
+// ── Inline form ───────────────────────────────────────────────────────────────
 
 interface InlineFormProps {
     initial?: Partial<DiagramNote>;
@@ -82,6 +169,8 @@ function InlineForm({ initial, onSave, onCancel }: InlineFormProps) {
         </div>
     );
 }
+
+// ── Main component ────────────────────────────────────────────────────────────
 
 interface Props {
     projectId: string;
@@ -189,11 +278,7 @@ export default function LibraryDiagramNotes({ projectId }: Props) {
                                         </button>
                                     </div>
                                 </div>
-                                {note.content && (
-                                    <pre className="mt-2 text-[11px] text-slate-600 font-mono bg-slate-50 rounded p-2 overflow-x-auto max-h-24 overflow-y-auto whitespace-pre-wrap border border-slate-100">
-                                        {note.content}
-                                    </pre>
-                                )}
+                                <DiagramPreviewCard note={note} />
                                 <p className="text-[10px] text-slate-400 mt-1.5">
                                     {new Date(note.updatedAt).toLocaleDateString()}
                                 </p>
@@ -203,7 +288,6 @@ export default function LibraryDiagramNotes({ projectId }: Props) {
                 </div>
             )}
 
-            {/* Close add form icon when scrolled away */}
             {isAdding && notes.length > 0 && (
                 <button
                     onClick={() => setIsAdding(false)}
