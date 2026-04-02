@@ -40,7 +40,8 @@ export function useDocumentComments(docId: string | undefined, projectId: string
 
             if (error) throw error;
 
-            const flat: DocComment[] = (data || []).map((c: any) => ({
+            type CommentRow = { id: string; doc_id: string; project_id: string; section_index: number; parent_id: string | null; author_id: string; content: string; resolved: boolean; resolved_by: string | null; created_at: string; profiles: { email: string; full_name: string } | null };
+            const flat: DocComment[] = (data || []).map((c: CommentRow) => ({
                 id: c.id,
                 docId: c.doc_id,
                 projectId: c.project_id,

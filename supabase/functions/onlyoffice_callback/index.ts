@@ -1,4 +1,3 @@
-// deno-lint-ignore-file
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.38.0'
 
@@ -54,7 +53,8 @@ serve(async (req: Request) => {
             })
         }
 
-        const body = await req.json()
+        // deno-lint-ignore no-explicit-any
+        const body: any = await req.json()
         const { status, url: docUrl, key: callbackKey } = body
 
         console.log(`OnlyOffice callback: docId=${docId} projectId=${projectId} status=${status} key=${callbackKey}`)

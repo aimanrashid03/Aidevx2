@@ -86,6 +86,7 @@ src/
     brs_structure.ts             # BRS DocSection[] template (Bahasa Malaysia)
     srs_structure.ts             # SRS DocSection[] template
     sds_structure.ts             # SDS DocSection[] template
+    userStoryTemplate.ts         # USER_STORY_TEMPLATE array (7 sections) — imported by LibraryUserStories
 supabase/
   functions/
     generate_section/            # Per-section AI generation (streaming SSE, chat mode, RAG)
@@ -159,7 +160,8 @@ public/
 - **Env vars** (in `.env`):
   - `VITE_ONLYOFFICE_SERVER_URL=http://localhost:8080`
   - `VITE_ONLYOFFICE_CALLBACK_SECRET=aidevx-oo-callback-secret-change-in-prod`
-- **JWT**: Disabled locally (`JWT_ENABLED=false`); enable + set `ONLYOFFICE_JWT_SECRET` in production
+- **JWT**: Disabled locally (`JWT_ENABLED=false`); production OO server also runs with `JWT_ENABLED=false`
+- **OO JWT signing** (`config.token`): only performed if `VITE_ONLYOFFICE_JWT_SECRET` is set in `.env` — this must match `JWT_SECRET` on the OO server. Leave unset when `JWT_ENABLED=false`. Do NOT use `VITE_ONLYOFFICE_CALLBACK_SECRET` for this — they are separate concerns.
 
 ## AI Generation
 
@@ -199,6 +201,7 @@ public/
 - Context quality assessment: none/low/medium/high
 - Default config: match threshold 0.30, match count 18, embedding dimensions 512
 - **DB migration** `20260401000000_voyage_embeddings.sql`: resizes pgvector column from 1536d → 512d, truncates `document_chunks`, resets `embedding_status → pending`. All documents must be re-embedded after applying this migration.
+- **DB migration** `20260402100000_add_embedding_index.sql`: adds HNSW index on `document_chunks.embedding` (`vector_cosine_ops`, m=16, ef_construction=64) for faster similarity search. HNSW chosen over IVFFlat — no training step, better recall, suits incrementally growing data.
 
 ### LLM Configuration (`llmConfig.ts`)
 - Provider: Anthropic (Claude Haiku `claude-haiku-4-5-20251001`), configurable via `LLM_PROVIDER` env var (set to `openai` for OpenAI-compatible/self-hosted endpoints)
@@ -225,22 +228,23 @@ public/
 
 ## Supabase Edge Functions — Deployment
 ```bash
-supabase functions deploy generate_section
-supabase functions deploy auto_generate_document
-supabase functions deploy generate_prototype
+supabase functions deploy generate_section --no-verify-jwt
+supabase functions deploy auto_generate_document --no-verify-jwt
+supabase functions deploy generate_prototype --no-verify-jwt
 supabase functions deploy onlyoffice_callback
-supabase functions deploy embed_document
+supabase functions deploy embed_document --no-verify-jwt
 supabase secrets set ONLYOFFICE_CALLBACK_SECRET=... SUPABASE_SERVICE_ROLE_KEY=...
 ```
 
 ## Edge Function Auth Pattern
 - All functions use `SUPABASE_SERVICE_ROLE_KEY` for DB/storage operations (bypasses RLS)
+- **All SSE-streaming functions (`generate_section`, `auto_generate_document`, `generate_prototype`, `embed_document`) are deployed with `--no-verify-jwt`** — configured via `[functions.<name>] verify_jwt = false` in `supabase/config.toml`. These functions use the service role key internally and don't need the gateway to enforce JWT. The browser may have a stale or cross-project session token; gateway JWT enforcement would cause spurious 401s.
 - **Do NOT use `createClient` + `auth.getUser()` to resolve the caller** — this creates an extra round-trip that fails if `SUPABASE_ANON_KEY` is unavailable in the function env
-- Instead, decode the JWT payload directly — the API gateway already validates the signature before the function runs:
+- Instead, decode the JWT payload directly (for functions that need `userId`):
   ```typescript
   const token = req.headers.get('authorization')?.replace(/^bearer\s+/i, '') ?? ''
   const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')))
-  const userId = payload.sub  // safe — gateway already verified the signature
+  const userId = payload.sub  // decoded client-side; signature already verified by gateway (or trusted as-is when verify_jwt=false)
   ```
 
 ## Component Prop Contracts (non-obvious)
@@ -279,6 +283,7 @@ The UI is being redesigned to closely mirror **CORRAD** (https://github.com/mfau
 - Edge functions in `supabase/functions/<name>/index.ts` (Deno)
 - Shared edge function modules in `supabase/functions/_shared/` (imported across functions)
 - BRS document content uses Bahasa Malaysia (Malay); UI labels and prompts use English
+- **React Fast Refresh**: never export non-component values (arrays, objects, constants) from component files — put them in `src/constants/` or `src/lib/` instead; mixing breaks HMR
 - Do not auto-commit; do not force-push
 
 ## Server Setup

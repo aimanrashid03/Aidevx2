@@ -153,7 +153,7 @@ function splitLargeTable(tableContent: string, maxSize: number): string[] {
     const headerLines: string[] = []
     let bodyStart = 0
     for (let i = 0; i < Math.min(3, lines.length); i++) {
-        if (/^[\s|:\-]+$/.test(lines[i].replace(/\|/g, '').trim()) || i === 0) {
+        if (/^[\s|:-]+$/.test(lines[i].replace(/\|/g, '').trim()) || i === 0) {
             headerLines.push(lines[i])
             bodyStart = i + 1
         } else break

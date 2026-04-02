@@ -178,12 +178,17 @@ export default function AIGeneratePanel({
     // ── Generation cache (persists across section switches) ──────────────
     const [generationCache, setGenerationCache] = useState<Map<string, { html: string; sources: string[]; timestamp: number }>>(new Map())
 
-    // Abort any in-flight streams on unmount
+    const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+    const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+    // Abort any in-flight streams on unmount; clear feedback timers
     useEffect(() => {
         return () => {
             genAbortRef.current?.abort()
             chatAbortRef.current?.abort()
             batchAbortRef.current?.abort()
+            if (copyTimerRef.current) clearTimeout(copyTimerRef.current)
+            if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
         }
     }, [])
 
@@ -272,13 +277,13 @@ export default function AIGeneratePanel({
         }
     }, [])
 
-    async function streamSSE(
+    const streamSSE = useCallback(async (
         body: object,
         signal: AbortSignal,
         onToken: (token: string) => void,
         onSources?: (sources: string[], quality?: string) => void,
         onStatus?: (msg: string) => void,
-    ) {
+    ) => {
         const headers = await getAuthHeaders()
         const res = await fetch(
             `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate_section`,
@@ -329,7 +334,7 @@ export default function AIGeneratePanel({
                 } catch { /* ignore malformed */ }
             }
         }
-    }
+    }, [getAuthHeaders])
 
     // ── Generate ────────────────────────────────────────────────────────────
     const generate = useCallback(async () => {
@@ -423,13 +428,14 @@ export default function AIGeneratePanel({
         } finally {
             setIsGenerating(false)
         }
-    }, [sectionTitle, instructions, projectId, selectedDocPaths, projectDocs, contentType, diagramFormat, docType, sectionContext, tableColumns, tocSections, getAuthHeaders, docId, upsertRecord, logAction])
+    }, [sectionTitle, instructions, projectId, selectedDocPaths, projectDocs, contentType, diagramFormat, docType, sectionContext, tableColumns, tocSections, streamSSE, docId, upsertRecord, logAction])
 
     const handleCopy = async () => {
         try {
             await navigator.clipboard.writeText(generatedHtml)
             setCopied(true)
-            setTimeout(() => setCopied(false), 2000)
+            if (copyTimerRef.current) clearTimeout(copyTimerRef.current)
+            copyTimerRef.current = setTimeout(() => setCopied(false), 2000)
         } catch { /* ignore */ }
     }
 
@@ -496,7 +502,8 @@ export default function AIGeneratePanel({
         try {
             await createDiagramNote(title, code, type)
             setSavedToLibrary(true)
-            setTimeout(() => setSavedToLibrary(false), 2500)
+            if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+            saveTimerRef.current = setTimeout(() => setSavedToLibrary(false), 2500)
         } catch { /* ignore */ }
         finally { setSavingToLibrary(false) }
     }, [generatedHtml, sectionTitle, createDiagramNote, savingToLibrary])
@@ -592,7 +599,7 @@ export default function AIGeneratePanel({
             setIsGenerating(false)
         }
     }, [refineFeedback, generatedHtml, isGenerating, refineCount, sectionTitle, instructions, projectId,
-        selectedDocPaths, projectDocs, contentType, diagramFormat, docType, sectionContext, tableColumns, tocSections, getAuthHeaders, docId, upsertRecord])
+        selectedDocPaths, projectDocs, contentType, diagramFormat, docType, sectionContext, tableColumns, tocSections, streamSSE, docId, upsertRecord])
 
     // ── Batch Generate ─────────────────────────────────────────────────────
     const startBatch = useCallback(async () => {
@@ -672,7 +679,7 @@ export default function AIGeneratePanel({
         }
         setGenStatus('')
         setBatchMode(false)
-    }, [tocSections, batchMode, selectedDocPaths, projectDocs, docType, projectId, getAuthHeaders, docId, upsertRecord])
+    }, [tocSections, batchMode, selectedDocPaths, projectDocs, docType, projectId, streamSSE, docId, upsertRecord])
 
     const cancelBatch = useCallback(() => {
         batchAbortRef.current?.abort()
@@ -740,7 +747,7 @@ export default function AIGeneratePanel({
         } finally {
             setIsChatting(false)
         }
-    }, [chatInput, isChatting, chatHistory, projectId, selectedDocPaths, projectDocs, getAuthHeaders])
+    }, [chatInput, isChatting, chatHistory, projectId, selectedDocPaths, projectDocs, streamSSE])
 
     const clearChat = () => {
         chatAbortRef.current?.abort()

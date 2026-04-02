@@ -4,6 +4,7 @@ import { useProjects } from '../context/ProjectContext';
 import { supabase } from '../lib/supabase';
 import { Save, ArrowLeft, Upload, File, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { extractText } from '../lib/extractText';
 
 export default function AddProject() {
     const navigate = useNavigate();
@@ -43,20 +44,41 @@ export default function AddProject() {
             if (!projectId) throw new Error('Failed to create project');
 
             if (formData.documents.length > 0) {
+                const embeddingPromises: Promise<void>[] = [];
+
                 await Promise.all(formData.documents.map(async (file) => {
                     const fileExt = file.name.split('.').pop();
                     const filePath = `${projectId}/${Math.random().toString(36).substring(2)}.${fileExt}`;
                     const { error: uploadError } = await supabase.storage.from('project-files').upload(filePath, file);
                     if (uploadError) throw uploadError;
-                    const { error: metaError } = await supabase.from('project_documents').insert({
+                    const { data: docRow, error: metaError } = await supabase.from('project_documents').insert({
                         project_id: projectId,
                         file_name: file.name,
                         file_path: filePath,
                         file_size: file.size,
                         mime_type: file.type,
-                    });
+                        embedding_status: 'processing',
+                    }).select('id').single();
                     if (metaError) throw metaError;
+
+                    // Fire-and-forget: extract text and embed without blocking navigation
+                    embeddingPromises.push(
+                        extractText(file).then(async (content) => {
+                            if (content.trim().length > 0) {
+                                await supabase.functions.invoke('embed_document', {
+                                    body: { projectId, documentPath: filePath, content, documentId: docRow.id },
+                                });
+                            } else {
+                                await supabase.from('project_documents')
+                                    .update({ embedding_status: 'processed' })
+                                    .eq('id', docRow.id);
+                            }
+                        }).catch(err => console.error('Embedding failed for', file.name, err))
+                    );
                 }));
+
+                // Don't await embeddingPromises — navigate immediately, indexing runs in background
+                void embeddingPromises;
             }
             navigate('/dashboard');
         } catch (error) {

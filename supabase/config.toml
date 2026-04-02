@@ -357,6 +357,18 @@ allow_dynamic_registration = false
 [functions.onlyoffice_callback]
 verify_jwt = false
 
+[functions.embed_document]
+verify_jwt = false
+
+[functions.auto_generate_document]
+verify_jwt = false
+
+[functions.generate_section]
+verify_jwt = false
+
+[functions.generate_prototype]
+verify_jwt = false
+
 [edge_runtime]
 enabled = true
 # Supported request policies: `oneshot`, `per_worker`.

@@ -2,6 +2,7 @@ import {
     Paragraph,
     TextRun,
     HeadingLevel,
+    BorderStyle,
 } from 'docx';
 
 /**
@@ -178,7 +179,7 @@ function parseBlockElement(el: HTMLElement, opts: TextRunOpts): Paragraph[] {
                 ...p,
                 indent: { left: 720 },
                 border: {
-                    left: { style: 'single' as any, size: 6, color: '999999', space: 10 },
+                    left: { style: BorderStyle.SINGLE, size: 6, color: '999999', space: 10 },
                 },
             }));
         });

@@ -1,4 +1,4 @@
-import { useState, useCallback, createElement } from 'react';
+import { useState, useCallback, createElement, useRef, useEffect } from 'react';
 import ConfirmDialog from '../components/ConfirmDialog';
 
 interface ConfirmOptions {
@@ -40,6 +40,14 @@ export function useConfirmDialog() {
         variant: 'error',
     });
 
+    const notifyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    useEffect(() => {
+        return () => {
+            if (notifyTimerRef.current) clearTimeout(notifyTimerRef.current);
+        };
+    }, []);
+
     const confirm = useCallback((options: ConfirmOptions): Promise<boolean> => {
         return new Promise<boolean>((resolve) => {
             setDialogState({ open: true, options, resolve });
@@ -58,7 +66,8 @@ export function useConfirmDialog() {
 
     const notify = useCallback((options: NotifyOptions) => {
         setNotifyState({ visible: true, message: options.message, variant: options.variant || 'error' });
-        setTimeout(() => {
+        if (notifyTimerRef.current) clearTimeout(notifyTimerRef.current);
+        notifyTimerRef.current = setTimeout(() => {
             setNotifyState(prev => ({ ...prev, visible: false }));
         }, options.duration || 3000);
     }, []);

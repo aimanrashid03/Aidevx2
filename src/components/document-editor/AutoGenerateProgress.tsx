@@ -88,6 +88,9 @@ export default function AutoGenerateProgress({
 
             console.log('[AutoGen] Response status:', response.status, 'has body:', !!response.body)
             if (!response.ok || !response.body) {
+                if (response.status === 401) {
+                    throw new Error('Session expired or invalid. Please log out and log back in, then try again.')
+                }
                 const text = await response.text()
                 throw new Error(text || `Server error ${response.status}`)
             }

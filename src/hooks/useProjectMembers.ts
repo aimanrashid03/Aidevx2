@@ -113,9 +113,9 @@ export function useProjectMembers(projectId: string | undefined) {
                 details: { memberEmail: email, role },
             }).then(({ error: logErr }) => { if (logErr) console.error('activity_log:', logErr) });
             return { success: true, error: null };
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error('Error inviting member:', error);
-            return { success: false, error: error.message || 'Failed to invite member' };
+            return { success: false, error: error instanceof Error ? error.message : 'Failed to invite member' };
         }
     };
 

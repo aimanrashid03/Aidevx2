@@ -86,7 +86,7 @@ serve(async (req) => {
             const { user_id, role } = payload
 
             // Update role in profiles table directly (using service role bypasses RLS/Triggers)
-            const { data, error } = await supabaseAdmin
+            const { error } = await supabaseAdmin
                 .from('profiles')
                 .update({ role })
                 .eq('id', user_id)

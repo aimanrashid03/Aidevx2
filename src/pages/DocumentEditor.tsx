@@ -279,7 +279,7 @@ export default function DocumentEditor() {
             userId: user?.id ?? 'anonymous',
             userDisplayName: profile?.full_name || user?.email || 'User',
         }).then(setOnlyOfficeConfig)
-    }, [docPublicUrl, documentKey, docTitle, viewingVersion, projectId, user?.id, profile?.full_name])
+    }, [docPublicUrl, documentKey, docTitle, viewingVersion, projectId, user?.id, profile?.full_name, project?.userRole, user?.email])
 
     // ─── Export ──────────────────────────────────────────────────────────────
 

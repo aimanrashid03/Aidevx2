@@ -23,8 +23,9 @@ export function useDocumentPresence(docId: string | undefined) {
                 const users: PresenceUser[] = [];
                 const seen = new Set<string>();
 
-                Object.values(state).forEach((presences: any[]) => {
-                    presences.forEach((p: any) => {
+                type PresencePayload = { user_id: string; user_name: string; online_at: string };
+                (Object.values(state) as unknown as PresencePayload[][]).forEach((presences) => {
+                    presences.forEach((p) => {
                         if (!seen.has(p.user_id)) {
                             seen.add(p.user_id);
                             users.push({

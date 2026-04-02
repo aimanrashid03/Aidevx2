@@ -110,13 +110,13 @@ serve(async (req) => {
         const writer = writable.getWriter()
 
         function sendEvent(data: Record<string, unknown>) {
-            writer.write(encoder.encode(`data: ${JSON.stringify(data)}\n\n`)).catch(() => {})
+            writer.write(encoder.encode(`data: ${JSON.stringify(data)}\n\n`)).catch((e: Error) => console.debug('SSE write failed:', e.message))
         }
 
         // SSE keep-alive: send a comment line every 20s so the browser/proxy
         // doesn't drop the connection during silent LLM processing.
         function sendHeartbeat() {
-            writer.write(encoder.encode(': keep-alive\n\n')).catch(() => {})
+            writer.write(encoder.encode(': keep-alive\n\n')).catch((e: Error) => console.debug('SSE heartbeat failed:', e.message))
         }
 
         // Concurrency limiter — cap parallel LLM calls to avoid rate-limit stalls.
