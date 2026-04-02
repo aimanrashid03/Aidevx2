@@ -86,6 +86,7 @@ src/
     brs_structure.ts             # BRS DocSection[] template (Bahasa Malaysia)
     srs_structure.ts             # SRS DocSection[] template
     sds_structure.ts             # SDS DocSection[] template
+    userStoryTemplate.ts         # USER_STORY_TEMPLATE array (7 sections) — imported by LibraryUserStories
 supabase/
   functions/
     generate_section/            # Per-section AI generation (streaming SSE, chat mode, RAG)
@@ -199,6 +200,7 @@ public/
 - Context quality assessment: none/low/medium/high
 - Default config: match threshold 0.30, match count 18, embedding dimensions 512
 - **DB migration** `20260401000000_voyage_embeddings.sql`: resizes pgvector column from 1536d → 512d, truncates `document_chunks`, resets `embedding_status → pending`. All documents must be re-embedded after applying this migration.
+- **DB migration** `20260402100000_add_embedding_index.sql`: adds HNSW index on `document_chunks.embedding` (`vector_cosine_ops`, m=16, ef_construction=64) for faster similarity search. HNSW chosen over IVFFlat — no training step, better recall, suits incrementally growing data.
 
 ### LLM Configuration (`llmConfig.ts`)
 - Provider: Anthropic (Claude Haiku `claude-haiku-4-5-20251001`), configurable via `LLM_PROVIDER` env var (set to `openai` for OpenAI-compatible/self-hosted endpoints)
@@ -279,6 +281,7 @@ The UI is being redesigned to closely mirror **CORRAD** (https://github.com/mfau
 - Edge functions in `supabase/functions/<name>/index.ts` (Deno)
 - Shared edge function modules in `supabase/functions/_shared/` (imported across functions)
 - BRS document content uses Bahasa Malaysia (Malay); UI labels and prompts use English
+- **React Fast Refresh**: never export non-component values (arrays, objects, constants) from component files — put them in `src/constants/` or `src/lib/` instead; mixing breaks HMR
 - Do not auto-commit; do not force-push
 
 ## Server Setup

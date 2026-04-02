@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import "https://deno.land/x/xhr@0.1.0/mod.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.38.0'
 import { getLlmConfig, getEmbeddingConfig, getRagConfig, getContentTypeConfig, buildLlmHeaders, buildLlmEndpoint, buildLlmRequestBody, pipeAnthropicStream } from '../_shared/llmConfig.ts'
+import { deduplicateChunks } from '../_shared/ragHelper.ts'
 import { URS_TEXT_EXAMPLE, URS_TABLE_EXAMPLE, URS_DIAGRAM_EXAMPLE } from '../_shared/ursExamples.ts'
 import { BRS_TEXT_EXAMPLE, BRS_TABLE_EXAMPLE, BRS_DIAGRAM_EXAMPLE } from '../_shared/brsExamples.ts'
 import { SRS_TEXT_EXAMPLE, SRS_TABLE_EXAMPLE, SRS_DIAGRAM_EXAMPLE } from '../_shared/srsExamples.ts'
@@ -148,16 +149,7 @@ serve(async (req) => {
         const searchResults = await Promise.all(embeddings.map(e => searchChunks(e)))
 
         // Merge + deduplicate chunks by id, keeping highest similarity
-        const chunkMap = new Map<string, typeof searchResults[0][0]>()
-        for (const results of searchResults) {
-            for (const chunk of results) {
-                const existing = chunkMap.get(chunk.id)
-                if (!existing || chunk.similarity > existing.similarity) {
-                    chunkMap.set(chunk.id, chunk)
-                }
-            }
-        }
-        const matchedChunks = [...chunkMap.values()].sort((a, b) => b.similarity - a.similarity)
+        const matchedChunks = deduplicateChunks(searchResults)
         console.log(`RAG: ${matchedChunks.length} chunks matched for project ${projectId}`)
 
         // ── 3. Build context with source attribution ───────────────────────────
@@ -399,11 +391,11 @@ ${contextText}
         const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>()
         const writer = writable.getWriter()
 
-        writer.write(statusEvent).catch(() => {})
+        writer.write(statusEvent).catch((e: Error) => console.debug('SSE write failed:', e.message))
 
         writer.write(
             encoder.encode(`data: ${JSON.stringify({ type: 'sources', sources, contextQuality, chunkCount: matchedChunks.length })}\n\n`)
-        ).catch(() => {})
+        ).catch((e: Error) => console.debug('SSE write failed:', e.message))
 
         const reader = completionResponse.body.getReader()
         ;(async () => {

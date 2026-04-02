@@ -210,13 +210,9 @@ export function htmlToOoxml(html: string): string {
     const parts: string[] = []
 
     // State
-    let inTable = false
     let inThead = false
-    let inTbody = false
-    let inTr = false
     let inTh = false
     let inTd = false
-    let inList = false      // ul or ol
     let inListItem = false
     let inParagraph = false
     let inHeading = false
@@ -234,27 +230,17 @@ export function htmlToOoxml(html: string): string {
     // Inline HTML accumulator for non-block contexts
     let inlineAccum = ''
 
-    function flushInline(): string {
-        const s = inlineAccum
-        inlineAccum = ''
-        return s
-    }
-
     for (const tok of tokens) {
         if (tok.type === 'open') {
             const tag = tok.tag
 
             // Block-level: table
             if (tag === 'table') {
-                inTable = true
                 tableHeaders = []
                 tableRows = []
             } else if (tag === 'thead') {
                 inThead = true
-            } else if (tag === 'tbody') {
-                inTbody = true
             } else if (tag === 'tr') {
-                inTr = true
                 currentRow = []
             } else if (tag === 'th') {
                 inTh = true
@@ -265,9 +251,7 @@ export function htmlToOoxml(html: string): string {
             }
 
             // Block-level: lists
-            else if (tag === 'ul' || tag === 'ol') {
-                inList = true
-            } else if (tag === 'li') {
+            else if (tag === 'li') {
                 inListItem = true
                 currentListItemHtml = ''
             }
@@ -297,20 +281,15 @@ export function htmlToOoxml(html: string): string {
 
             if (tag === 'table') {
                 parts.push(tableXml(tableHeaders, tableRows))
-                inTable = false
                 inThead = false
-                inTbody = false
             } else if (tag === 'thead') {
                 inThead = false
-            } else if (tag === 'tbody') {
-                inTbody = false
             } else if (tag === 'tr') {
                 if (inThead) {
                     tableHeaders = currentRow.slice()
                 } else {
                     tableRows.push(currentRow.slice())
                 }
-                inTr = false
                 currentRow = []
             } else if (tag === 'th') {
                 currentRow.push(currentCellHtml)
@@ -320,8 +299,6 @@ export function htmlToOoxml(html: string): string {
                 currentRow.push(currentCellHtml)
                 inTd = false
                 currentCellHtml = ''
-            } else if (tag === 'ul' || tag === 'ol') {
-                inList = false
             } else if (tag === 'li') {
                 parts.push(listItemXml(currentListItemHtml))
                 inListItem = false

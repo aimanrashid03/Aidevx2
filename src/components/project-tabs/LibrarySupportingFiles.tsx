@@ -1,4 +1,4 @@
-import { useRef, useState, DragEvent } from 'react';
+import { useRef, useState, useEffect, DragEvent } from 'react';
 import { CloudUpload, File, Download, Trash2, Folders, CheckCircle2, AlertCircle, Loader2, Clock } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import type { Project } from '../../context/ProjectContext';
@@ -22,6 +22,13 @@ export default function LibrarySupportingFiles({ project, onFilesChanged }: Prop
     const [downloading, setDownloading] = useState<string | null>(null);
     const [uploadQueue, setUploadQueue] = useState<UploadQueueItem[]>([]);
     const { dialog, notificationBanner, confirm, notify } = useConfirmDialog();
+    const uploadQueueTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    useEffect(() => {
+        return () => {
+            if (uploadQueueTimerRef.current) clearTimeout(uploadQueueTimerRef.current);
+        };
+    }, []);
 
     const processFile = async (file: File) => {
         const fileExt = file.name.split('.').pop();
@@ -85,7 +92,8 @@ export default function LibrarySupportingFiles({ project, onFilesChanged }: Prop
 
         await onFilesChanged();
         // Clear completed items after a short delay
-        setTimeout(() => {
+        if (uploadQueueTimerRef.current) clearTimeout(uploadQueueTimerRef.current);
+        uploadQueueTimerRef.current = setTimeout(() => {
             setUploadQueue(q => q.filter(item => item.state !== 'done'));
         }, 2000);
     };

@@ -9,14 +9,12 @@ import {
     ShadingType,
     HeadingLevel,
     ImageRun,
+    BorderStyle,
 } from 'docx'
 import type { JSONContent } from '@tiptap/core'
 
 const FONT = 'Arial'
 const BODY_SIZE = 20    // 10pt in half-points
-const H1_SIZE = 32      // 16pt
-const H2_SIZE = 26      // 13pt
-const H3_SIZE = 22      // 11pt
 const TABLE_BODY_SIZE = 18   // 9pt
 
 interface TextRunOpts {
@@ -72,7 +70,7 @@ async function convertNode(node: JSONContent, out: (Paragraph | Table)[]): Promi
                     ...p,
                     indent: { left: 720 },
                     border: {
-                        left: { style: 'single' as any, size: 6, color: '999999', space: 10 },
+                        left: { style: BorderStyle.SINGLE, size: 6, color: '999999', space: 10 },
                     },
                 }))
             }
@@ -221,9 +219,6 @@ function buildHeading(node: JSONContent): Paragraph {
         2: HeadingLevel.HEADING_2,
         3: HeadingLevel.HEADING_3,
     }
-    // Size is embedded in HeadingLevel styles from docx; kept here for reference
-    void ({ 1: H1_SIZE, 2: H2_SIZE, 3: H3_SIZE } as Record<number, number>)
-
     const runs = extractTextRuns(node, { bold: true })
 
     return new Paragraph({

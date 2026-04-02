@@ -331,7 +331,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
                 .eq('project_id', projectId)
                 .single();
 
-            let nextVersion = (currentDocRow?.current_version ?? 1) + 1;
+            const nextVersion = (currentDocRow?.current_version ?? 1) + 1;
 
             if (currentDocRow) {
                 const snapshotVersion = currentDocRow.current_version ?? 1;

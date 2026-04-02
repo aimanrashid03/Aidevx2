@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Plus, Play, Eye, Trash2, FileText, Loader2, Monitor, X, ChevronRight, Copy, Check as CheckIcon } from 'lucide-react';
 import type { Project } from '../../context/ProjectContext';
 import { supabase } from '../../lib/supabase';
@@ -24,11 +24,19 @@ interface CodeViewerProps {
 
 function CodeViewerModal({ proto, onClose, onRun, onDelete }: CodeViewerProps) {
     const [copied, setCopied] = useState(false);
+    const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    useEffect(() => {
+        return () => {
+            if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+        };
+    }, []);
 
     const handleCopy = () => {
         navigator.clipboard.writeText(proto.html).then(() => {
             setCopied(true);
-            setTimeout(() => setCopied(false), 2000);
+            if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+            copyTimerRef.current = setTimeout(() => setCopied(false), 2000);
         });
     };
 
@@ -316,6 +324,13 @@ export default function PrototypeTab({ project }: Props) {
     const [isWizardOpen, setIsWizardOpen] = useState(false);
     const [viewingProto, setViewingProto] = useState<Prototype | null>(null);
     const [loading, setLoading] = useState(true);
+    const revokeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    useEffect(() => {
+        return () => {
+            if (revokeTimerRef.current) clearTimeout(revokeTimerRef.current);
+        };
+    }, []);
 
     // Load prototypes from DB on mount
     useEffect(() => {
@@ -356,7 +371,8 @@ export default function PrototypeTab({ project }: Props) {
         const blob = new Blob([proto.html], { type: 'text/html' });
         const url = URL.createObjectURL(blob);
         window.open(url, '_blank');
-        setTimeout(() => URL.revokeObjectURL(url), 10_000);
+        if (revokeTimerRef.current) clearTimeout(revokeTimerRef.current);
+        revokeTimerRef.current = setTimeout(() => URL.revokeObjectURL(url), 10_000);
     };
 
     const DOC_TYPE_COLORS: Record<string, string> = {
