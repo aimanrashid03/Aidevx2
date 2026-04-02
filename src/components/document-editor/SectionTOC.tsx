@@ -116,7 +116,7 @@ export default function SectionTOC({
                             {/* AI generate button */}
                             {onAutoGen && (
                                 generatingSectionId === section.sectionId ? (
-                                    <span className="shrink-0 p-0.5 text-violet-400">
+                                    <span className="shrink-0 p-0.5 text-[var(--accent-500)]">
                                         <Loader2 size={10} className="animate-spin" />
                                     </span>
                                 ) : (
@@ -127,7 +127,7 @@ export default function SectionTOC({
                                         }}
                                         disabled={!!generatingSectionId}
                                         title={`Generate "${section.title}" with AI`}
-                                        className="opacity-0 group-hover:opacity-100 shrink-0 p-0.5 rounded hover:bg-violet-100 text-violet-300 hover:text-violet-600 transition-all disabled:cursor-not-allowed"
+                                        className="opacity-0 group-hover:opacity-100 shrink-0 p-0.5 rounded hover:bg-[var(--accent-100)] text-[var(--accent-ring)] hover:text-[var(--accent-600)] transition-all disabled:cursor-not-allowed"
                                     >
                                         <Sparkles size={10} />
                                     </button>

@@ -59,7 +59,7 @@ export default function VersionViewer({ version, docType, onClose, onRestore }: 
 
     return (
         <div className="fixed inset-0 z-[100] bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className="bg-white w-full max-w-4xl h-[90vh] rounded shadow-2xl flex flex-col overflow-hidden border border-slate-200">
+            <div className="bg-white w-full max-w-4xl h-[90vh] rounded-lg shadow-2xl flex flex-col overflow-hidden border border-slate-200">
                 {/* Header */}
                 <div className="h-14 bg-white border-b border-slate-200 px-6 flex items-center justify-between flex-shrink-0">
                     <div className="flex items-center gap-3">

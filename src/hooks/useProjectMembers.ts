@@ -21,24 +21,37 @@ export function useProjectMembers(projectId: string | undefined) {
 
         setLoading(true);
         try {
-            const { data, error } = await supabase
+            // 1. Fetch member rows
+            const { data: memberRows, error } = await supabase
                 .from('project_members')
-                .select(`
-                    id,
-                    user_id,
-                    role,
-                    invited_at,
-                    profiles:user_id (email, full_name)
-                `)
+                .select('id, user_id, role, invited_at')
                 .eq('project_id', projectId);
 
             if (error) throw error;
+            if (!memberRows || memberRows.length === 0) {
+                setMembers([]);
+                setLoading(false);
+                return;
+            }
 
-            const mapped: ProjectMember[] = (data || []).map((m: any) => ({
+            // 2. Fetch profiles for all member user_ids
+            const userIds = memberRows.map(m => m.user_id);
+            const { data: profiles } = await supabase
+                .from('profiles')
+                .select('id, email, full_name')
+                .in('id', userIds);
+
+            const profileMap: Record<string, { email: string; full_name: string }> = {};
+            for (const p of profiles || []) {
+                profileMap[p.id] = { email: p.email || '', full_name: p.full_name || '' };
+            }
+
+            // 3. Merge
+            const mapped: ProjectMember[] = memberRows.map((m) => ({
                 id: m.id,
                 userId: m.user_id,
-                email: m.profiles?.email || '',
-                fullName: m.profiles?.full_name || '',
+                email: profileMap[m.user_id]?.email || '',
+                fullName: profileMap[m.user_id]?.full_name || '',
                 role: m.role,
                 invitedAt: m.invited_at,
             }));
@@ -92,6 +105,13 @@ export function useProjectMembers(projectId: string | undefined) {
             if (insertError) throw insertError;
 
             await fetchMembers();
+            // Log activity (non-fatal)
+            supabase.from('activity_log').insert({
+                project_id: projectId,
+                user_id: user.id,
+                action: 'member_invited',
+                details: { memberEmail: email, role },
+            }).then(({ error: logErr }) => { if (logErr) console.error('activity_log:', logErr) });
             return { success: true, error: null };
         } catch (error: any) {
             console.error('Error inviting member:', error);
@@ -103,6 +123,7 @@ export function useProjectMembers(projectId: string | undefined) {
         if (!projectId || !user) return;
 
         try {
+            const memberToRemove = members.find(m => m.id === memberId);
             const { error } = await supabase
                 .from('project_members')
                 .delete()
@@ -110,6 +131,15 @@ export function useProjectMembers(projectId: string | undefined) {
 
             if (error) throw error;
             await fetchMembers();
+            // Log activity (non-fatal)
+            if (memberToRemove) {
+                supabase.from('activity_log').insert({
+                    project_id: projectId,
+                    user_id: user.id,
+                    action: 'member_removed',
+                    details: { memberEmail: memberToRemove.email },
+                }).then(({ error: logErr }) => { if (logErr) console.error('activity_log:', logErr) });
+            }
         } catch (error) {
             console.error('Error removing member:', error);
         }

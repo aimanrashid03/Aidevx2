@@ -70,7 +70,7 @@ export function getDocPublicUrl(storagePath: string): string {
  * To add a new type: place public/templates/{TYPE}.docx and add the type here.
  * e.g. new Set(['URS', 'BRS', 'SRS', 'SDS'])
  */
-const FILE_TEMPLATE_TYPES = new Set<string>(['URS']);
+const FILE_TEMPLATE_TYPES = new Set<string>(['URS', 'BRS']);
 
 // ─── DOCX generation ──────────────────────────────────────────────────────────
 
@@ -168,6 +168,29 @@ export async function initializeDocxForDoc(
     return { storagePath, documentKey, publicUrl };
 }
 
+// ─── JWT signing for OnlyOffice ──────────────────────────────────────────────
+
+function base64UrlEncode(data: Uint8Array): string {
+    let binary = '';
+    for (let i = 0; i < data.length; i++) binary += String.fromCharCode(data[i]);
+    return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function strToBase64Url(str: string): string {
+    return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+async function signJwt(payload: object, secret: string): Promise<string> {
+    const header = { alg: 'HS256', typ: 'JWT' };
+    const enc = new TextEncoder();
+    const key = await crypto.subtle.importKey(
+        'raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
+    );
+    const body = `${strToBase64Url(JSON.stringify(header))}.${strToBase64Url(JSON.stringify(payload))}`;
+    const sig = new Uint8Array(await crypto.subtle.sign('HMAC', key, enc.encode(body)));
+    return `${body}.${base64UrlEncode(sig)}`;
+}
+
 // ─── OnlyOffice config builder ─────────────────────────────────────────────────
 
 interface OnlyOfficeConfigParams {
@@ -185,9 +208,10 @@ interface OnlyOfficeConfigParams {
 /**
  * Returns the config object expected by DocsAPI.DocEditor.
  * The document.key must be unique per document version; rotate it on every save.
+ * If VITE_ONLYOFFICE_CALLBACK_SECRET is set, signs the config as a JWT token.
  */
-export function getOnlyOfficeConfig(params: OnlyOfficeConfigParams): object {
-    return {
+export async function getOnlyOfficeConfig(params: OnlyOfficeConfigParams): Promise<object> {
+    const config: Record<string, unknown> = {
         document: {
             fileType: 'docx',
             key: params.documentKey,
@@ -216,16 +240,13 @@ export function getOnlyOfficeConfig(params: OnlyOfficeConfigParams): object {
                 hideRightMenu: true,
                 toolbarNoTabs: false,
             },
-            plugins: {
-                autostart: [
-                    'asc.{9DC93CDB-B576-4F0C-B55E-FCC9C48DD007}',
-                    'asc.aidevx2-ai-generate-v1',
-                ],
-                pluginsData: [
-                    `${import.meta.env.VITE_ONLYOFFICE_SERVER_URL || 'http://localhost:8080'}/sdkjs-plugins/{9DC93CDB-B576-4F0C-B55E-FCC9C48DD007}/config.json`,
-                    `${import.meta.env.VITE_ONLYOFFICE_SERVER_URL || 'http://localhost:8080'}/sdkjs-plugins/asc.aidevx2-ai-generate-v1/config.json`,
-                ],
-            },
         },
     };
+
+    const secret = import.meta.env.VITE_ONLYOFFICE_CALLBACK_SECRET as string;
+    if (secret) {
+        config.token = await signJwt(config, secret);
+    }
+
+    return config;
 }

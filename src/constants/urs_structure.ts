@@ -4,6 +4,8 @@ export interface DocSection {
     level: number;
     instructions: string[];
     content: Record<string, unknown>[];
+    /** When false, auto-generate skips this section (structural/admin sections). Defaults to true. */
+    autoGenerate?: boolean;
 }
 
 export const URS_STRUCTURE: DocSection[] = [

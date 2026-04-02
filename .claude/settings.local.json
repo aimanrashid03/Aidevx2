@@ -1,7 +1,14 @@
 {
   "permissions": {
     "allow": [
-      "WebSearch"
+      "WebSearch",
+      "Bash(docker ps:*)",
+      "Read(//home/user/**)",
+      "Bash(curl -s http://localhost:8000/api/v1/applications/jawocvnwlj0ayer8ghcoo92d -H \"Authorization: Bearer 1|l7XtkyR9nd2bZoKFyA3onC62mhhgyoX7bzzJJDNc7783b799\")",
+      "Bash(python3 -m json.tool)",
+      "Bash(curl:*)",
+      "Bash(docker exec:*)",
+      "Bash(npm install:*)"
     ]
   }
 }

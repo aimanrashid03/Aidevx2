@@ -1,10 +1,10 @@
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import {
     ArrowLeft, Download, History, MessageSquare,
-    FileText, FileDown, Loader2, AlertCircle
+    FileText, FileDown, Loader2, AlertCircle, Sparkles
 } from 'lucide-react'
 import { useProjects, type DocVersion } from '../context/ProjectContext'
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useDocumentComments } from '../hooks/useDocumentComments'
@@ -15,6 +15,7 @@ import CommentsSidebar from '../components/CommentsSidebar'
 import PresenceIndicator from '../components/PresenceIndicator'
 import OnlyOfficeEditor, { type OnlyOfficeEditorHandle } from '../components/document-editor/OnlyOfficeEditor'
 import AIGeneratePanel from '../components/document-editor/AIGeneratePanel'
+import AutoGenerateProgress from '../components/document-editor/AutoGenerateProgress'
 import {
     initializeDocxForDoc,
     getOnlyOfficeConfig,
@@ -28,6 +29,7 @@ import { detectDocMode } from '../lib/onlyoffice/docModeDetector'
 export default function DocumentEditor() {
     const { projectId, templateId } = useParams()
     const navigate = useNavigate()
+    const [searchParams] = useSearchParams()
     const { user, profile } = useAuth()
     const { projects, loading: projectsLoading, restoreVersion, restoreOnlyOfficeVersion, refreshProjects } = useProjects()
     const project = projects.find(p => p.id === projectId)
@@ -52,6 +54,14 @@ export default function DocumentEditor() {
     // TOC populated by mammoth parse on doc load
     const [tocSections, setTocSections] = useState<DocHeading[]>([])
 
+
+    // Auto-generate mode (detected from ?autoGenerate=true query param)
+    const isAutoGenerate = searchParams.get('autoGenerate') === 'true' && isNewDoc && templateId === 'BRS'
+    const [autoGenerateComplete, setAutoGenerateComplete] = useState(false)
+
+    // AI panel state
+    const [showAiPanel, setShowAiPanel] = useState(true)
+
     // Sidebar toggles
     const [showVersionHistory, setShowVersionHistory] = useState(false)
     const [viewingVersion, setViewingVersion] = useState<DocVersion | null>(null)
@@ -71,17 +81,10 @@ export default function DocumentEditor() {
     // ─── Collaboration hooks ────────────────────────────────────────────────────
 
     const docId = existingDoc?.id
-    const { comments, addComment, resolveComment, deleteComment, getCommentCountBySection } = useDocumentComments(docId, projectId)
+    const { comments, addComment, resolveComment, deleteComment } = useDocumentComments(docId, projectId)
     const { otherUsers, totalViewers } = useDocumentPresence(docId)
 
-    // Derive commentCounts keyed by sectionId slug
-    const commentCounts: Record<string, number> = {}
     const sectionTitles = tocSections.map(s => s.title)
-    const rawCommentCounts = getCommentCountBySection()
-    Object.entries(rawCommentCounts).forEach(([idx, count]) => {
-        const section = tocSections[Number(idx)]
-        if (section) commentCounts[section.sectionId] = count
-    })
 
     // ─── Document initialization ────────────────────────────────────────────────
 
@@ -196,9 +199,21 @@ export default function DocumentEditor() {
         setDocTitle(title)
         setDocStatus(existingDoc?.status || 'draft')
 
+        // Skip normal initialization when auto-generating — the edge function handles doc creation
+        if (isAutoGenerate && !autoGenerateComplete) return
+
+        // After auto-generate completes, docPublicUrl and documentKey are already set by onComplete.
+        // Only extract TOC — do NOT call loadDocumentState which would create a duplicate document.
+        if (autoGenerateComplete && docPublicUrl) {
+            extractSectionsFromDocx(docPublicUrl)
+                .then(setTocSections)
+                .catch(() => setTocSections([]))
+            return
+        }
+
         loadDocumentState(existingDoc, pid, did, title, type, pname)
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [existingDoc?.id, projectId, projectsLoading])
+    }, [existingDoc?.id, projectId, projectsLoading, autoGenerateComplete])
 
     // Sync document_key when OnlyOffice callback rotates it (other tabs, or after save)
     useEffect(() => {
@@ -234,30 +249,18 @@ export default function DocumentEditor() {
         return () => document.removeEventListener('mousedown', handler)
     }, [showExport])
 
-    // Write Supabase config + projectId to cookies for the OO AI plugin
-    // Cookies are shared across ports on the same hostname (unlike sessionStorage)
-    useEffect(() => {
-        const url = import.meta.env.VITE_SUPABASE_URL as string
-        const key = import.meta.env.VITE_SUPABASE_ANON_KEY as string
-        document.cookie = `aidevx_supabase_url=${encodeURIComponent(url)}; path=/; SameSite=Lax`
-        document.cookie = `aidevx_anon_key=${encodeURIComponent(key)}; path=/; SameSite=Lax`
-        if (projectId) document.cookie = `aidevx_project_id=${encodeURIComponent(projectId)}; path=/; SameSite=Lax`
-    }, [projectId])
 
     // ─── OnlyOffice config ────────────────────────────────────────────────────
 
-    const onlyOfficeConfig = useMemo(() => {
-        if (!docPublicUrl || !documentKey) return null
-        const currentDocId = docIdRef.current
-        if (!currentDocId || !projectId) return null
+    const [onlyOfficeConfig, setOnlyOfficeConfig] = useState<object | null>(null)
 
-        // OnlyOffice runs inside Docker — it cannot reach 127.0.0.1 (host loopback).
-        // Replace the browser-facing Supabase URL with the Docker-reachable equivalent
-        // for both the document download URL and the save callback URL.
+    useEffect(() => {
+        if (!docPublicUrl || !documentKey) { setOnlyOfficeConfig(null); return }
+        const currentDocId = docIdRef.current
+        if (!currentDocId || !projectId) { setOnlyOfficeConfig(null); return }
+
         const supabaseBase = import.meta.env.VITE_SUPABASE_URL as string
         const ooBase = (import.meta.env.VITE_ONLYOFFICE_CALLBACK_BASE_URL as string) || supabaseBase
-
-        // Rewrite storage URL so OO can download the DOCX from inside Docker
         const ooDocUrl = docPublicUrl.replace(supabaseBase, ooBase)
 
         const callbackSecret = import.meta.env.VITE_ONLYOFFICE_CALLBACK_SECRET as string
@@ -265,17 +268,17 @@ export default function DocumentEditor() {
             `${ooBase}/functions/v1/onlyoffice_callback` +
             `?docId=${currentDocId}&projectId=${projectId}&token=${callbackSecret}`
 
-        return getOnlyOfficeConfig({
+        getOnlyOfficeConfig({
             docId: currentDocId,
             projectId,
             docTitle,
             publicUrl: ooDocUrl,
             documentKey,
             callbackUrl,
-            mode: viewingVersion ? 'view' : 'edit',
+            mode: (viewingVersion || project?.userRole === 'viewer') ? 'view' : 'edit',
             userId: user?.id ?? 'anonymous',
             userDisplayName: profile?.full_name || user?.email || 'User',
-        })
+        }).then(setOnlyOfficeConfig)
     }, [docPublicUrl, documentKey, docTitle, viewingVersion, projectId, user?.id, profile?.full_name])
 
     // ─── Export ──────────────────────────────────────────────────────────────
@@ -335,11 +338,40 @@ export default function DocumentEditor() {
 
     const serverUrl = (import.meta.env.VITE_ONLYOFFICE_SERVER_URL as string) || 'http://localhost:8080'
 
+    // Whether the AI panel should be visible (toggled independently, hidden when other panels are open)
+    const aiPanelVisible = showAiPanel && !showVersionHistory && !showComments
+
+    // ─── Auto-generate overlay ──────────────────────────────────────────────
+    if (isAutoGenerate && !autoGenerateComplete) {
+        return (
+            <AutoGenerateProgress
+                projectId={projectId!}
+                projectName={project?.name || 'Untitled Project'}
+                docTitle="Spesifikasi Keperluan Bisnes (BRS)"
+                docType="BRS"
+                onComplete={(result) => {
+                    setAutoGenerateComplete(true)
+                    setDocPublicUrl(result.publicUrl)
+                    setDocumentKey(result.documentKey)
+                    docIdRef.current = result.docId
+                    // Navigate to the new doc URL (removes ?autoGenerate param)
+                    navigate(`/editor/${projectId}/${result.docId}`, { replace: true })
+                }}
+                onCancel={() => {
+                    navigate(`/project/${projectId}`)
+                }}
+                onFallbackEmpty={() => {
+                    navigate(`/editor/${projectId}/BRS`, { replace: true })
+                }}
+            />
+        )
+    }
+
     return (
-        <div className="flex flex-col h-screen bg-slate-100 overflow-hidden">
+        <div className="flex flex-col h-screen bg-[#f8f9fb] overflow-hidden">
 
             {/* ── Header ── */}
-            <header className="h-12 bg-white border-b border-slate-200 flex items-center gap-2 px-3 shrink-0 z-20 relative">
+            <header className="h-10 bg-white border-b border-slate-200 flex items-center gap-2 px-3 shrink-0 z-20 relative">
                 <button onClick={() => navigate(-1)} className="p-1.5 hover:bg-slate-100 rounded text-slate-500">
                     <ArrowLeft size={16} />
                 </button>
@@ -361,9 +393,9 @@ export default function DocumentEditor() {
 
                     <button
                         onClick={handleStatusToggle}
-                        className={`text-[11px] px-2 py-0.5 rounded border font-medium ${docStatus === 'final'
-                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                            : 'bg-slate-50 text-slate-500 border-slate-200'}`}
+                        className={`text-xs px-2.5 py-0.5 rounded-full font-medium transition-colors ${docStatus === 'final'
+                            ? 'bg-emerald-100 text-emerald-700'
+                            : 'bg-amber-100 text-amber-700'}`}
                     >
                         {docStatus}
                     </button>
@@ -383,6 +415,13 @@ export default function DocumentEditor() {
                         <MessageSquare size={15} />
                     </button>
                     <button
+                        onClick={() => setShowAiPanel(v => !v)}
+                        className={`p-1.5 rounded hover:bg-slate-100 transition-colors ${showAiPanel ? 'bg-[var(--accent-100)] text-[var(--accent-600)]' : 'text-slate-500'}`}
+                        title="AI Assistant"
+                    >
+                        <Sparkles size={15} />
+                    </button>
+                    <button
                         onClick={() => setShowExport(v => !v)}
                         className={`p-1.5 rounded hover:bg-slate-100 text-slate-500 ${showExport ? 'bg-slate-100' : ''}`}
                         title="Export"
@@ -393,7 +432,7 @@ export default function DocumentEditor() {
 
                 {/* Export dropdown */}
                 {showExport && (
-                    <div ref={exportDropdownRef} className="absolute right-3 top-12 bg-white border border-slate-200 rounded-lg shadow-lg z-30 w-44 py-1">
+                    <div ref={exportDropdownRef} className="absolute right-3 top-10 bg-white border border-slate-200 rounded-lg shadow-lg z-30 w-44 py-1">
                         <button
                             onClick={handleDownload}
                             disabled={!docPublicUrl}
@@ -468,12 +507,21 @@ export default function DocumentEditor() {
                     )}
                 </main>
 
-                {/* AI Assistant Panel — always visible on the right */}
-                {projectId && !showVersionHistory && !showComments && (
-                    <AIGeneratePanel
-                        projectId={projectId}
-                        onInsert={(text) => editorRef.current?.pasteText(text)}
-                    />
+                {/* AI Assistant Panel — toggleable */}
+                {projectId && (
+                    <div className={aiPanelVisible ? 'flex' : 'hidden'}>
+                        <AIGeneratePanel
+                            projectId={projectId}
+                            docType={docType}
+                            tocSections={tocSections}
+                            docId={docId ?? undefined}
+                            storagePath={existingDoc?.storagePath ?? undefined}
+                            documentKey={documentKey ?? undefined}
+                            hasUnsavedChanges={hasUnsavedChanges}
+                            onInsert={(html) => editorRef.current?.pasteHtml(html)}
+                            onDocumentKeyRotated={(newKey) => setDocumentKey(newKey)}
+                        />
+                    </div>
                 )}
 
                 {/* Right panel — version history / comments */}

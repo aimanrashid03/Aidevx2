@@ -117,17 +117,3 @@ function legacyTableToTiptapNode(block: LegacyTableBlock): JSONContent {
         content: [headerRow, ...dataRows],
     }
 }
-
-/**
- * Migrate sectionStatuses from Record<number, status> to Record<string, status>
- * where string is "idx-{number}".
- */
-export function migrateSectionStatuses(
-    old: Record<number, 'drafting' | 'complete'>
-): Record<string, 'drafting' | 'complete'> {
-    const result: Record<string, 'drafting' | 'complete'> = {}
-    Object.entries(old).forEach(([idx, status]) => {
-        result[`idx-${idx}`] = status
-    })
-    return result
-}

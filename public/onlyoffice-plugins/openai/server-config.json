@@ -1,6 +1,0 @@
-{
-  "apiKey": "",
-  "baseUrl": "https://api.openai.com/v1",
-  "model": "gpt-4o",
-  "maxTokens": 4096
-}

@@ -37,9 +37,13 @@ export interface Project {
     name: string;
     description: string;
     notes?: string;
-    documents?: { name: string; path: string }[];
+    documents?: { id: string; name: string; path: string; embeddingStatus: string }[];
     requirementDocs: RequirementDoc[];
     createdAt: string;
+    /** Current user's role: 'owner' if they created it, otherwise their project_members role */
+    userRole?: 'owner' | 'editor' | 'viewer';
+    memberCount?: number;
+    ownerName?: string;
 }
 
 interface ProjectContextType {
@@ -73,21 +77,56 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
         try {
             setLoading(true);
 
-            // 1. Fetch Projects
+            // 1. Fetch Projects (RLS returns owned + shared projects)
             const { data: projectsData, error: projectsError } = await supabase
                 .from('projects')
                 .select('*')
-                .eq('user_id', user.id)
                 .order('created_at', { ascending: false });
 
             if (projectsError) throw projectsError;
 
-            // 2. Fetch related data for all projects
+            // 2. Fetch the current user's role for each project
+            const projectIds = projectsData.map(p => p.id);
+            const { data: memberRows } = await supabase
+                .from('project_members')
+                .select('project_id, role')
+                .eq('user_id', user.id)
+                .in('project_id', projectIds);
+
+            const roleByProject: Record<string, string> = {};
+            for (const m of memberRows || []) {
+                roleByProject[m.project_id] = m.role;
+            }
+
+            // 3. Fetch all member counts in one query
+            const { data: allMembers } = await supabase
+                .from('project_members')
+                .select('project_id')
+                .in('project_id', projectIds);
+
+            const memberCountByProject: Record<string, number> = {};
+            for (const m of allMembers || []) {
+                memberCountByProject[m.project_id] = (memberCountByProject[m.project_id] || 0) + 1;
+            }
+
+            // 4. Fetch owner profiles in one query
+            const ownerIds = [...new Set(projectsData.map(p => p.user_id))];
+            const { data: ownerProfiles } = await supabase
+                .from('profiles')
+                .select('id, full_name')
+                .in('id', ownerIds);
+
+            const ownerNameById: Record<string, string> = {};
+            for (const profile of ownerProfiles || []) {
+                if (profile.full_name) ownerNameById[profile.id] = profile.full_name;
+            }
+
+            // 5. Fetch related data for all projects
             const enrichedProjects = await Promise.all(projectsData.map(async (p) => {
                 // Fetch Documents (Metadata)
                 const { data: docsData } = await supabase
                     .from('project_documents')
-                    .select('file_name, file_path')
+                    .select('id, file_name, file_path, embedding_status')
                     .eq('project_id', p.id);
 
                 // Fetch Requirement Docs
@@ -102,7 +141,8 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
                     description: p.description,
                     notes: p.notes,
                     createdAt: p.created_at,
-                    documents: docsData?.map(d => ({ name: d.file_name, path: d.file_path })) || [],
+                    userRole: (roleByProject[p.id] || (p.user_id === user.id ? 'owner' : 'viewer')) as 'owner' | 'editor' | 'viewer',
+                    documents: docsData?.map(d => ({ id: d.id, name: d.file_name, path: d.file_path, embeddingStatus: d.embedding_status || 'pending' })) || [],
                     requirementDocs: reqDocsData?.map(d => ({
                         id: d.id,
                         title: d.title,
@@ -114,7 +154,9 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
                         currentVersion: d.current_version || 1,
                         storagePath: d.storage_path || null,
                         documentKey: d.document_key || null,
-                    })) || []
+                    })) || [],
+                    memberCount: memberCountByProject[p.id] || 0,
+                    ownerName: ownerNameById[p.user_id] || undefined,
                 };
             }));
 
@@ -278,7 +320,48 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
         if (!user || !version.storagePath) return;
 
         try {
-            const currentPath = `documents/${projectId}/${version.docId}/current.docx`;
+            const currentRelPath = `${projectId}/${version.docId}/current.docx`;
+            const currentPath = `documents/${currentRelPath}`;
+
+            // ── Snapshot current.docx → v{n}.docx before overwriting ────────────
+            const { data: currentDocRow } = await supabase
+                .from('requirement_docs')
+                .select('current_version, title, status, section_statuses')
+                .eq('id', version.docId)
+                .eq('project_id', projectId)
+                .single();
+
+            let nextVersion = (currentDocRow?.current_version ?? 1) + 1;
+
+            if (currentDocRow) {
+                const snapshotVersion = currentDocRow.current_version ?? 1;
+                const { data: currentBlob } = await supabase.storage
+                    .from('documents')
+                    .download(currentRelPath);
+
+                if (currentBlob) {
+                    const versionPath = `${projectId}/${version.docId}/v${snapshotVersion}.docx`;
+                    await supabase.storage
+                        .from('documents')
+                        .upload(versionPath, currentBlob, {
+                            contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                            upsert: true,
+                        });
+                    await supabase.from('doc_versions').insert({
+                        doc_id: version.docId,
+                        project_id: projectId,
+                        version_number: snapshotVersion,
+                        content: null,
+                        storage_path: `documents/${versionPath}`,
+                        section_statuses: currentDocRow.section_statuses,
+                        title: currentDocRow.title,
+                        status: currentDocRow.status,
+                        created_by: user.id,
+                        change_summary: `Snapshot before restoring to v${version.versionNumber}`,
+                    });
+                }
+            }
+            // ── End snapshot ──────────────────────────────────────────────────────
 
             // Download the version snapshot DOCX
             const versionRelPath = version.storagePath.startsWith('documents/')
@@ -294,14 +377,14 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
             // Upload it as the new current.docx
             const { error: uploadErr } = await supabase.storage
                 .from('documents')
-                .upload(currentPath.slice('documents/'.length), versionFile, {
+                .upload(currentRelPath, versionFile, {
                     contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
                     upsert: true,
                 });
 
             if (uploadErr) throw uploadErr;
 
-            // Rotate the document key so OnlyOffice reloads
+            // Rotate the document key so OnlyOffice reloads and increment version
             const newKey = `${version.docId}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
             const { error: dbErr } = await supabase
@@ -309,6 +392,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
                 .update({
                     storage_path: currentPath,
                     document_key: newKey,
+                    current_version: nextVersion,
                     last_modified: new Date().toISOString(),
                 })
                 .eq('id', version.docId)

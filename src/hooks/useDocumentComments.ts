@@ -105,7 +105,7 @@ export function useDocumentComments(docId: string | undefined, projectId: string
         if (!docId || !projectId || !user) return;
 
         try {
-            const { error } = await supabase
+            const { data: inserted, error } = await supabase
                 .from('doc_comments')
                 .insert({
                     doc_id: docId,
@@ -114,18 +114,28 @@ export function useDocumentComments(docId: string | undefined, projectId: string
                     parent_id: parentId || null,
                     author_id: user.id,
                     content,
-                });
+                })
+                .select('id')
+                .single();
 
             if (error) throw error;
             // Realtime will trigger refetch, but also fetch immediately for responsiveness
             await fetchComments();
+            // Log activity (non-fatal)
+            supabase.from('activity_log').insert({
+                project_id: projectId,
+                doc_id: docId,
+                user_id: user.id,
+                action: 'comment_added',
+                details: { commentId: inserted?.id ?? null },
+            }).then(({ error: logErr }) => { if (logErr) console.error('activity_log:', logErr) });
         } catch (error) {
             console.error('Error adding comment:', error);
         }
     };
 
     const resolveComment = async (commentId: string) => {
-        if (!user) return;
+        if (!user || !projectId || !docId) return;
 
         try {
             const { error } = await supabase
@@ -139,6 +149,14 @@ export function useDocumentComments(docId: string | undefined, projectId: string
 
             if (error) throw error;
             await fetchComments();
+            // Log activity (non-fatal)
+            supabase.from('activity_log').insert({
+                project_id: projectId,
+                doc_id: docId,
+                user_id: user.id,
+                action: 'comment_resolved',
+                details: { commentId },
+            }).then(({ error: logErr }) => { if (logErr) console.error('activity_log:', logErr) });
         } catch (error) {
             console.error('Error resolving comment:', error);
         }

@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import { UserProfile, useAuth } from '../context/AuthContext';
 import {
     Users, AlertCircle, Plus, LayoutDashboard,
-    FolderOpen, Trash2, FileText, Shield, Pencil, X,
+    FolderOpen, Trash2, FileText, Pencil, X,
 } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -266,13 +266,12 @@ export default function AdminDashboard() {
     ];
 
     return (
-        <div className="flex-1 flex flex-col h-full bg-slate-50 overflow-hidden">
+        <div className="flex-1 flex flex-col h-full overflow-hidden">
             {/* Header */}
-            <div className="bg-white px-8 py-5 border-b border-slate-200 shrink-0">
+            <div className="bg-white px-6 py-4 border-b border-slate-200 shrink-0">
                 <div className="flex items-center justify-between mb-4">
                     <div>
-                        <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-                            <Shield className="text-purple-700" size={22} />
+                        <h1 className="page-title flex items-center gap-2">
                             Admin Panel
                         </h1>
                         <p className="text-sm text-slate-500 mt-0.5">Platform management and oversight.</p>
@@ -297,7 +296,7 @@ export default function AdminDashboard() {
                             className={clsx(
                                 'flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all',
                                 activeTab === tab.id
-                                    ? 'bg-purple-50 text-purple-700 border border-purple-100'
+                                    ? 'bg-[var(--accent-50)] text-[var(--accent-700)] border border-[var(--accent-200)]'
                                     : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
                             )}
                         >
@@ -308,7 +307,7 @@ export default function AdminDashboard() {
                 </div>
             </div>
 
-            <div className="p-8 overflow-auto flex-1">
+            <div className="p-4 md:p-6 overflow-auto flex-1 max-w-7xl mx-auto w-full">
                 {error && (
                     <div className="mb-6 p-4 bg-red-50 text-red-700 rounded-lg flex items-start gap-3 border border-red-100">
                         <AlertCircle className="shrink-0 mt-0.5" size={18} />
@@ -325,34 +324,34 @@ export default function AdminDashboard() {
                         {/* Stat cards */}
                         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
                             {[
-                                { label: 'Total Users', value: stats.totalUsers, icon: <Users size={18} />, color: 'text-purple-700', bg: 'bg-purple-50' },
+                                { label: 'Total Users', value: stats.totalUsers, icon: <Users size={18} />, color: 'text-[var(--accent-700)]', bg: 'bg-[var(--accent-100)]' },
                                 { label: 'Total Projects', value: stats.totalProjects, icon: <FolderOpen size={18} />, color: 'text-blue-700', bg: 'bg-blue-50' },
                                 { label: 'Total Documents', value: stats.totalDocs, icon: <FileText size={18} />, color: 'text-slate-700', bg: 'bg-slate-100' },
                                 { label: 'In Draft', value: stats.draftDocs, icon: <FileText size={18} />, color: 'text-amber-700', bg: 'bg-amber-50' },
                                 { label: 'Finalized', value: stats.finalDocs, icon: <FileText size={18} />, color: 'text-green-700', bg: 'bg-green-50' },
                             ].map(s => (
-                                <div key={s.label} className="bg-white rounded-xl border border-slate-200 p-5">
-                                    <div className={clsx('w-9 h-9 rounded-lg flex items-center justify-center mb-3', s.bg, s.color)}>
+                                <div key={s.label} className="group rounded-lg border border-slate-200 bg-white p-3 shadow-sm transition-all hover:shadow-md">
+                                    <div className={clsx('flex h-7 w-7 items-center justify-center rounded-md mb-2', s.bg, s.color)}>
                                         {s.icon}
                                     </div>
-                                    <div className="text-2xl font-bold text-slate-900">{s.value}</div>
-                                    <div className="text-xs text-slate-500 font-medium mt-0.5">{s.label}</div>
+                                    <div className="mt-2 text-xl font-bold text-slate-900">{s.value}</div>
+                                    <div className="mt-0.5 text-xs text-slate-500">{s.label}</div>
                                 </div>
                             ))}
                         </div>
 
                         {/* Users activity summary */}
-                        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                            <div className="px-6 py-4 border-b border-slate-100">
-                                <h2 className="text-sm font-bold text-slate-900">Users by Activity</h2>
+                        <div className="rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden">
+                            <div className="flex items-center gap-2 border-b border-slate-100 px-4 py-2.5">
+                                <h2 className="text-sm font-semibold text-slate-900">Users by Activity</h2>
                             </div>
                             <table className="min-w-full divide-y divide-slate-100">
                                 <thead className="bg-slate-50">
                                     <tr>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">User</th>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Role</th>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Projects</th>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Finalized Docs</th>
+                                        <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">User</th>
+                                        <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Role</th>
+                                        <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Projects</th>
+                                        <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Finalized Docs</th>
                                     </tr>
                                 </thead>
                                 <tbody className="bg-white divide-y divide-slate-100">
@@ -368,7 +367,7 @@ export default function AdminDashboard() {
                                                 <td className="px-6 py-3">
                                                     <span className={clsx(
                                                         'px-2 py-0.5 text-xs font-semibold rounded-full',
-                                                        u.role === 'admin' ? 'bg-purple-100 text-purple-800' : 'bg-slate-100 text-slate-700'
+                                                        u.role === 'admin' ? 'bg-[var(--accent-100)] text-[var(--accent-700)]' : 'bg-slate-100 text-slate-700'
                                                     )}>
                                                         {formatRole(u.role)}
                                                     </span>
@@ -393,7 +392,7 @@ export default function AdminDashboard() {
                 {activeTab === 'users' && (
                     <div className="space-y-6">
                         {showInviteForm && (
-                            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                            <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
                                 <h2 className="text-base font-bold text-slate-900 mb-4">Create New Account</h2>
                                 <form onSubmit={handleCreateUser} className="space-y-4">
                                     <div className="grid grid-cols-2 gap-4">
@@ -402,7 +401,7 @@ export default function AdminDashboard() {
                                             <input
                                                 type="text" required value={inviteName}
                                                 onChange={e => setInviteName(e.target.value)}
-                                                className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-purple-600 focus:border-transparent outline-none"
+                                                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm transition-colors focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
                                                 placeholder="Jane Smith"
                                             />
                                         </div>
@@ -411,7 +410,7 @@ export default function AdminDashboard() {
                                             <input
                                                 type="email" required value={inviteEmail}
                                                 onChange={e => setInviteEmail(e.target.value)}
-                                                className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-purple-600 focus:border-transparent outline-none"
+                                                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm transition-colors focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
                                                 placeholder="jane@example.com"
                                             />
                                         </div>
@@ -422,7 +421,7 @@ export default function AdminDashboard() {
                                             <input
                                                 type="password" required value={invitePassword}
                                                 onChange={e => setInvitePassword(e.target.value)}
-                                                className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-purple-600 focus:border-transparent outline-none"
+                                                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm transition-colors focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
                                                 placeholder="Min. 6 characters"
                                             />
                                         </div>
@@ -431,7 +430,7 @@ export default function AdminDashboard() {
                                             <select
                                                 value={inviteRole}
                                                 onChange={e => setInviteRole(e.target.value as 'user' | 'admin')}
-                                                className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-purple-600 focus:border-transparent outline-none bg-white"
+                                                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm transition-colors focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200 bg-white"
                                             >
                                                 <option value="user">User</option>
                                                 <option value="admin">Administrator</option>
@@ -441,7 +440,7 @@ export default function AdminDashboard() {
                                     <div className="pt-2 flex justify-end">
                                         <button
                                             type="submit" disabled={inviting}
-                                            className="bg-purple-700 text-white px-5 py-2 rounded-md font-medium text-sm hover:bg-purple-800 disabled:opacity-50"
+                                            className="rounded-lg bg-slate-900 px-5 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-slate-800 disabled:opacity-50"
                                         >
                                             {inviting ? 'Creating...' : 'Create Account'}
                                         </button>
@@ -450,14 +449,14 @@ export default function AdminDashboard() {
                             </div>
                         )}
 
-                        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                        <div className="rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden">
                             <table className="min-w-full divide-y divide-slate-200">
                                 <thead className="bg-slate-50">
                                     <tr>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">User</th>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Role</th>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Projects</th>
-                                        <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Actions</th>
+                                        <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">User</th>
+                                        <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Role</th>
+                                        <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Projects</th>
+                                        <th className="px-6 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody className="bg-white divide-y divide-slate-200">
@@ -474,7 +473,7 @@ export default function AdminDashboard() {
                                                     </td>
                                                     <td className="px-6 py-4">
                                                         {isSelf ? (
-                                                            <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-purple-100 text-purple-800">
+                                                            <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-[var(--accent-100)] text-[var(--accent-700)]">
                                                                 {formatRole(u.role)} (you)
                                                             </span>
                                                         ) : (
@@ -484,8 +483,8 @@ export default function AdminDashboard() {
                                                                     disabled={roleChanging[u.id]}
                                                                     onChange={e => handleRoleChange(u.id, e.target.value as 'user' | 'admin')}
                                                                     className={clsx(
-                                                                        'border border-slate-200 rounded-md px-2 py-1 text-xs font-medium bg-white focus:ring-2 focus:ring-purple-600 focus:border-transparent outline-none transition-opacity',
-                                                                        u.role === 'admin' ? 'text-purple-800' : 'text-slate-700',
+                                                                        'rounded-lg border border-slate-200 px-2 py-1 text-xs font-medium bg-white focus:ring-2 focus:ring-slate-200 focus:border-slate-400 outline-none transition-opacity',
+                                                                        u.role === 'admin' ? 'text-[var(--accent-700)]' : 'text-slate-700',
                                                                         roleChanging[u.id] && 'opacity-50'
                                                                     )}
                                                                 >
@@ -510,7 +509,7 @@ export default function AdminDashboard() {
                                                                     className={clsx(
                                                                         'p-1.5 rounded transition-colors',
                                                                         isEditing
-                                                                            ? 'text-purple-600 bg-purple-50 hover:bg-purple-100'
+                                                                            ? 'text-[var(--accent-600)] bg-[var(--accent-50)] hover:bg-[var(--accent-100)]'
                                                                             : 'text-slate-400 hover:text-slate-700 hover:bg-slate-100'
                                                                     )}
                                                                 >
@@ -522,7 +521,7 @@ export default function AdminDashboard() {
                                                                     onClick={() => handleDeleteUser(u.id, u.full_name || u.email || 'this user')}
                                                                     disabled={deleting[u.id]}
                                                                     title="Delete user"
-                                                                    className="text-slate-400 hover:text-red-600 transition-colors disabled:opacity-50 p-1.5 rounded hover:bg-red-50"
+                                                                    className="text-slate-400 hover:text-rose-600 transition-colors disabled:opacity-50 p-1.5 rounded hover:bg-rose-50"
                                                                 >
                                                                     <Trash2 size={15} />
                                                                 </button>
@@ -540,7 +539,7 @@ export default function AdminDashboard() {
                                                                         type="text"
                                                                         value={editName}
                                                                         onChange={e => setEditName(e.target.value)}
-                                                                        className="w-full border border-slate-300 rounded-md px-3 py-1.5 text-sm focus:ring-2 focus:ring-purple-600 focus:border-transparent outline-none bg-white"
+                                                                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm transition-colors focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
                                                                     />
                                                                 </div>
                                                                 <div>
@@ -549,7 +548,7 @@ export default function AdminDashboard() {
                                                                         type="email"
                                                                         value={editEmail}
                                                                         onChange={e => setEditEmail(e.target.value)}
-                                                                        className="w-full border border-slate-300 rounded-md px-3 py-1.5 text-sm focus:ring-2 focus:ring-purple-600 focus:border-transparent outline-none bg-white"
+                                                                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm transition-colors focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
                                                                     />
                                                                 </div>
                                                                 <div>
@@ -559,7 +558,7 @@ export default function AdminDashboard() {
                                                                         value={editPassword}
                                                                         onChange={e => setEditPassword(e.target.value)}
                                                                         placeholder="Leave blank to keep current"
-                                                                        className="w-full border border-slate-300 rounded-md px-3 py-1.5 text-sm focus:ring-2 focus:ring-purple-600 focus:border-transparent outline-none bg-white"
+                                                                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm transition-colors focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
                                                                     />
                                                                 </div>
                                                             </div>
@@ -573,7 +572,7 @@ export default function AdminDashboard() {
                                                                 <button
                                                                     onClick={() => handleSaveUser(u.id)}
                                                                     disabled={saving[u.id]}
-                                                                    className="px-4 py-1.5 bg-purple-700 text-white text-sm font-medium rounded-md hover:bg-purple-800 disabled:opacity-50"
+                                                                    className="rounded-lg bg-slate-900 px-4 py-1.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-slate-800 disabled:opacity-50"
                                                                 >
                                                                     {saving[u.id] ? 'Saving...' : 'Save Changes'}
                                                                 </button>
@@ -605,7 +604,7 @@ export default function AdminDashboard() {
                                 <select
                                     value={projectFilterUserId}
                                     onChange={e => setProjectFilterUserId(e.target.value)}
-                                    className="border border-slate-200 rounded-md px-3 py-1.5 text-sm bg-white focus:ring-2 focus:ring-purple-600 focus:border-transparent outline-none"
+                                    className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm focus:ring-2 focus:ring-slate-200 focus:border-slate-400 outline-none"
                                 >
                                     <option value="all">All users</option>
                                     {users.map(u => (
@@ -617,14 +616,14 @@ export default function AdminDashboard() {
                             </div>
                         </div>
 
-                        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                        <div className="rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden">
                             <table className="min-w-full divide-y divide-slate-200">
                                 <thead className="bg-slate-50">
                                     <tr>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Project</th>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Owner</th>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Created</th>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Documents</th>
+                                        <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Project</th>
+                                        <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Owner</th>
+                                        <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Created</th>
+                                        <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Documents</th>
                                     </tr>
                                 </thead>
                                 <tbody className="bg-white divide-y divide-slate-200">
@@ -649,12 +648,12 @@ export default function AdminDashboard() {
                                                 ) : (
                                                     <div className="flex items-center gap-2">
                                                         {p.draftCount > 0 && (
-                                                            <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-amber-50 text-amber-700 border border-amber-100">
+                                                            <span className="rounded-full px-2.5 py-0.5 text-xs font-medium bg-amber-100 text-amber-700">
                                                                 {p.draftCount} draft
                                                             </span>
                                                         )}
                                                         {p.finalCount > 0 && (
-                                                            <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-green-50 text-green-700 border border-green-100">
+                                                            <span className="rounded-full px-2.5 py-0.5 text-xs font-medium bg-emerald-100 text-emerald-700">
                                                                 {p.finalCount} final
                                                             </span>
                                                         )}

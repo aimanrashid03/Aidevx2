@@ -1,41 +1,33 @@
 /** @type {import('tailwindcss').Config} */
 export default {
+  darkMode: "class",
   content: [
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",
   ],
   theme: {
     extend: {
-      fontFamily: {
-        sans: ['"Inter"', 'sans-serif'], // Changed to Inter for a more official look if available, otherwise fallback
-        secondary: ['"Inter"', 'sans-serif'],
-      },
       colors: {
         primary: {
-          DEFAULT: '#0f172a', // slate-900 (Black/Dark Slate)
+          DEFAULT: '#0f172a',
           foreground: '#ffffff',
         },
         secondary: {
-          DEFAULT: '#f1f5f9', // slate-100
-          foreground: '#0f172a', // slate-900
+          DEFAULT: '#f1f5f9',
+          foreground: '#0f172a',
         },
         accent: {
-          DEFAULT: '#f1f5f9', // slate-100 (Subtle accent)
-          foreground: '#0f172a', // slate-900
+          DEFAULT: '#f1f5f9',
+          foreground: '#0f172a',
         },
-        background: '#ffffff', // White background for cleanliness
-        foreground: '#0f172a', // slate-900
+        background: '#ffffff',
+        foreground: '#0f172a',
         muted: {
-          DEFAULT: '#f8fafc', // slate-50
-          foreground: '#64748b', // slate-500
+          DEFAULT: '#f8fafc',
+          foreground: '#64748b',
         },
-        border: '#e2e8f0', // slate-200
+        border: '#e2e8f0',
       },
-      borderRadius: {
-        lg: '0.375rem', // sm/md feel (6px) - making it tighter
-        xl: '0.5rem',   // 8px - tighter than default 12px
-        '2xl': '0.75rem', // 12px
-      }
     },
   },
   plugins: [

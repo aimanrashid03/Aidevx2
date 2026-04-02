@@ -38,7 +38,7 @@ export default function TableEditor({ columns, initialData, onChange }: TableEdi
         <div className="w-full bg-white border border-slate-200 rounded-lg overflow-hidden flex flex-col">
             <div className="overflow-x-auto">
                 <table className="w-full text-left text-sm text-slate-600">
-                    <thead className="bg-slate-50 border-b border-slate-200 text-xs uppercase font-bold text-slate-500">
+                    <thead className="bg-slate-50 border-b border-slate-200 text-xs uppercase font-semibold tracking-wider text-slate-500">
                         <tr>
                             <th className="w-10 px-3 py-3 text-center"></th>
                             {cols.map((col, idx) => (
@@ -49,7 +49,7 @@ export default function TableEditor({ columns, initialData, onChange }: TableEdi
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                         {data.map((row, rowIndex) => (
-                            <tr key={rowIndex} className="hover:bg-slate-50/50 transition-colors group">
+                            <tr key={rowIndex} className="hover:bg-slate-50 transition-colors group">
                                 <td className="px-3 py-2 text-center text-slate-300">
                                     <GripVertical size={16} className="cursor-grab opacity-0 group-hover:opacity-100 transition-opacity" />
                                 </td>
@@ -72,7 +72,7 @@ export default function TableEditor({ columns, initialData, onChange }: TableEdi
                                 <td className="px-3 py-2 text-center">
                                     <button
                                         onClick={() => removeRow(rowIndex)}
-                                        className="text-slate-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
+                                        className="text-slate-300 hover:text-rose-500 transition-colors opacity-0 group-hover:opacity-100"
                                         title="Remove Row"
                                     >
                                         <Trash2 size={16} />

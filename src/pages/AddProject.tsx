@@ -16,75 +16,48 @@ export default function AddProject() {
         name: '',
         description: '',
         notes: '',
-        documents: [] as File[], // Store actual File objects
+        documents: [] as File[],
     });
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files.length > 0) {
             const newFiles = Array.from(e.target.files);
-            setFormData(prev => ({
-                ...prev,
-                documents: [...prev.documents, ...newFiles]
-            }));
+            setFormData(prev => ({ ...prev, documents: [...prev.documents, ...newFiles] }));
         }
     };
 
     const removeFile = (index: number) => {
-        setFormData(prev => ({
-            ...prev,
-            documents: prev.documents.filter((_, i) => i !== index)
-        }));
+        setFormData(prev => ({ ...prev, documents: prev.documents.filter((_, i) => i !== index) }));
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!formData.name || !user) return;
-
         try {
             setLoading(true);
-
-            // 1. Create Project
             const projectId = await addProject({
                 name: formData.name,
                 description: formData.description,
-                notes: formData.notes
+                notes: formData.notes,
             });
+            if (!projectId) throw new Error('Failed to create project');
 
-            if (!projectId) {
-                throw new Error('Failed to create project');
-            }
-
-            // 2. Upload Files
             if (formData.documents.length > 0) {
-                const uploadPromises = formData.documents.map(async (file) => {
+                await Promise.all(formData.documents.map(async (file) => {
                     const fileExt = file.name.split('.').pop();
-                    const fileName = `${projectId}/${Math.random().toString(36).substring(2)}.${fileExt}`;
-                    const filePath = fileName;
-
-                    // Upload to Storage
-                    const { error: uploadError } = await supabase.storage
-                        .from('project-files')
-                        .upload(filePath, file);
-
+                    const filePath = `${projectId}/${Math.random().toString(36).substring(2)}.${fileExt}`;
+                    const { error: uploadError } = await supabase.storage.from('project-files').upload(filePath, file);
                     if (uploadError) throw uploadError;
-
-                    // Save Metadata
-                    const { error: metaError } = await supabase
-                        .from('project_documents')
-                        .insert({
-                            project_id: projectId,
-                            file_name: file.name,
-                            file_path: filePath,
-                            file_size: file.size,
-                            mime_type: file.type
-                        });
-
+                    const { error: metaError } = await supabase.from('project_documents').insert({
+                        project_id: projectId,
+                        file_name: file.name,
+                        file_path: filePath,
+                        file_size: file.size,
+                        mime_type: file.type,
+                    });
                     if (metaError) throw metaError;
-                });
-
-                await Promise.all(uploadPromises);
+                }));
             }
-
             navigate('/dashboard');
         } catch (error) {
             console.error('Error creating project:', error);
@@ -95,116 +68,115 @@ export default function AddProject() {
     };
 
     return (
-        <div className="p-6 max-w-3xl mx-auto font-sans">
-            <div className="mb-6">
+        <div className="mx-auto max-w-3xl p-4 md:p-6 space-y-4">
+            {/* Back + title */}
+            <div>
                 <button
                     onClick={() => navigate(-1)}
-                    className="flex items-center text-slate-500 hover:text-slate-900 mb-3 transition-colors text-sm font-medium"
+                    className="flex items-center text-slate-500 hover:text-slate-900 mb-3 transition-colors text-xs font-medium"
                 >
-                    <ArrowLeft size={14} className="mr-2" />
+                    <ArrowLeft size={13} className="mr-1.5" />
                     Back
                 </button>
-                <h1 className="text-2xl font-bold text-slate-900 tracking-tight">New Project</h1>
+                <h1 className="page-title">New Project</h1>
                 <p className="text-slate-500 mt-1 text-sm">Create a new project workspace to organize your requirements.</p>
             </div>
 
-            <div className="bg-white p-6 rounded border border-slate-200 shadow-sm">
-                <form onSubmit={handleSubmit} className="space-y-5">
-                    <div>
-                        <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1.5">Project Name <span className="text-red-500">*</span></label>
-                        <input
-                            type="text"
-                            value={formData.name}
-                            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                            className="w-full px-3 py-2 border border-slate-300 rounded focus:outline-none focus:border-slate-900 focus:ring-1 focus:ring-slate-900 transition-colors text-sm"
-                            placeholder="e.g. Mobile Banking App"
-                            required
-                        />
-                    </div>
-
-                    <div>
-                        <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1.5">Description</label>
-                        <textarea
-                            value={formData.description}
-                            onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                            className="w-full px-3 py-2 border border-slate-300 rounded focus:outline-none focus:border-slate-900 focus:ring-1 focus:ring-slate-900 transition-colors h-24 resize-none text-sm"
-                            placeholder="Brief description of the project goals and context..."
-                        />
-                    </div>
-
-                    <div>
-                        <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1.5">Project Notes</label>
-                        <textarea
-                            value={formData.notes}
-                            onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                            className="w-full px-3 py-2 border border-slate-300 rounded focus:outline-none focus:border-slate-900 focus:ring-1 focus:ring-slate-900 transition-colors h-32 resize-none text-sm"
-                            placeholder="Additional context, key stakeholder info, or rough ideas..."
-                        />
-                    </div>
-
-                    <div>
-                        <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-2">Supporting Documents</label>
-                        <div
-                            className="border border-dashed border-slate-300 rounded p-6 flex flex-col items-center justify-center cursor-pointer hover:border-slate-900 hover:bg-slate-50 transition-all"
-                            onClick={() => fileInputRef.current?.click()}
-                        >
-                            <div className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center mb-2">
-                                <Upload size={16} className="text-slate-500" />
-                            </div>
-                            <p className="text-sm font-medium text-slate-900">Click to upload files</p>
-                            <p className="text-xs text-slate-400 mt-1">PDF, DOCX, PNG up to 10MB</p>
+            {/* Form card */}
+            <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
+                <form onSubmit={handleSubmit}>
+                    <div className="p-5 space-y-5">
+                        {/* Project Name */}
+                        <div className="space-y-1.5">
+                            <label className="block text-sm font-medium text-slate-700">
+                                Project Name <span className="text-rose-500">*</span>
+                            </label>
                             <input
-                                type="file"
-                                multiple
-                                ref={fileInputRef}
-                                className="hidden"
-                                onChange={handleFileChange}
+                                type="text"
+                                value={formData.name}
+                                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm transition-colors focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                                placeholder="e.g. Mobile Banking App"
+                                required
                             />
                         </div>
 
-                        {formData.documents.length > 0 && (
-                            <div className="mt-3 space-y-2">
-                                {formData.documents.map((doc, idx) => (
-                                    <div key={idx} className="flex items-center justify-between p-2 bg-slate-50 rounded border border-slate-200">
-                                        <div className="flex items-center gap-2 overflow-hidden">
-                                            <File size={14} className="text-slate-500 flex-shrink-0" />
-                                            <span className="text-sm text-slate-700 truncate font-medium">{doc.name}</span>
-                                        </div>
-                                        <button
-                                            type="button"
-                                            onClick={() => removeFile(idx)}
-                                            className="text-slate-400 hover:text-red-600 p-1"
-                                        >
-                                            <X size={14} />
-                                        </button>
-                                    </div>
-                                ))}
+                        {/* Description */}
+                        <div className="space-y-1.5">
+                            <label className="block text-sm font-medium text-slate-700">Description</label>
+                            <textarea
+                                value={formData.description}
+                                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm transition-colors focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200 h-24 resize-none"
+                                placeholder="Brief description of the project goals and context..."
+                            />
+                        </div>
+
+                        {/* Notes */}
+                        <div className="space-y-1.5">
+                            <label className="block text-sm font-medium text-slate-700">Project Notes</label>
+                            <textarea
+                                value={formData.notes}
+                                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm transition-colors focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200 h-32 resize-none"
+                                placeholder="Additional context, key stakeholder info, or rough ideas..."
+                            />
+                        </div>
+
+                        {/* File upload */}
+                        <div className="space-y-1.5">
+                            <label className="block text-sm font-medium text-slate-700">Supporting Documents</label>
+                            <div
+                                className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-slate-300 px-6 py-5 bg-slate-50 transition-colors hover:border-[var(--accent-400)] hover:bg-[var(--accent-50)]"
+                                onClick={() => fileInputRef.current?.click()}
+                            >
+                                <div className="w-9 h-9 bg-white rounded-full shadow-sm border border-slate-200 flex items-center justify-center mb-2">
+                                    <Upload size={16} className="text-slate-500" />
+                                </div>
+                                <p className="text-xs font-bold text-slate-900 mb-0.5">Click to upload files</p>
+                                <p className="text-[10px] text-slate-400 mb-2">PDF, DOCX, PNG up to 10MB</p>
+                                <span className="px-3 py-1 bg-white border border-slate-300 rounded text-xs font-bold text-slate-700 hover:bg-slate-50 shadow-sm">Browse</span>
+                                <input type="file" multiple ref={fileInputRef} className="hidden" onChange={handleFileChange} />
                             </div>
-                        )}
+
+                            {formData.documents.length > 0 && (
+                                <div className="mt-2 space-y-1.5">
+                                    {formData.documents.map((doc, idx) => (
+                                        <div key={idx} className="flex items-center justify-between p-2 bg-white rounded-lg border border-slate-200 hover:border-slate-300 transition-colors">
+                                            <div className="flex items-center gap-2 overflow-hidden">
+                                                <File size={13} className="text-slate-400 flex-shrink-0" />
+                                                <span className="text-xs text-slate-700 truncate font-medium">{doc.name}</span>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => removeFile(idx)}
+                                                className="text-slate-400 hover:text-rose-600 p-1 rounded transition-colors"
+                                            >
+                                                <X size={13} />
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
                     </div>
 
-                    <div className="pt-4 flex items-center justify-end gap-3 border-t border-slate-100">
+                    {/* Footer */}
+                    <div className="px-5 py-4 border-t border-slate-100 bg-slate-50 flex items-center justify-end gap-3">
                         <button
                             type="button"
                             onClick={() => navigate('/dashboard')}
                             disabled={loading}
-                            className="px-4 py-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded font-medium transition-colors text-sm disabled:opacity-50"
+                            className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-600 shadow-sm transition-colors hover:bg-slate-50 disabled:opacity-50"
                         >
                             Cancel
                         </button>
                         <button
                             type="submit"
                             disabled={loading}
-                            className="flex items-center gap-2 px-6 py-2 bg-slate-900 text-white rounded font-medium hover:bg-slate-800 transition-colors shadow-sm text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="flex items-center gap-2 rounded-lg bg-slate-900 px-5 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                            {loading ? (
-                                <span className="flex items-center gap-2">Processing...</span>
-                            ) : (
-                                <>
-                                    <Save size={16} />
-                                    <span>Create Project</span>
-                                </>
-                            )}
+                            {loading ? 'Processing…' : (<><Save size={15} /><span>Create Project</span></>)}
                         </button>
                     </div>
                 </form>
