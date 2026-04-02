@@ -282,4 +282,11 @@ The UI is being redesigned to closely mirror **CORRAD** (https://github.com/mfau
 - Do not auto-commit; do not force-push
 
 ## Server Setup
-For server infrastructure details (Docker, tunnels, Coolify, networking, credentials), see [SERVER-SETUP.md](./SERVER-SETUP.md).
+Two separate server environments exist:
+
+- **Test/Client server** (self-hosted full stack — Docker, Coolify, tunnels, networking, credentials): see [SERVER-SETUP.md](./SERVER-SETUP.md)
+- **Production OnlyOffice server** (Oracle Cloud free tier ARM VM):
+  - Public IP: `149.118.143.205`, port `8080`
+  - Ubuntu 22.04, Docker, OnlyOffice Document Server (`JWT_ENABLED=false`)
+  - SSH key: `~/.ssh/ssh-key-2026-04-02.key`, user `ubuntu`
+  - Supabase: cloud project `hpjzwpocxuxqntuuqzbr` (ap-southeast-1)

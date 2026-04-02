@@ -33,3 +33,6 @@ dist-ssr
 # Supabase
 supabase/.temp/
 supabase/.temp
+
+# Claude Code local settings (may contain tokens)
+.claude/settings.local.json
