@@ -65,16 +65,21 @@ export function buildAutoGeneratePrompt(
 - Populate table rows using facts from the Project Context
 - If context is insufficient, add rows with [placeholder] values
 - Use **bold** for emphasis
-- ALWAYS use numbered lists (1. 2. 3.) instead of bullet points (- or *) for traceability between documents
-- Do NOT use HTML tags`
+- Use numbered lists (1. 2. 3.) for sequential steps and traceable requirements
+- Use bullet lists (- item) for non-sequential features, characteristics, or descriptions
+- For nested details, indent sub-items with 2 spaces (e.g. "  1. sub-item" or "  - sub-item")
+- Do NOT use HTML tags
+- Do NOT include the section title/heading in your output — it is already in the document template`
     } else {
         formatRules = `OUTPUT FORMAT RULES:
 - Output content as plain markdown text
 - Use **bold** for emphasis, *italic* for secondary emphasis
-- ALWAYS use numbered lists (1. 2. 3.) instead of bullet points (- or *) for traceability between documents
+- Use numbered lists (1. 2. 3.) for sequential steps and traceable requirements
+- Use bullet lists (- item) for non-sequential features, characteristics, or descriptions
+- For nested details, indent sub-items with 2 spaces (e.g. "  1. sub-item" or "  - sub-item")
 - Use markdown tables (| col1 | col2 |) where tabular data is appropriate
 - Do NOT use HTML tags
-- Do NOT include the section title/heading in your output (it will be added automatically)`
+- Do NOT include the section title/heading in your output — it is already in the document template`
     }
 
     const fewShot = fewShotExample ? `\nEXAMPLE OUTPUT STYLE (adapt format but use project context):\n${fewShotExample}\n` : ''
