@@ -151,7 +151,7 @@ serve(async (req) => {
                     current: 0,
                     total: totalSections,
                     section: '',
-                    status: 'Menyediakan konteks dokumen...',
+                    status: 'Preparing document context...',
                 })
 
                 const sectionMeta = generatableSections.map(section => ({
@@ -184,7 +184,7 @@ serve(async (req) => {
                             current,
                             total: totalSections,
                             section: section.title,
-                            status: 'Mencari dokumen berkaitan...',
+                            status: 'Searching relevant documents...',
                         })
 
                         try {
@@ -205,7 +205,7 @@ serve(async (req) => {
                                 current,
                                 total: totalSections,
                                 section: section.title,
-                                status: 'Menjana kandungan...',
+                                status: 'Generating content...',
                             })
 
                             // ── Build prompt ──────────────────────────────────
@@ -279,7 +279,7 @@ serve(async (req) => {
                     current: totalSections,
                     total: totalSections,
                     section: '',
-                    status: 'Membina dokumen DOCX...',
+                    status: 'Building DOCX document...',
                 })
 
                 let docxBytes: Uint8Array

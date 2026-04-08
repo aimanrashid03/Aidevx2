@@ -228,6 +228,8 @@ export default function ProjectDetails() {
                         onEditClick={handleEditClick}
                         onSaveEdit={handleSaveEdit}
                         onCancelEdit={() => setIsEditing(false)}
+                        indexedStories={indexedStories}
+                        totalStories={stories.length}
                     />
                 )}
                 {activeTab === 'workspace' && (
@@ -371,25 +373,33 @@ export default function ProjectDetails() {
                                     </p>
                                 </div>
                             </button>
-                            {/* RAG Readiness Indicator */}
-                            <div className={`flex items-center gap-2 px-4 py-2.5 rounded border text-xs ${
-                                ragReadiness === 'none' ? 'bg-rose-50 border-rose-200 text-rose-700' :
-                                ragReadiness === 'limited' ? 'bg-amber-50 border-amber-200 text-amber-700' :
-                                'bg-emerald-50 border-emerald-200 text-emerald-700'
-                            }`}>
-                                <div className={`w-2 h-2 rounded-full shrink-0 ${
-                                    ragReadiness === 'none' ? 'bg-rose-500' :
-                                    ragReadiness === 'limited' ? 'bg-amber-500' :
-                                    'bg-emerald-500'
-                                }`} />
-                                <span className="font-bold">
-                                    {ragReadiness === 'none' ? 'No indexed content' :
-                                     ragReadiness === 'limited' ? 'Limited content' :
-                                     'Ready for generation'}
-                                </span>
-                                <span className="text-[10px] opacity-75 ml-auto">
-                                    {indexedFiles} file{indexedFiles !== 1 ? 's' : ''} + {indexedStories} stor{indexedStories !== 1 ? 'ies' : 'y'} indexed
-                                </span>
+                            {/* RAG Readiness Meter */}
+                            <div className="px-4 py-3 rounded border border-slate-200 bg-slate-50">
+                                <div className="flex items-center justify-between mb-2">
+                                    <span className="text-xs font-bold text-slate-700">AI Readiness</span>
+                                    <span className="text-[11px] text-slate-500">
+                                        {totalIndexed} / 5 materials indexed
+                                    </span>
+                                </div>
+                                <div className="relative h-2 bg-slate-200 rounded-full overflow-hidden mb-1.5">
+                                    <div
+                                        className={`h-full rounded-full transition-all duration-500 ${
+                                            totalIndexed === 0 ? 'bg-rose-400' :
+                                            totalIndexed < 5 ? 'bg-amber-400' :
+                                            'bg-emerald-500'
+                                        }`}
+                                        style={{ width: `${Math.min((totalIndexed / 5) * 100, 100)}%` }}
+                                    />
+                                </div>
+                                <div className="flex justify-between text-[10px] mb-1">
+                                    <span className={totalIndexed >= 5 ? 'text-slate-400 opacity-0' : 'text-slate-400'}>Not enough materials</span>
+                                    <span className={totalIndexed >= 5 ? 'text-emerald-600 font-bold' : 'text-slate-400'}>Ready</span>
+                                </div>
+                                {totalIndexed > 0 && (
+                                    <p className="text-[10px] text-slate-400">
+                                        {indexedFiles} file{indexedFiles !== 1 ? 's' : ''} · {indexedStories} user stor{indexedStories !== 1 ? 'ies' : 'y'} indexed
+                                    </p>
+                                )}
                             </div>
                             <button
                                 onClick={() => {

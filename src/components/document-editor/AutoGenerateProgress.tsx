@@ -37,10 +37,9 @@ export default function AutoGenerateProgress({
     onFallbackEmpty,
 }: AutoGenerateProgressProps) {
     const [phase, setPhase] = useState<Phase>('starting')
-    const [current, setCurrent] = useState(0)
     const [total, setTotal] = useState(0)
-    const [, setCurrentSection] = useState('')
-    const [statusText, setStatusText] = useState('Memulakan proses penjanaan...')
+    const [completedCount, setCompletedCount] = useState(0)
+    const [statusText, setStatusText] = useState('Starting generation...')
     const [sections, setSections] = useState<SectionStatus[]>([])
     const [fatalError, setFatalError] = useState<string | null>(null)
 
@@ -118,12 +117,15 @@ export default function AutoGenerateProgress({
                         const event = JSON.parse(jsonStr)
 
                         if (event.type === 'progress') {
-                            setCurrent(event.current)
-                            setTotal(event.total)
-                            setCurrentSection(event.section)
+                            if (event.total) setTotal(event.total)
                             setStatusText(event.status)
 
-                            if (event.section && event.status?.includes('Mencari')) {
+                            // Support both English (new) and Malay (legacy local) status strings
+                            const isSearching = event.status?.includes('Searching') || event.status?.includes('Mencari')
+                            const isGenerating = event.status?.includes('Generating') || event.status?.includes('Menjana')
+                            const isBuilding = event.status?.includes('Building DOCX') || event.status?.includes('Membina')
+
+                            if (event.section && isSearching) {
                                 setSections(prev => {
                                     const existing = prev.find(s => s.title === event.section)
                                     if (existing) {
@@ -131,22 +133,35 @@ export default function AutoGenerateProgress({
                                     }
                                     return [...prev, { title: event.section, status: 'searching' }]
                                 })
-                            } else if (event.section && event.status?.includes('Menjana')) {
-                                setSections(prev =>
-                                    prev.map(s => s.title === event.section ? { ...s, status: 'generating' } : s)
-                                )
-                            } else if (event.status?.includes('DOCX')) {
+                            } else if (event.section && isGenerating) {
+                                setSections(prev => {
+                                    const existing = prev.find(s => s.title === event.section)
+                                    if (existing) {
+                                        return prev.map(s => s.title === event.section ? { ...s, status: 'generating' } : s)
+                                    }
+                                    // Section not in list yet — add it directly as generating
+                                    return [...prev, { title: event.section, status: 'generating' }]
+                                })
+                            } else if (isBuilding) {
                                 setPhase('building')
-                                setStatusText('Membina dokumen DOCX...')
+                                setStatusText('Building DOCX document...')
                             }
                         } else if (event.type === 'section_complete') {
-                            setSections(prev =>
-                                prev.map(s => s.title === event.section ? { ...s, status: 'complete' } : s)
-                            )
+                            setCompletedCount(prev => prev + 1)
+                            setSections(prev => {
+                                // Ensure the section exists before marking complete (handles race condition
+                                // where section_complete arrives before its progress events)
+                                const exists = prev.some(s => s.title === event.section)
+                                const base = exists ? prev : [...prev, { title: event.section, status: 'pending' as const }]
+                                return base.map(s => s.title === event.section ? { ...s, status: 'complete' } : s)
+                            })
                         } else if (event.type === 'section_error') {
-                            setSections(prev =>
-                                prev.map(s => s.title === event.section ? { ...s, status: 'error', error: event.error } : s)
-                            )
+                            setCompletedCount(prev => prev + 1)
+                            setSections(prev => {
+                                const exists = prev.some(s => s.title === event.section)
+                                const base = exists ? prev : [...prev, { title: event.section, status: 'pending' as const }]
+                                return base.map(s => s.title === event.section ? { ...s, status: 'error', error: event.error } : s)
+                            })
                         } else if (event.type === 'complete') {
                             setPhase('complete')
                             onCompleteRef.current({
@@ -189,7 +204,12 @@ export default function AutoGenerateProgress({
         onCancel()
     }
 
-    const progressPercent = total > 0 ? Math.round((current / total) * 100) : 0
+    // Progress is based on sections actually completed, not parallel section indices.
+    // This prevents the bar from jumping around as concurrent sections report in.
+    const progressPercent = phase === 'building' ? 95
+        : phase === 'complete' ? 100
+        : total > 0 ? Math.round((completedCount / total) * 100)
+        : 0
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-50">
@@ -200,7 +220,7 @@ export default function AutoGenerateProgress({
                         <Sparkles size={28} />
                     </div>
                     <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
-                        Menjana Dokumen BRS
+                        Generating {docType} Document
                     </h1>
                     <p className="text-sm text-slate-500 mt-1">
                         {projectName} &mdash; {docTitle}
@@ -211,12 +231,12 @@ export default function AutoGenerateProgress({
                 <div className="mb-6">
                     <div className="flex justify-between text-xs text-slate-500 mb-2">
                         <span>{statusText}</span>
-                        <span>{total > 0 ? `${current} / ${total}` : ''}</span>
+                        <span>{total > 0 ? `${completedCount} / ${total}` : ''}</span>
                     </div>
                     <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
                         <div
                             className="h-full bg-[var(--accent-600)] rounded-full transition-all duration-500 ease-out"
-                            style={{ width: `${phase === 'building' ? 95 : phase === 'complete' ? 100 : progressPercent}%` }}
+                            style={{ width: `${progressPercent}%` }}
                         />
                     </div>
                 </div>
@@ -226,7 +246,7 @@ export default function AutoGenerateProgress({
                     {sections.length === 0 && phase === 'starting' && (
                         <div className="p-6 text-center text-sm text-slate-400">
                             <Loader2 className="animate-spin mx-auto mb-2" size={20} />
-                            Menyediakan proses penjanaan...
+                            Preparing generation...
                         </div>
                     )}
                     {sections.map((s) => (
@@ -253,13 +273,13 @@ export default function AutoGenerateProgress({
                             </span>
 
                             {s.status === 'searching' && (
-                                <span className="text-[10px] text-slate-400">Mencari...</span>
+                                <span className="text-[10px] text-slate-400">Searching...</span>
                             )}
                             {s.status === 'generating' && (
-                                <span className="text-[10px] text-slate-900 font-medium">Menjana...</span>
+                                <span className="text-[10px] text-slate-900 font-medium">Generating...</span>
                             )}
                             {s.status === 'error' && (
-                                <span className="text-[10px] text-amber-500" title={s.error}>Gagal</span>
+                                <span className="text-[10px] text-amber-500" title={s.error}>Failed</span>
                             )}
                         </div>
                     ))}
@@ -271,7 +291,7 @@ export default function AutoGenerateProgress({
                         <div className="flex items-start gap-3">
                             <XCircle size={18} className="text-red-500 mt-0.5 flex-shrink-0" />
                             <div>
-                                <p className="text-sm font-medium text-red-800">Penjanaan gagal</p>
+                                <p className="text-sm font-medium text-red-800">Generation failed</p>
                                 <p className="text-xs text-red-600 mt-1">{fatalError}</p>
                             </div>
                         </div>
@@ -287,20 +307,20 @@ export default function AutoGenerateProgress({
                                     startedRef.current = false
                                     setPhase('starting')
                                     setSections([])
-                                    setCurrent(0)
+                                    setCompletedCount(0)
                                     setTotal(0)
                                     setFatalError(null)
                                     startGeneration()
                                 }}
                                 className="px-5 py-2.5 bg-slate-900 text-white text-sm font-bold rounded hover:bg-slate-800 transition-colors"
                             >
-                                Cuba Semula
+                                Try Again
                             </button>
                             <button
                                 onClick={onFallbackEmpty}
                                 className="px-5 py-2.5 border border-slate-300 text-slate-700 text-sm font-bold rounded hover:bg-slate-50 transition-colors"
                             >
-                                Guna Templat Kosong
+                                Use Blank Template
                             </button>
                         </>
                     ) : phase !== 'complete' ? (
@@ -308,7 +328,7 @@ export default function AutoGenerateProgress({
                             onClick={handleCancel}
                             className="px-5 py-2.5 border border-slate-300 text-slate-700 text-sm font-bold rounded hover:bg-slate-50 transition-colors"
                         >
-                            Batal
+                            Cancel
                         </button>
                     ) : null}
                 </div>
