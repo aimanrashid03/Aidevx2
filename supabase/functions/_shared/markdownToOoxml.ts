@@ -2,6 +2,10 @@
  * Markdown → raw OOXML string converter.
  * Produces XML fragments (<w:p> and <w:tbl> elements) that use
  * the BRS template's own styles so formatting is inherited exactly.
+ *
+ * Supports per-section numId assignment so each section's numbered list
+ * restarts at 1 independently. Call generateNumberingEntries() to get
+ * the <w:abstractNum> + <w:num> blocks to inject into word/numbering.xml.
  */
 
 // ── XML helpers ─────────────────────────────────────────────────────────────
@@ -66,16 +70,27 @@ function paragraphXml(text: string, style = 'Content'): string {
     return `<w:p><w:pPr><w:pStyle w:val="${style}"/></w:pPr>${runs}</w:p>`
 }
 
-/** Build a list item paragraph as numbered (for traceability). Uses numId=5 from template. */
-function bulletXml(text: string): string {
-    const runs = runsFromText(text)
-    return `<w:p><w:pPr><w:pStyle w:val="ListParagraph"/><w:numPr><w:ilvl w:val="0"/><w:numId w:val="5"/></w:numPr></w:pPr>${runs}</w:p>`
+/**
+ * Compute indent level (0-3) from leading whitespace.
+ * Each 2 spaces = +1 level.
+ */
+function getIndentLevel(line: string): number {
+    const spaces = (line.match(/^(\s*)/) ?? ['', ''])[1].length
+    return Math.min(Math.floor(spaces / 2), 3)
 }
 
-/** Build a numbered list item paragraph. Uses numId=5 from template. */
-function numberedXml(text: string): string {
+/** Build a bullet list item paragraph. Uses the provided numId and ilvl for nesting. */
+function bulletXml(text: string, ilvl: number, numId: number): string {
     const runs = runsFromText(text)
-    return `<w:p><w:pPr><w:pStyle w:val="ListParagraph"/><w:numPr><w:ilvl w:val="0"/><w:numId w:val="5"/></w:numPr></w:pPr>${runs}</w:p>`
+    const indent = 720 + ilvl * 360
+    return `<w:p><w:pPr><w:pStyle w:val="ListParagraph"/><w:numPr><w:ilvl w:val="${ilvl}"/><w:numId w:val="${numId}"/></w:numPr><w:ind w:left="${indent}" w:hanging="360"/></w:pPr>${runs}</w:p>`
+}
+
+/** Build a numbered list item paragraph. Uses the provided numId and ilvl for nesting. */
+function numberedXml(text: string, ilvl: number, numId: number): string {
+    const runs = runsFromText(text)
+    const indent = 720 + ilvl * 360
+    return `<w:p><w:pPr><w:pStyle w:val="ListParagraph"/><w:numPr><w:ilvl w:val="${ilvl}"/><w:numId w:val="${numId}"/></w:numPr><w:ind w:left="${indent}" w:hanging="360"/></w:pPr>${runs}</w:p>`
 }
 
 /** Build a table from headers and rows using TableGrid style. */
@@ -138,16 +153,99 @@ function parseMarkdownTable(lines: string[]): { headers: string[]; rows: string[
     return { headers, rows }
 }
 
+// ── Numbering definitions for injection ─────────────────────────────────────
+
+/**
+ * Generate the <w:abstractNum> and <w:num> OOXML blocks needed for
+ * per-section numbered + bullet lists. Inject these before </w:numbering>
+ * in word/numbering.xml.
+ *
+ * Each section gets its own <w:num> instances so its lists restart at 1.
+ *
+ * @param sectionCount   Number of auto-generate sections
+ * @param baseNumId      Starting numId (use a value > any existing numId in the template)
+ * @param baseAbstractId Starting abstractNumId (same caution applies)
+ */
+export function generateNumberingEntries(
+    sectionCount: number,
+    baseNumId: number,
+    baseAbstractId: number,
+): string {
+    const parts: string[] = []
+
+    // Abstract definition for decimal numbered lists (levels 0-3)
+    // level 0: 1. 2. 3.   level 1: a) b) c)   level 2: i. ii. iii.   level 3: 1. 2. 3.
+    parts.push(`<w:abstractNum w:abstractNumId="${baseAbstractId}" w15:restartNumberingAfterBreak="0" xmlns:w15="http://schemas.microsoft.com/office/word/2012/wordml">`)
+    parts.push(`<w:multiLevelType w:val="multilevel"/>`)
+    for (const [ilvl, fmt, tmpl] of [
+        [0, 'decimal', '%1.'],
+        [1, 'lowerLetter', '%2)'],
+        [2, 'lowerRoman', '%3.'],
+        [3, 'decimal', '%4.'],
+    ] as [number, string, string][]) {
+        const left = 720 + ilvl * 360
+        parts.push(
+            `<w:lvl w:ilvl="${ilvl}"><w:start w:val="1"/><w:numFmt w:val="${fmt}"/>` +
+            `<w:lvlText w:val="${tmpl}"/><w:lvlJc w:val="left"/>` +
+            `<w:pPr><w:ind w:left="${left}" w:hanging="360"/></w:pPr>` +
+            `<w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr>` +
+            `</w:lvl>`
+        )
+    }
+    parts.push(`</w:abstractNum>`)
+
+    // Abstract definition for bullet lists (levels 0-3)
+    // level 0: •   level 1: ○   level 2: ▪   level 3: –
+    const bulletChars = ['\u2022', '\u25CB', '\u25AA', '\u2013']
+    const bulletFonts = ['Symbol', 'Courier New', 'Symbol', 'Courier New']
+    parts.push(`<w:abstractNum w:abstractNumId="${baseAbstractId + 1}" w15:restartNumberingAfterBreak="0" xmlns:w15="http://schemas.microsoft.com/office/word/2012/wordml">`)
+    parts.push(`<w:multiLevelType w:val="multilevel"/>`)
+    for (let ilvl = 0; ilvl < 4; ilvl++) {
+        const left = 720 + ilvl * 360
+        const font = bulletFonts[ilvl]
+        const char = escapeXml(bulletChars[ilvl])
+        parts.push(
+            `<w:lvl w:ilvl="${ilvl}"><w:start w:val="1"/><w:numFmt w:val="bullet"/>` +
+            `<w:lvlText w:val="${char}"/><w:lvlJc w:val="left"/>` +
+            `<w:pPr><w:ind w:left="${left}" w:hanging="360"/></w:pPr>` +
+            `<w:rPr><w:rFonts w:ascii="${font}" w:hAnsi="${font}" w:cs="${font}"/><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr>` +
+            `</w:lvl>`
+        )
+    }
+    parts.push(`</w:abstractNum>`)
+
+    // Per-section <w:num> instances — each pair references the abstract defs above
+    // so each section's numbered list restarts at 1 independently.
+    for (let s = 0; s < sectionCount; s++) {
+        const numberedId = baseNumId + s * 2
+        const bulletId = baseNumId + s * 2 + 1
+        parts.push(`<w:num w:numId="${numberedId}"><w:abstractNumId w:val="${baseAbstractId}"/></w:num>`)
+        parts.push(`<w:num w:numId="${bulletId}"><w:abstractNumId w:val="${baseAbstractId + 1}"/></w:num>`)
+    }
+
+    return parts.join('\n')
+}
+
 // ── Main converter ──────────────────────────────────────────────────────────
 
 /**
  * Convert markdown text (LLM output) to raw OOXML string fragments
  * that use the BRS template's own styles.
  *
+ * @param markdown       LLM-generated markdown content
+ * @param numberedNumId  numId for numbered lists (should be unique per section to restart at 1)
+ * @param bulletNumId    numId for bullet lists (should be unique per section)
+ *
+ * Defaults to 5/5 (legacy behaviour) when called without arguments.
+ *
  * Handles: paragraphs, **bold**, *italic*, bullet lists (- or *),
- * numbered lists (1. 2.), markdown tables, and markdown headings (###).
+ * numbered lists (1. 2.), indented/nested lists, markdown tables, and ### headings.
  */
-export function markdownToOoxml(markdown: string): string {
+export function markdownToOoxml(
+    markdown: string,
+    numberedNumId = 5,
+    bulletNumId = 5,
+): string {
     const parts: string[] = []
     const lines = markdown.split('\n')
     let i = 0
@@ -179,18 +277,20 @@ export function markdownToOoxml(markdown: string): string {
             continue
         }
 
-        // Bullet list item (- or *)
+        // Bullet list item (- or *) — preserves indent level for nesting
         if (/^\s*[-*]\s+/.test(line)) {
+            const ilvl = getIndentLevel(line)
             const text = line.replace(/^\s*[-*]\s+/, '')
-            parts.push(bulletXml(text))
+            parts.push(bulletXml(text, ilvl, bulletNumId))
             i++
             continue
         }
 
-        // Numbered list item (1. 2. etc)
+        // Numbered list item (1. 2. etc) — preserves indent level for nesting
         if (/^\s*\d+\.\s+/.test(line)) {
+            const ilvl = getIndentLevel(line)
             const text = line.replace(/^\s*\d+\.\s+/, '')
-            parts.push(numberedXml(text))
+            parts.push(numberedXml(text, ilvl, numberedNumId))
             i++
             continue
         }

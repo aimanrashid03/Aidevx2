@@ -7,7 +7,7 @@
 
 import PizZip from 'https://esm.sh/pizzip@3.1.7'
 import type { ServerDocSection } from './brsStructure.ts'
-import { markdownToOoxml } from './markdownToOoxml.ts'
+import { markdownToOoxml, generateNumberingEntries } from './markdownToOoxml.ts'
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -356,11 +356,31 @@ export async function buildFromTemplate(
         .filter(r => r.section.autoGenerate)
         .sort((a, b) => b.contentStart - a.contentStart)
 
-    for (const range of sortedRanges) {
+    // Assign each section a unique numId pair so numbered lists restart at 1
+    // per section. Start at 100 to avoid colliding with template numIds.
+    const NUM_ID_BASE = 100
+    const ABSTRACT_ID_BASE = 50
+
+    // Inject numbering definitions into word/numbering.xml before processing
+    try {
+        const numberingXml = zip.file('word/numbering.xml')?.asText()
+        if (numberingXml) {
+            const entries = generateNumberingEntries(sortedRanges.length, NUM_ID_BASE, ABSTRACT_ID_BASE)
+            const updated = numberingXml.replace('</w:numbering>', entries + '\n</w:numbering>')
+            zip.file('word/numbering.xml', updated)
+        }
+    } catch {
+        // Non-fatal: fall back to default numId=5 behaviour
+    }
+
+    for (let idx = 0; idx < sortedRanges.length; idx++) {
+        const range = sortedRanges[idx]
         const markdown = generatedContent.get(range.section.title)
         if (!markdown) continue
 
-        const ooxmlFragment = markdownToOoxml(markdown)
+        const numberedNumId = NUM_ID_BASE + idx * 2
+        const bulletNumId = NUM_ID_BASE + idx * 2 + 1
+        const ooxmlFragment = markdownToOoxml(markdown, numberedNumId, bulletNumId)
         elements = replaceContentRange(elements, range, ooxmlFragment)
     }
 

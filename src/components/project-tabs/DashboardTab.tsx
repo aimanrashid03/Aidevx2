@@ -2,9 +2,11 @@ import { useNavigate } from 'react-router-dom';
 import {
     FileText, File, Users, Plus, Upload, BookOpen, UserPlus,
     Clock, FileCheck, AlertCircle, CheckCircle2, Circle,
-    Calendar, Edit, Check, X
+    Calendar, Edit, Check, X, Crown, LibraryBig
 } from 'lucide-react';
 import type { Project } from '../../context/ProjectContext';
+import { useProjectMembers } from '../../hooks/useProjectMembers';
+import { useDiagramNotes } from '../../hooks/useDiagramNotes';
 
 interface Props {
     project: Project;
@@ -17,6 +19,8 @@ interface Props {
     onEditClick: () => void;
     onSaveEdit: () => void;
     onCancelEdit: () => void;
+    indexedStories: number;
+    totalStories: number;
 }
 
 const getDocumentStatus = (lastModified: string) => {
@@ -49,14 +53,22 @@ export default function DashboardTab({
     onEditClick,
     onSaveEdit,
     onCancelEdit,
+    indexedStories,
+    totalStories,
 }: Props) {
     const navigate = useNavigate();
+    const { members } = useProjectMembers(project.id);
+    const { notes: diagramNotes } = useDiagramNotes(project.id);
 
     const docCount = project.requirementDocs?.length || 0;
     const fileCount = project.documents?.length || 0;
     const memberCount = project.memberCount || 0;
 
     const indexedFiles = project.documents?.filter(d => d.embeddingStatus === 'processed').length || 0;
+    const diagramCount = diagramNotes.length;
+
+    const owner = members.find(m => m.role === 'owner');
+    const collaborators = members.filter(m => m.role !== 'owner');
 
     const docsByType = (project.requirementDocs || []).reduce<Record<string, number>>((acc, doc) => {
         acc[doc.type] = (acc[doc.type] || 0) + 1;
@@ -67,7 +79,7 @@ export default function DashboardTab({
         { label: 'Requirement documents created', done: docCount > 0 },
         { label: 'Reference files uploaded', done: fileCount > 0 },
         { label: 'Files indexed for AI', done: indexedFiles > 0 },
-        { label: 'Team members invited', done: memberCount > 1 },
+        { label: 'Collaborators invited', done: memberCount > 1 },
     ];
     const healthScore = healthItems.filter(h => h.done).length;
 
@@ -116,38 +128,64 @@ export default function DashboardTab({
                     )}
                 </div>
 
-                {/* Knowledge base stat */}
+                {/* Library stat */}
                 <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-sm hover:shadow-md transition-all">
                     <div className="flex items-center gap-2 mb-3">
                         <div className="w-8 h-8 bg-slate-50 rounded border border-slate-200 flex items-center justify-center text-slate-500">
-                            <File size={16} />
+                            <LibraryBig size={16} />
                         </div>
                         <div>
-                            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Knowledge Base</p>
-                            <p className="text-xl font-extrabold text-slate-900 leading-none">{fileCount}</p>
+                            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Library</p>
+                            <p className="text-xl font-extrabold text-slate-900 leading-none">{fileCount + totalStories + diagramCount}</p>
                         </div>
                     </div>
-                    <div className="text-[11px] text-slate-500">
-                        <span className="font-bold text-emerald-600">{indexedFiles}</span> file{indexedFiles !== 1 ? 's' : ''} indexed for AI
-                        {fileCount - indexedFiles > 0 && (
-                            <span className="ml-1 text-amber-600">· {fileCount - indexedFiles} pending</span>
-                        )}
+                    <div className="space-y-0.5 text-[11px] text-slate-500">
+                        <div>
+                            <span className="font-bold text-emerald-600">{indexedFiles}</span>/{fileCount} file{fileCount !== 1 ? 's' : ''} indexed
+                        </div>
+                        <div>
+                            <span className="font-bold text-emerald-600">{indexedStories}</span>/{totalStories} user stor{totalStories !== 1 ? 'ies' : 'y'} indexed
+                        </div>
+                        <div>
+                            <span className="font-bold text-slate-600">{diagramCount}</span> diagram note{diagramCount !== 1 ? 's' : ''}
+                        </div>
                     </div>
                 </div>
 
-                {/* Team stat */}
+                {/* Collaborators stat */}
                 <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-sm hover:shadow-md transition-all">
                     <div className="flex items-center gap-2 mb-3">
                         <div className="w-8 h-8 bg-slate-50 rounded border border-slate-200 flex items-center justify-center text-slate-500">
                             <Users size={16} />
                         </div>
                         <div>
-                            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Team</p>
+                            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Collaborators</p>
                             <p className="text-xl font-extrabold text-slate-900 leading-none">{memberCount}</p>
                         </div>
                     </div>
-                    <div className="text-[11px] text-slate-500">
-                        {project.ownerName && <span>Owner: <span className="font-bold text-slate-700">{project.ownerName}</span></span>}
+                    <div className="space-y-1 text-[11px]">
+                        {owner && (
+                            <div className="flex items-center gap-1.5">
+                                <Crown size={10} className="text-amber-500 shrink-0" />
+                                <span className="font-bold text-slate-700 truncate">{owner.fullName || owner.email}</span>
+                                <span className="text-slate-400 shrink-0">Owner</span>
+                            </div>
+                        )}
+                        {collaborators.slice(0, 2).map(m => (
+                            <div key={m.id} className="flex items-center gap-1.5 text-slate-500">
+                                <div className="w-2 h-2 rounded-full bg-slate-200 shrink-0" />
+                                <span className="truncate">{m.fullName || m.email}</span>
+                                <span className={`ml-auto shrink-0 capitalize px-1.5 py-0.5 rounded text-[10px] font-medium border ${
+                                    m.role === 'editor' ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-slate-50 text-slate-600 border-slate-200'
+                                }`}>{m.role}</span>
+                            </div>
+                        ))}
+                        {collaborators.length > 2 && (
+                            <span className="text-slate-400">+{collaborators.length - 2} more</span>
+                        )}
+                        {collaborators.length === 0 && !owner && (
+                            <span className="text-slate-400">No members yet</span>
+                        )}
                     </div>
                 </div>
             </div>
