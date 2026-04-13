@@ -175,13 +175,16 @@ public/
 - `AIGeneratePanel` is the primary UI — supports doc type selection, document path picker, content type choice, source attribution display
 
 ### UI Prototype Generation (`generate_prototype`)
-- Generates a single self-contained HTML/CSS UI prototype from any requirement document (BRS/URS/SRS/SDS)
-- Three-phase pipeline: (1) extract doc text from DOCX storage or JSON content field via `docxTextExtractor.ts`, (2) optional RAG context from embedded project documents, (3) non-streaming Claude Haiku call (`max_tokens: 7000`, `temp: 0.4`)
-- Design prompt instructs Claude to produce a CORRAD-inspired admin dashboard (dark gradient sidebar, violet accent, clean cards)
-- Saves completed HTML to `prototypes` table; returns via SSE `complete` event so frontend displays immediately
+- Generates a self-contained multi-page HTML UI prototype from any requirement document (BRS/URS/SRS/SDS)
+- **Architecture**: LLM returns structured JSON (`PrototypeModel`); edge function assembles the HTML deterministically. The LLM never generates the shell (topbar/sidebar/JS helpers) — only page content fragments, nav groups, and modals.
+- **Pipeline**: (1) [parallel] extract DOCX text + RAG retrieval, (2) LLM call produces JSON (`max_tokens: 14000`, `temp: 0.4`), (3) `parseLlmJson()` + `validatePrototypeModel()`, (4) `assembleHtml()` interpolates `CORRAD_SHELL_TEMPLATE`, (5) save to DB
+- **Design system**: real CORRAD — Tailwind utility classes, violet accent (`bg-violet-600`), `bg-[#f8f9fb]` shell, `border-violet-200 bg-violet-50` active nav. Source of truth: `corrad-design/` folder.
+- **Prototype bundling**: `corrad-design/` assets are bundled into `supabase/functions/_shared/corradDesign.ts` by `scripts/build-corrad-bundle.mjs` at build time (Deno edge functions can't read local files at runtime). Run `npm run bundle:corrad` after changing any file under `corrad-design/`. **Never edit `_shared/corradDesign.ts` by hand** — it is auto-generated and will be overwritten.
+- **Language**: UI text and sample data match the source document's language (BM docs → Bahasa Malaysia UI, EN docs → English UI)
 - SSE events: `progress` (status text), `complete` (prototypeId + html), `error`
 - `PrototypeTab` component: loads prototypes from DB on mount, shows WizardModal for doc selection, CodeViewerModal for viewing/copying HTML, "Run" opens prototype in new tab via Blob URL
-- **Migration**: `20260402000000_create_prototypes.sql` — `prototypes` table with RLS matching user_stories/diagram_notes pattern
+- **Migrations**: `20260402000000_create_prototypes.sql` — `prototypes` table; `20260410000000_add_prototype_model.sql` — adds nullable `model jsonb` column for the assembled PrototypeModel
+- **Key shared files**: `_shared/corradDesign.ts` (generated), `_shared/prototypeSchema.ts` (PrototypeModel types + validators + serializers)
 
 ### Full-Document Auto-Generation (`auto_generate_document`)
 - Server-side pipeline that generates all auto-generate sections for a document
@@ -204,14 +207,16 @@ public/
 - **DB migration** `20260402100000_add_embedding_index.sql`: adds HNSW index on `document_chunks.embedding` (`vector_cosine_ops`, m=16, ef_construction=64) for faster similarity search. HNSW chosen over IVFFlat — no training step, better recall, suits incrementally growing data.
 
 ### LLM Configuration (`llmConfig.ts`)
-- Provider: Anthropic (Claude Haiku `claude-haiku-4-5-20251001`), configurable via `LLM_PROVIDER` env var (set to `openai` for OpenAI-compatible/self-hosted endpoints)
+- Provider: **OpenRouter** (default), configurable via `LLM_PROVIDER` env var — `openai` for OpenAI-compatible (OpenRouter, Ollama, etc.), `anthropic` for Anthropic direct
+- Default model: `deepseek/deepseek-chat-v3-0324` via OpenRouter — strong structured output, Bahasa Malaysia support, ~70% cheaper than Haiku
+- **Per-function model override**: `LLM_MODEL_<FEATURE>` env var overrides model for a specific function (e.g. `LLM_MODEL_PROTOTYPE=google/gemini-2.5-flash-preview`). Use `getLlmConfigForFeature('feature')` in the function instead of `getLlmConfig()`
+- `generate_prototype` uses `LLM_MODEL_PROTOTYPE` (default: `google/gemini-2.5-flash-preview`) — needs 16k+ output for multi-page HTML; DeepSeek V3 caps at 8K
 - Embedding: Voyage AI (`voyage-3-lite`, 512 dimensions) via `VOYAGE_API_KEY`; Voyage AI does **not** accept a `dimensions` param in the request body (unlike OpenAI `text-embedding-3-small`)
 - Per-content-type settings: tables (temp 0.2, 1500 tokens), diagrams (temp 0.2, 1800 tokens), text (temp 0.3, 2500 tokens)
 - Typed interfaces: `LlmConfig`, `EmbeddingConfig` — passed through all helper functions
-- Provider-abstraction helpers: `buildLlmHeaders`, `buildLlmEndpoint`, `buildLlmRequestBody`, `parseLlmResponse` — branch on `config.provider` to handle Anthropic vs OpenAI-compatible differences
+- Provider-abstraction helpers: `buildLlmHeaders`, `buildLlmEndpoint`, `buildLlmRequestBody`, `parseLlmResponse` — branch on `config.provider` to handle Anthropic vs OpenAI-compatible differences; `buildLlmHeaders` also injects OpenRouter-required `HTTP-Referer` and `X-Title` headers automatically
 - `pipeAnthropicStream()`: translates Anthropic SSE events (`content_block_delta → delta.text`) into OpenAI-format SSE (`choices[0].delta.content`) — used by `generate_section` so the frontend SSE parser needs no changes
-- Supports custom endpoints for self-hosted models (Ollama, etc.) via `LLM_PROVIDER=openai`
-- Env vars: `ANTHROPIC_API_KEY` (LLM), `VOYAGE_API_KEY` (embeddings) — see `supabase/.env.local.example`
+- Env vars: `OPENROUTER_API_KEY` (primary LLM key), `ANTHROPIC_API_KEY` (fallback for Anthropic direct), `VOYAGE_API_KEY` (embeddings) — see `supabase/.env.local.example`
 
 ## Collaboration
 - `project_members` table: roles are `owner`, `editor`, `viewer`
