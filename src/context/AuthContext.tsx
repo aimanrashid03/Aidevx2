@@ -14,6 +14,7 @@ interface AuthContextType {
     user: User | null;
     profile: UserProfile | null;
     loading: boolean;
+    profileLoading: boolean;
     signOut: () => Promise<void>;
 }
 
@@ -22,6 +23,7 @@ const AuthContext = createContext<AuthContextType>({
     user: null,
     profile: null,
     loading: true,
+    profileLoading: true,
     signOut: async () => { },
 });
 
@@ -30,8 +32,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const [user, setUser] = useState<User | null>(null);
     const [profile, setProfile] = useState<UserProfile | null>(null);
     const [loading, setLoading] = useState(true);
+    const [profileLoading, setProfileLoading] = useState(true);
 
     const fetchProfile = async (userId: string) => {
+        setProfileLoading(true);
         try {
             const { data, error } = await supabase
                 .from('profiles')
@@ -47,6 +51,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         } catch (err) {
             console.error('Unexpected error fetching profile', err);
             setProfile(null);
+        } finally {
+            setProfileLoading(false);
         }
     };
 
@@ -65,6 +71,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                         fetchProfile(session.user.id); // DO NOT AWAIT to prevent blocking UI
                     } else {
                         setProfile(null);
+                        setProfileLoading(false);
                     }
                 }
             } catch (error) {
@@ -90,6 +97,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                 fetchProfile(session.user.id); // DO NOT AWAIT
             } else {
                 setProfile(null);
+                setProfileLoading(false);
             }
             if (mounted) setLoading(false);
         });
@@ -117,7 +125,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             setSession(null);
             setUser(null);
             setProfile(null);
-            setLoading(false); // Ensure we don't end up on a loading screen
+            setLoading(false);
+            setProfileLoading(false);
         }
     };
 
@@ -126,6 +135,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         user,
         profile,
         loading,
+        profileLoading,
         signOut,
     };
 

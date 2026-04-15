@@ -1,6 +1,18 @@
 /**
  * Shared LLM / embedding / RAG configuration loaded from environment variables.
- * All values have sensible defaults for Anthropic (Claude) + Voyage AI.
+ * Defaults to OpenRouter (DeepSeek V3) for LLM and Voyage AI for embeddings.
+ *
+ * Required env var:
+ *   OPENROUTER_API_KEY=sk-or-...
+ *
+ * Per-function model overrides (useful when a function needs a different model):
+ *   LLM_MODEL_PROTOTYPE=google/gemini-2.5-flash-preview  # overrides for generate_prototype
+ *
+ * To switch to Anthropic directly:
+ *   supabase secrets set LLM_PROVIDER=anthropic
+ *   supabase secrets set LLM_BASE_URL=https://api.anthropic.com/v1
+ *   supabase secrets set LLM_API_KEY=sk-ant-...
+ *   supabase secrets set LLM_MODEL=claude-haiku-4-5-20251001
  *
  * To switch to a self-hosted LLM (e.g. Ollama):
  *   supabase secrets set LLM_PROVIDER=openai
@@ -33,12 +45,24 @@ export interface EmbeddingConfig {
 
 export function getLlmConfig(): LlmConfig {
     return {
-        baseUrl: Deno.env.get('LLM_BASE_URL') || 'https://api.anthropic.com/v1',
-        apiKey: Deno.env.get('LLM_API_KEY') || Deno.env.get('ANTHROPIC_API_KEY') || '',
-        model: Deno.env.get('LLM_MODEL') || 'claude-haiku-4-5-20251001',
+        baseUrl: Deno.env.get('LLM_BASE_URL') || 'https://openrouter.ai/api/v1',
+        apiKey: Deno.env.get('LLM_API_KEY') || Deno.env.get('OPENROUTER_API_KEY') || Deno.env.get('ANTHROPIC_API_KEY') || '',
+        model: Deno.env.get('LLM_MODEL') || 'deepseek/deepseek-chat-v3-0324',
         temperature: parseFloat(Deno.env.get('LLM_TEMPERATURE') || '0.4'),
-        provider: (Deno.env.get('LLM_PROVIDER') as LlmProvider) || 'anthropic',
+        provider: (Deno.env.get('LLM_PROVIDER') as LlmProvider) || 'openai',
     }
+}
+
+/**
+ * Returns the LLM config with a per-feature model override applied.
+ * Reads `LLM_MODEL_<FEATURE>` env var (e.g. LLM_MODEL_PROTOTYPE) and substitutes
+ * it for the default model, leaving all other settings unchanged.
+ */
+export function getLlmConfigForFeature(feature: string): LlmConfig {
+    const base = getLlmConfig()
+    const overrideModel = Deno.env.get(`LLM_MODEL_${feature.toUpperCase()}`)
+    if (overrideModel) return { ...base, model: overrideModel }
+    return base
 }
 
 export function getEmbeddingConfig(): EmbeddingConfig {
@@ -77,10 +101,15 @@ export function buildLlmHeaders(config: LlmConfig): Record<string, string> {
             'Content-Type': 'application/json',
         }
     }
-    return {
+    const headers: Record<string, string> = {
         'Authorization': `Bearer ${config.apiKey}`,
         'Content-Type': 'application/json',
     }
+    if (config.baseUrl.includes('openrouter.ai')) {
+        headers['HTTP-Referer'] = 'https://aidevx.app'
+        headers['X-Title'] = 'Aidevx'
+    }
+    return headers
 }
 
 export function buildLlmEndpoint(config: LlmConfig): string {

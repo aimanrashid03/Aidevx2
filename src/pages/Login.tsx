@@ -18,7 +18,11 @@ export default function Login() {
     const [message, setMessage] = useState<string | null>(null);
 
     useEffect(() => {
-        if (session) navigate('/dashboard', { replace: true });
+        if (session) {
+            const redirect = sessionStorage.getItem('redirectAfterLogin');
+            sessionStorage.removeItem('redirectAfterLogin');
+            navigate(redirect || '/dashboard', { replace: true });
+        }
     }, [session, navigate]);
 
     const switchMode = (next: Mode) => {
@@ -56,7 +60,7 @@ export default function Login() {
             } else {
                 const { error } = await supabase.auth.signInWithPassword({ email, password });
                 if (error) throw error;
-                navigate('/dashboard');
+                // navigation handled by the session useEffect above
             }
         } catch (err) {
             setError(err instanceof Error ? err.message : 'An unexpected error occurred');

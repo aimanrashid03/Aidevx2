@@ -2,8 +2,9 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import {
     Sparkles, Loader2, Copy, Check, MessageSquare, Zap, Send,
     Trash2, CornerDownLeft, ChevronDown, ChevronRight, FileText, Code,
-    Table, GitFork, BookOpen, Info, Square, Database, BookmarkPlus, Library,
+    Table, GitFork, BookOpen, Info, Square, Database, BookmarkPlus, Library, Pencil,
 } from 'lucide-react'
+import { get as idbGet, set as idbSet } from 'idb-keyval'
 import { supabase } from '../../lib/supabase'
 import { getSectionContext, type SectionContext, type TableSchema } from '../../lib/ai/sectionContext'
 import { renderMermaidToBase64 } from '../../lib/ai/diagramRenderer'
@@ -12,6 +13,7 @@ import type { DocHeading } from '../../lib/onlyoffice/extractSections'
 import { useSectionContent } from '../../hooks/useSectionContent'
 import { useDiagramNotes } from '../../hooks/useDiagramNotes'
 import { useActivityLog } from '../../hooks/useActivityLog'
+import { DiagramPreview } from './DiagramPreview'
 
 type ContentType = 'text' | 'table' | 'diagram'
 type DiagramFormat = 'mermaid' | 'drawio'
@@ -43,6 +45,7 @@ export interface AIGeneratePanelProps {
     documentKey?: string
     hasUnsavedChanges?: boolean
     onDocumentKeyRotated?: (newKey: string) => void
+    onClose?: () => void
 }
 
 // Minimal HTML sanitiser — keep only safe formatting tags + base64 images
@@ -94,11 +97,9 @@ async function resolveDiagrams(html: string): Promise<string> {
     }
     const drawioXml = extractDrawioXml(html)
     if (drawioXml) {
-        try {
-            const base64 = await renderDrawioToBase64(drawioXml)
-            html = html.replace(/<pre[^>]*class="drawio"[^>]*>[\s\S]*?<\/pre>/i,
-                `<img src="${base64}" style="max-width:100%">`)
-        } catch { /* leave as-is if rendering fails */ }
+        const result = await renderDrawioToBase64(drawioXml)
+        html = html.replace(/<pre[^>]*class="drawio"[^>]*>[\s\S]*?<\/pre>/i,
+            `<img src="${result.png}" style="max-width:100%">`)
     }
     return html
 }
@@ -115,6 +116,7 @@ export default function AIGeneratePanel({
     documentKey,
     hasUnsavedChanges = false,
     onDocumentKeyRotated,
+    onClose,
 }: AIGeneratePanelProps) {
     const [tab, setTab] = useState<'generate' | 'chat' | 'stored'>('generate')
 
@@ -128,7 +130,9 @@ export default function AIGeneratePanel({
     // ── Generate tab state ──────────────────────────────────────────────────
     const [sectionTitle, setSectionTitle] = useState('')
     const [contentType, setContentType] = useState<ContentType>('text')
-    const [diagramFormat, setDiagramFormat] = useState<DiagramFormat>('mermaid')
+    const [diagramFormat, setDiagramFormat] = useState<DiagramFormat>(
+        () => (localStorage.getItem('aidevx.diagramFormatPreset') as DiagramFormat) ?? 'mermaid'
+    )
     const [diagramSource, setDiagramSource] = useState<DiagramSource>('mermaid')
     const [instructions, setInstructions] = useState('')
     const [tableColumns, setTableColumns] = useState<string[]>([])
@@ -141,12 +145,25 @@ export default function AIGeneratePanel({
     const [savedToLibrary, setSavedToLibrary] = useState(false)
     const [genError, setGenError] = useState<string | null>(null)
     const [genStatus, setGenStatus] = useState<string>('')
+    /** 'cancelled' shows a distinct chip instead of silently returning to idle */
+    const [lastRunStatus, setLastRunStatus] = useState<'idle' | 'cancelled' | 'error' | 'ok'>('idle')
     const [copied, setCopied] = useState(false)
     const [viewSource, setViewSource] = useState(false)
     const [genSources, setGenSources] = useState<string[]>([])
     const [contextQuality, setContextQuality] = useState<'none' | 'low' | 'medium' | 'high' | null>(null)
     const [sectionContext, setSectionContext] = useState<SectionContext | null>(null)
     const [showGuidance, setShowGuidance] = useState(false)
+    /** True when the drawio viewer API was unreachable; DiagramPreview shows a yellow chip */
+    const [drawioFallback, setDrawioFallback] = useState(false)
+    const [liveAnnouncement, setLiveAnnouncement] = useState('')
+    /** Collapses the form to a summary chip after generation completes */
+    const [formCollapsed, setFormCollapsed] = useState(false)
+    const prevIsGeneratingRef = useRef(false)
+
+    /**
+     * Stored in a ref — NOT state — so the async SSE loop always holds the current
+     * controller without React stale-closure issues across re-renders.
+     */
     const genAbortRef = useRef<AbortController | null>(null)
 
     // ── Refinement state ────────────────────────────────────────────────────
@@ -165,6 +182,10 @@ export default function AIGeneratePanel({
     const [chatInput, setChatInput] = useState('')
     const [isChatting, setIsChatting] = useState(false)
     const [chatError, setChatError] = useState<string | null>(null)
+    /**
+     * Stored in a ref — NOT state — same reason as genAbortRef: SSE loop
+     * must see the latest controller even across React re-renders.
+     */
     const chatAbortRef = useRef<AbortController | null>(null)
     const chatBottomRef = useRef<HTMLDivElement>(null)
     const chatInputRef = useRef<HTMLTextAreaElement>(null)
@@ -173,13 +194,29 @@ export default function AIGeneratePanel({
     const [batchMode, setBatchMode] = useState(false)
     const [batchResults, setBatchResults] = useState<Map<string, string>>(new Map())
     const [batchProgress, setBatchProgress] = useState({ current: 0, total: 0 })
+    /**
+     * Stored in a ref — NOT state — so cancelBatch() always aborts the live
+     * controller regardless of which render cycle triggered it.
+     */
     const batchAbortRef = useRef<AbortController | null>(null)
 
-    // ── Generation cache (persists across section switches) ──────────────
+    // ── Generation cache (IndexedDB-backed, persists across tab reloads) ────
+    // In-memory Map stays as warm read layer; idb-keyval is the durable store.
     const [generationCache, setGenerationCache] = useState<Map<string, { html: string; sources: string[]; timestamp: number }>>(new Map())
+    const idbPrefix = `${projectId}:${docId ?? 'noid'}`
 
     const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+    // Seed in-memory cache from IndexedDB on mount (eliminates "Stored" tab flash)
+    useEffect(() => {
+        if (!projectId) return
+        idbGet(`cache:${idbPrefix}`).then((stored: unknown) => {
+            if (stored && typeof stored === 'object') {
+                setGenerationCache(new Map(Object.entries(stored as Record<string, { html: string; sources: string[]; timestamp: number }>)))
+            }
+        }).catch(() => {}) // non-fatal
+    }, [idbPrefix, projectId])
 
     // Abort any in-flight streams on unmount; clear feedback timers
     useEffect(() => {
@@ -191,6 +228,37 @@ export default function AIGeneratePanel({
             if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
         }
     }, [])
+
+    // Reset refine state when switching sections so stale counter doesn't leak
+    useEffect(() => {
+        setRefineCount(0)
+        setRefineFeedback('')
+        setShowRefineInput(false)
+        setLastRunStatus('idle')
+        setDrawioFallback(false)
+        setFormCollapsed(false)
+    }, [sectionTitle])
+
+    // Collapse form to summary chip when generation finishes with content
+    useEffect(() => {
+        if (prevIsGeneratingRef.current && !isGenerating && generatedHtml) {
+            setFormCollapsed(true)
+        }
+        prevIsGeneratingRef.current = isGenerating
+    }, [isGenerating, generatedHtml])
+
+    // Escape key closes the panel
+    useEffect(() => {
+        if (!onClose) return
+        const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+        window.addEventListener('keydown', handler)
+        return () => window.removeEventListener('keydown', handler)
+    }, [onClose])
+
+    // Persist diagram format preset to localStorage
+    useEffect(() => {
+        localStorage.setItem('aidevx.diagramFormatPreset', diagramFormat)
+    }, [diagramFormat])
 
     // Pre-fill section title when TOC sparkle is clicked
     useEffect(() => {
@@ -344,6 +412,7 @@ export default function AIGeneratePanel({
         genAbortRef.current = ctrl
 
         setIsGenerating(true)
+        setLastRunStatus('idle')
         setGeneratedHtml('')
         setGenError(null)
         setReplaceError(null)
@@ -351,10 +420,23 @@ export default function AIGeneratePanel({
         setGenSources([])
         setContextQuality(null)
         setViewSource(false)
+        setDrawioFallback(false)
         setGenStatus('Searching documents…')
         setShowRefineInput(false)
         setRefineFeedback('')
         setRefineCount(0)
+        setLiveAnnouncement('Generating…')
+
+        // 30-second watchdog — abort + show timeout message if no tokens arrive
+        let firstTokenReceived = false
+        const watchdog = setTimeout(() => {
+            if (!firstTokenReceived) {
+                ctrl.abort()
+                setGenError('Generation timed out — model may be overloaded. Try again.')
+                setLastRunStatus('error')
+                setLiveAnnouncement('Generation timed out.')
+            }
+        }, 30000)
 
         const selectedPaths = selectedDocPaths.size > 0
             ? projectDocs.filter(d => selectedDocPaths.has(d.id)).map(d => d.file_path)
@@ -389,7 +471,11 @@ export default function AIGeneratePanel({
                         : undefined,
                 },
                 ctrl.signal,
-                (token) => { acc += token; setGeneratedHtml(acc) },
+                (token) => {
+                    firstTokenReceived = true
+                    acc += token
+                    setGeneratedHtml(acc)
+                },
                 (sources, quality) => {
                     setGenSources(sources)
                     setContextQuality((quality as typeof contextQuality) ?? null)
@@ -397,12 +483,16 @@ export default function AIGeneratePanel({
                 },
                 (msg) => setGenStatus(msg),
             )
+            clearTimeout(watchdog)
             setGenStatus('')
-            // Update in-memory cache
+            setLastRunStatus('ok')
+            setLiveAnnouncement('Generation complete.')
+            // Update in-memory + IndexedDB cache
             if (acc) {
                 setGenerationCache(prev => {
                     const next = new Map(prev)
                     next.set(sectionTitle.trim(), { html: acc, sources: cachedSources, timestamp: Date.now() })
+                    idbSet(`cache:${idbPrefix}`, Object.fromEntries(next)).catch(() => {})
                     return next
                 })
                 // Persist to DB
@@ -422,13 +512,20 @@ export default function AIGeneratePanel({
                 }
             }
         } catch (err) {
-            if ((err as Error).name !== 'AbortError')
+            clearTimeout(watchdog)
+            if ((err as Error).name === 'AbortError') {
+                setLastRunStatus('cancelled')
+                setLiveAnnouncement('Generation cancelled.')
+            } else {
                 setGenError((err as Error).message || 'Generation failed')
+                setLastRunStatus('error')
+                setLiveAnnouncement('Generation failed.')
+            }
             setGenStatus('')
         } finally {
             setIsGenerating(false)
         }
-    }, [sectionTitle, instructions, projectId, selectedDocPaths, projectDocs, contentType, diagramFormat, docType, sectionContext, tableColumns, tocSections, streamSSE, docId, upsertRecord, logAction])
+    }, [sectionTitle, instructions, projectId, selectedDocPaths, projectDocs, contentType, diagramFormat, docType, sectionContext, tableColumns, tocSections, streamSSE, docId, upsertRecord, logAction, idbPrefix])
 
     const handleCopy = async () => {
         try {
@@ -535,11 +632,24 @@ export default function AIGeneratePanel({
             : null
 
         setIsGenerating(true)
+        setLastRunStatus('idle')
         setGenError(null)
         setShowRefineInput(false)
         const prevHtml = generatedHtml
         setGeneratedHtml('')
         setGenStatus('Refining…')
+        setLiveAnnouncement('Refining…')
+
+        let firstTokenReceived = false
+        const watchdog = setTimeout(() => {
+            if (!firstTokenReceived) {
+                ctrl.abort()
+                setGeneratedHtml(prevHtml)
+                setGenError('Refinement timed out — model may be overloaded. Try again.')
+                setLastRunStatus('error')
+                setLiveAnnouncement('Refinement timed out.')
+            }
+        }, 30000)
 
         try {
             let acc = ''
@@ -567,17 +677,21 @@ export default function AIGeneratePanel({
                     refinementContext: { previousOutput: prevHtml, feedback },
                 },
                 ctrl.signal,
-                (token) => { acc += token; setGeneratedHtml(acc) },
+                (token) => { firstTokenReceived = true; acc += token; setGeneratedHtml(acc) },
                 (sources) => { setGenSources(sources); cachedSources = sources },
                 (msg) => setGenStatus(msg),
             )
+            clearTimeout(watchdog)
             setRefineCount(c => c + 1)
             setRefineFeedback('')
             setGenStatus('')
+            setLastRunStatus('ok')
+            setLiveAnnouncement('Refinement complete.')
             if (acc) {
                 setGenerationCache(prev => {
                     const next = new Map(prev)
                     next.set(sectionTitle.trim(), { html: acc, sources: cachedSources, timestamp: Date.now() })
+                    idbSet(`cache:${idbPrefix}`, Object.fromEntries(next)).catch(() => {})
                     return next
                 })
                 if (docId) {
@@ -591,15 +705,23 @@ export default function AIGeneratePanel({
                 }
             }
         } catch (err) {
-            setGeneratedHtml(prevHtml)
-            if ((err as Error).name !== 'AbortError')
+            clearTimeout(watchdog)
+            if ((err as Error).name === 'AbortError') {
+                setGeneratedHtml(prevHtml)
+                setLastRunStatus('cancelled')
+                setLiveAnnouncement('Refinement cancelled.')
+            } else {
+                setGeneratedHtml(prevHtml)
                 setGenError((err as Error).message || 'Refinement failed')
+                setLastRunStatus('error')
+                setLiveAnnouncement('Refinement failed.')
+            }
             setGenStatus('')
         } finally {
             setIsGenerating(false)
         }
     }, [refineFeedback, generatedHtml, isGenerating, refineCount, sectionTitle, instructions, projectId,
-        selectedDocPaths, projectDocs, contentType, diagramFormat, docType, sectionContext, tableColumns, tocSections, streamSSE, docId, upsertRecord])
+        selectedDocPaths, projectDocs, contentType, diagramFormat, docType, sectionContext, tableColumns, tocSections, streamSSE, docId, upsertRecord, idbPrefix])
 
     // ── Batch Generate ─────────────────────────────────────────────────────
     const startBatch = useCallback(async () => {
@@ -659,6 +781,7 @@ export default function AIGeneratePanel({
                     setGenerationCache(prev => {
                         const next = new Map(prev)
                         next.set(section.title.trim(), { html: acc, sources, timestamp: Date.now() })
+                        idbSet(`cache:${idbPrefix}`, Object.fromEntries(next)).catch(() => {})
                         return next
                     })
                     if (docId) {
@@ -679,7 +802,7 @@ export default function AIGeneratePanel({
         }
         setGenStatus('')
         setBatchMode(false)
-    }, [tocSections, batchMode, selectedDocPaths, projectDocs, docType, projectId, streamSSE, docId, upsertRecord])
+    }, [tocSections, batchMode, selectedDocPaths, projectDocs, docType, projectId, streamSSE, docId, upsertRecord, idbPrefix])
 
     const cancelBatch = useCallback(() => {
         batchAbortRef.current?.abort()
@@ -714,13 +837,19 @@ export default function AIGeneratePanel({
         setIsChatting(true)
         let assistantAcc = ''
 
-        setChatHistory(prev => [...prev, { role: 'assistant', content: '' }])
+        // Pre-response RAG source preview — show which documents are active before first token
+        const chatSelectedDocs = selectedDocPaths.size > 0
+            ? projectDocs.filter(d => selectedDocPaths.has(d.id))
+            : []
+        const chatSelectedPaths = chatSelectedDocs.length > 0
+            ? chatSelectedDocs.map(d => d.file_path)
+            : undefined
+        const ragPreview = chatSelectedDocs.length > 0
+            ? `<span style="opacity:0.6;font-size:10px">Using: ${chatSelectedDocs.slice(0, 2).map(d => d.file_name).join(', ')}${chatSelectedDocs.length > 2 ? ` (+${chatSelectedDocs.length - 2})` : ''}</span>`
+            : ''
+        setChatHistory(prev => [...prev, { role: 'assistant', content: ragPreview }])
 
         try {
-            const chatSelectedPaths = selectedDocPaths.size > 0
-                ? projectDocs.filter(d => selectedDocPaths.has(d.id)).map(d => d.file_path)
-                : undefined
-
             await streamSSE(
                 {
                     projectId,
@@ -828,26 +957,64 @@ export default function AIGeneratePanel({
             </div>
 
             {/* Tabs */}
-            <div className="flex border-b border-slate-200 shrink-0">
-                <button className={tabCls('generate')} onClick={() => setTab('generate')}>
+            <div className="flex border-b border-slate-200 shrink-0" role="tablist" aria-label="AI panel tabs">
+                <button
+                    role="tab"
+                    aria-selected={tab === 'generate'}
+                    aria-controls="ai-tab-generate"
+                    className={tabCls('generate')}
+                    onClick={() => setTab('generate')}
+                >
                     <Zap size={11} /> Generate
                 </button>
-                <button className={tabCls('chat')} onClick={() => setTab('chat')}>
+                <button
+                    role="tab"
+                    aria-selected={tab === 'chat'}
+                    aria-controls="ai-tab-chat"
+                    className={tabCls('chat')}
+                    onClick={() => setTab('chat')}
+                >
                     <MessageSquare size={11} /> Chat
                 </button>
-                <button className={`${tabCls('stored')} relative`} onClick={() => setTab('stored')}>
+                <button
+                    role="tab"
+                    aria-selected={tab === 'stored'}
+                    aria-controls="ai-tab-stored"
+                    className={`${tabCls('stored')} relative`}
+                    onClick={() => setTab('stored')}
+                >
                     <Database size={11} /> Stored
-                    {/* Dot badge if any section has stored content */}
                     {sectionTitle.trim() && getRecord(sectionTitle.trim()) && (
                         <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-[var(--accent-500)]" />
                     )}
                 </button>
             </div>
+            {/* Screen-reader live region for generation status */}
+            <span role="status" aria-live="polite" className="sr-only">{liveAnnouncement}</span>
 
             {/* ── GENERATE TAB ── */}
             {tab === 'generate' && (
-                <div className="flex flex-col flex-1 overflow-hidden">
-                    <div className="flex flex-col gap-2.5 p-3 border-b border-slate-100 shrink-0 overflow-y-auto max-h-[40%]">
+                <div id="ai-tab-generate" role="tabpanel" className="flex flex-col flex-1 overflow-hidden">
+
+                    {/* Collapsed summary row — shown after generation completes */}
+                    {formCollapsed ? (
+                        <div className="flex items-center gap-2 px-3 py-2 border-b border-slate-100 shrink-0">
+                            <span className="flex-1 min-w-0 text-[11px] text-slate-700 font-medium truncate" title={sectionTitle}>
+                                {sectionTitle || '—'}
+                            </span>
+                            <span className="shrink-0 flex items-center gap-1 text-[10px] text-slate-400">
+                                {contentType === 'text' ? <FileText size={9} /> : contentType === 'table' ? <Table size={9} /> : <GitFork size={9} />}
+                                {contentType}
+                            </span>
+                            <button
+                                onClick={() => setFormCollapsed(false)}
+                                className="shrink-0 flex items-center gap-1 text-[10px] text-[var(--accent-600)] hover:text-[var(--accent-700)] transition-colors"
+                            >
+                                <Pencil size={9} /> Edit
+                            </button>
+                        </div>
+                    ) : (
+                    <div className="flex flex-col gap-2.5 p-3 border-b border-slate-100 shrink-0">
 
                         {/* Section selector — dropdown from TOC */}
                         <div>
@@ -976,7 +1143,7 @@ export default function AIGeneratePanel({
                                                         onClick={() => handleLoadFromLibrary(note.id)}
                                                         className="flex items-center gap-2 text-left px-2 py-1.5 rounded border border-slate-200 hover:border-[var(--accent-300)] hover:bg-[var(--accent-50)] transition-colors"
                                                     >
-                                                        <span className={`text-[9px] px-1 py-0.5 rounded font-medium ${note.diagramType === 'mermaid' ? 'bg-violet-100 text-violet-700' : 'bg-blue-100 text-blue-700'}`}>
+                                                        <span className={`text-[9px] px-1 py-0.5 rounded font-medium ${note.diagramType === 'mermaid' ? 'bg-[var(--accent-100)] text-[var(--accent-700)]' : 'bg-slate-100 text-slate-600'}`}>
                                                             {note.diagramType}
                                                         </span>
                                                         <span className="text-[11px] text-slate-600 truncate flex-1">{note.title}</span>
@@ -1150,7 +1317,7 @@ export default function AIGeneratePanel({
                                     <button
                                         onClick={() => genAbortRef.current?.abort()}
                                         className="flex items-center justify-center px-2.5 py-1.5 rounded border border-rose-200 text-rose-500 hover:bg-rose-50 text-[11px] font-medium transition-colors"
-                                        title="Stop generation"
+                                        aria-label="Stop generation"
                                     >
                                         <Square size={10} />
                                     </button>
@@ -1188,6 +1355,7 @@ export default function AIGeneratePanel({
                             )
                         )}
                     </div>
+                    )}
 
                     {/* Batch results review */}
                     {batchResults.size > 0 && !batchMode && (
@@ -1243,13 +1411,21 @@ export default function AIGeneratePanel({
                                 <button
                                     onClick={() => setViewSource(v => !v)}
                                     className="flex items-center gap-1 text-[10px] text-slate-400 hover:text-slate-600 transition-colors"
-                                    title={viewSource ? 'Show preview' : 'View HTML source'}
+                                    aria-label={viewSource ? 'Show preview' : 'View HTML source'}
                                 >
                                     <Code size={10} />
                                     {viewSource ? 'Preview' : 'Source'}
                                 </button>
                             )}
                         </div>
+
+                        {/* Cancelled chip */}
+                        {lastRunStatus === 'cancelled' && !isGenerating && (
+                            <div className="shrink-0 flex items-center gap-1.5 text-[10px] text-slate-500 bg-slate-100 border border-slate-200 rounded px-2 py-1">
+                                <Square size={9} className="text-slate-400" />
+                                Generation cancelled
+                            </div>
+                        )}
 
                         <div className={`overflow-y-auto rounded border border-slate-200 bg-slate-50 flex-1 min-h-[200px]`}>
                             {viewSource ? (
@@ -1259,7 +1435,7 @@ export default function AIGeneratePanel({
                                     className="w-full h-full resize-none text-[11px] font-mono text-slate-600 bg-slate-50 p-2 outline-none leading-relaxed"
                                 />
                             ) : hasDiagramCode && !isGenerating ? (
-                                <DiagramPreview html={generatedHtml} mermaidCode={mermaidCode} drawioXml={drawioXml} />
+                                <DiagramPreview html={generatedHtml} mermaidCode={mermaidCode} drawioXml={drawioXml} drawioFallback={drawioFallback} />
                             ) : (
                                 <div
                                     className={`p-2 text-[12px] text-slate-700 leading-relaxed prose prose-sm max-w-none
@@ -1399,7 +1575,7 @@ export default function AIGeneratePanel({
                                 onClick={handleSaveDiagramToLibrary}
                                 disabled={savingToLibrary}
                                 className="flex items-center justify-center gap-1 px-2.5 text-[11px] py-1.5 rounded border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-50 transition-colors"
-                                title="Save diagram to Library"
+                                aria-label="Save diagram to Library"
                             >
                                 {savedToLibrary ? <Check size={11} className="text-emerald-500" /> : <BookmarkPlus size={11} />}
                                 {savedToLibrary ? 'Saved!' : 'Library'}
@@ -1410,7 +1586,7 @@ export default function AIGeneratePanel({
                                 onClick={handleInsert}
                                 disabled={!generatedHtml || isGenerating || isProcessingDiagram}
                                 className="flex items-center justify-center gap-1 px-2.5 text-[11px] py-1.5 rounded bg-slate-600 text-white hover:bg-slate-700 disabled:opacity-50 transition-colors"
-                                title="Insert at cursor in document"
+                                aria-label="Insert at cursor in document"
                             >
                                 {isProcessingDiagram
                                     ? <Loader2 size={11} className="animate-spin" />
@@ -1436,7 +1612,7 @@ export default function AIGeneratePanel({
 
             {/* ── CHAT TAB ── */}
             {tab === 'chat' && (
-                <div className="flex flex-col flex-1 overflow-hidden">
+                <div id="ai-tab-chat" role="tabpanel" className="flex flex-col flex-1 overflow-hidden">
                     <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-2">
                         {chatHistory.length === 0 && !isChatting && (
                             <div className="flex-1 flex items-center justify-center text-center text-[11px] text-slate-400 px-4 py-10">
@@ -1488,13 +1664,14 @@ export default function AIGeneratePanel({
                                 className="flex-1 resize-none text-[12px] text-slate-700 bg-slate-50 border border-slate-200 rounded px-2 py-1.5 outline-none focus:border-[var(--accent-ring)] focus:ring-1 focus:ring-[var(--accent-100)] min-h-[32px] max-h-[80px]"
                             />
                             <div className="flex gap-1 shrink-0">
-                                <button onClick={clearChat} className="p-1.5 rounded text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors" title="Clear chat">
+                                <button onClick={clearChat} className="p-1.5 rounded text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors" aria-label="Clear chat">
                                     <Trash2 size={13} />
                                 </button>
                                 <button
                                     onClick={sendChat}
                                     disabled={!chatInput.trim() || isChatting}
                                     className="p-1.5 rounded bg-[var(--accent-600)] text-white hover:bg-[var(--accent-700)] disabled:opacity-50 transition-colors"
+                                    aria-label="Send message"
                                 >
                                     <Send size={13} />
                                 </button>
@@ -1507,7 +1684,7 @@ export default function AIGeneratePanel({
 
             {/* ── STORED TAB ── */}
             {tab === 'stored' && (
-                <div className="flex flex-col flex-1 overflow-hidden">
+                <div id="ai-tab-stored" role="tabpanel" className="flex flex-col flex-1 overflow-hidden">
                     <div className="flex flex-col gap-2.5 p-3 border-b border-slate-100 shrink-0">
                         <div>
                             <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide block mb-1">
@@ -1639,69 +1816,5 @@ export default function AIGeneratePanel({
                 </div>
             )}
         </aside>
-    )
-}
-
-// ── Diagram Preview Component ───────────────────────────────────────────────
-function DiagramPreview({ html, mermaidCode, drawioXml }: {
-    html: string
-    mermaidCode: string | null
-    drawioXml: string | null
-}) {
-    const [renderedSvg, setRenderedSvg] = useState<string | null>(null)
-    const [renderError, setRenderError] = useState<string | null>(null)
-
-    useEffect(() => {
-        setRenderError(null)
-        if (mermaidCode) {
-            import('mermaid').then(mod => {
-                const mermaid = mod.default
-                mermaid.initialize({ startOnLoad: false, theme: 'neutral' })
-                mermaid.render(`preview-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, mermaidCode)
-                    .then(({ svg }) => {
-                        const patched = svg
-                            .replace(/style="[^"]*max-width[^"]*"/gi, 'style="width:100%;height:auto;"')
-                            .replace(/<svg /, '<svg style="width:100%;height:auto;" ')
-                        setRenderedSvg(patched)
-                    })
-                    .catch(e => setRenderError(String(e)))
-            }).catch(e => setRenderError(String(e)))
-        } else if (drawioXml) {
-            setRenderedSvg(null)
-        }
-    }, [mermaidCode, drawioXml])
-
-    if (mermaidCode && renderedSvg) {
-        return (
-            <div className="p-2 flex flex-col gap-2 h-full overflow-y-auto">
-                <div
-                    className="rounded border border-slate-200 bg-white p-3 w-full overflow-x-auto min-h-[220px] flex items-center justify-center [&_svg]:w-full [&_svg]:h-auto [&_svg]:max-w-full"
-                    dangerouslySetInnerHTML={{ __html: renderedSvg }}
-                />
-                {renderError && (
-                    <p className="text-[11px] text-red-500">{renderError}</p>
-                )}
-                <details className="text-[10px] shrink-0">
-                    <summary className="text-slate-400 cursor-pointer hover:text-slate-600">Mermaid source</summary>
-                    <pre className="mt-1 text-[10px] font-mono text-slate-600 bg-slate-50 p-2 rounded border border-slate-200 overflow-auto whitespace-pre-wrap">{mermaidCode}</pre>
-                </details>
-            </div>
-        )
-    }
-
-    if (drawioXml) {
-        return (
-            <div className="p-2 flex flex-col gap-2 h-full overflow-y-auto">
-                <p className="text-[11px] text-slate-500 italic">Draw.io diagram generated — click Insert to add to document.</p>
-                <pre className="text-[10px] font-mono text-slate-600 bg-slate-50 p-2 rounded border border-slate-200 overflow-auto whitespace-pre-wrap flex-1">{drawioXml}</pre>
-            </div>
-        )
-    }
-
-    return (
-        <div
-            className="p-2 text-[12px] text-slate-700 leading-relaxed"
-            dangerouslySetInnerHTML={{ __html: html || 'Generated content will appear here' }}
-        />
     )
 }

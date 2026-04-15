@@ -39,3 +39,6 @@ supabase/.temp
 
 # Local template files
 User Stories Template.docx
+
+# CORRAD design source — bundled into _shared/corradDesign.ts at build time
+corrad-design/

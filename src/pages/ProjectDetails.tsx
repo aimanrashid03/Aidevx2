@@ -36,7 +36,7 @@ const TABS: { key: TabKey; label: string; icon: React.ElementType }[] = [
 export default function ProjectDetails() {
     const { projectId } = useParams();
     const navigate = useNavigate();
-    const { projects, updateProject, deleteRequirementDoc, refreshProjects } = useProjects();
+    const { projects, loading, updateProject, deleteRequirementDoc, refreshProjects } = useProjects();
 
     const [searchParams, setSearchParams] = useSearchParams();
     const initialTab = searchParams.get('tab') as TabKey | null;
@@ -106,8 +106,16 @@ export default function ProjectDetails() {
         navigate(`/editor/${projectId}/${templateId}`);
     };
 
+    if (loading) {
+        return (
+            <div className="flex h-full items-center justify-center">
+                <div className="w-7 h-7 border-4 border-slate-200 border-t-[var(--accent-600)] rounded-full animate-spin" />
+            </div>
+        );
+    }
+
     if (!project) {
-        return <div className="p-8">Project not found</div>;
+        return <div className="p-8 text-slate-500">Project not found</div>;
     }
 
     const tabBadge = (key: TabKey): number | undefined => {

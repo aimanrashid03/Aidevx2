@@ -56,7 +56,7 @@ function DiagramPreviewCard({ note }: { note: DiagramNote }) {
             }).catch(() => setPreviewError(true))
         } else if (note.diagramType === 'drawio' && note.content) {
             renderDrawioToBase64(note.content)
-                .then(base64 => setDrawioImg(base64))
+                .then(result => setDrawioImg(result.png))
                 .catch(() => setPreviewError(true))
         }
     }, [isVisible, note.id, note.diagramType, note.content])

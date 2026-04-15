@@ -16,7 +16,7 @@ function getInitials(name: string) {
 }
 
 export default function Dashboard() {
-    const { projects } = useProjects();
+    const { projects, loading } = useProjects();
     const navigate = useNavigate();
 
     return (
@@ -33,8 +33,21 @@ export default function Dashboard() {
                 </button>
             </div>
 
-            {/* Empty state */}
-            {projects.length === 0 ? (
+            {/* Loading skeleton */}
+            {loading ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {[1, 2, 3].map(i => (
+                        <div key={i} className="rounded-lg bg-white border border-slate-200 shadow-sm overflow-hidden animate-pulse">
+                            <div className="h-1 bg-slate-200" />
+                            <div className="p-4 space-y-3">
+                                <div className="h-4 bg-slate-200 rounded w-2/3" />
+                                <div className="h-3 bg-slate-100 rounded w-1/2" />
+                                <div className="h-3 bg-slate-100 rounded w-3/4 mt-2" />
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            ) : projects.length === 0 ? (
                 <div className="text-center py-12 bg-white rounded-lg border border-slate-200 border-dashed shadow-sm">
                     <div className="mx-auto w-10 h-10 bg-slate-50 rounded-lg border border-slate-200 flex items-center justify-center text-slate-400 mb-3">
                         <FileText size={20} />
