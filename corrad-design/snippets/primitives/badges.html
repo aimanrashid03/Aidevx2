@@ -1,0 +1,35 @@
+<!-- badges / use when: status indicators, counts, labels, tags / avoid when: primary actions (use buttons) -->
+
+<!-- Status badges — pill shape -->
+<span class="inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-800">Active</span>
+<span class="inline-flex items-center rounded-full bg-rose-100 px-2.5 py-0.5 text-xs font-medium text-rose-700">Inactive</span>
+<span class="inline-flex items-center rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-800">Pending</span>
+<span class="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600">Draft</span>
+<span class="inline-flex items-center rounded-full bg-violet-100 px-2.5 py-0.5 text-xs font-medium text-violet-700">Featured</span>
+
+<!-- Badge with dot indicator -->
+<span class="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-800">
+  <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+  Online
+</span>
+
+<!-- Notification count badge — small, circular -->
+<span class="inline-flex h-5 w-5 items-center justify-center rounded-full bg-rose-500 text-[10px] font-semibold text-white">3</span>
+
+<!-- Large count badge -->
+<span class="inline-flex items-center rounded-full bg-violet-100 px-3 py-1 text-xs font-semibold text-violet-700">42 items</span>
+
+<!-- Tag / label badge — square-ish, rounded-md -->
+<span class="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">API</span>
+<span class="inline-flex items-center rounded-md bg-violet-50 border border-violet-200 px-2 py-0.5 text-xs font-medium text-violet-700">New</span>
+
+<!-- Notification dot on icon — topbar style -->
+<div class="relative inline-flex">
+  <!-- bell icon -->
+  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+  <span class="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-rose-500 ring-2 ring-white"></span>
+</div>
+
+<!-- Role badge — used in user tables -->
+<span class="inline-flex items-center rounded-md bg-slate-900 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-white">Admin</span>
+<span class="inline-flex items-center rounded-md bg-violet-600 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-white">Editor</span>

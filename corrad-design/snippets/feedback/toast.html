@@ -1,0 +1,50 @@
+<!-- toast / use when: transient success/error/info feedback — appears inline in topbar, not as fixed overlay -->
+<!-- Source: client/src/components/AppToastRegion.vue -->
+
+<!-- Success toast -->
+<div class="relative flex h-10 min-w-[14rem] max-w-[22rem] items-center overflow-hidden px-2 py-1 shadow-sm bg-gradient-to-br from-emerald-200 to-emerald-100 text-emerald-950">
+  <div class="flex items-center gap-2">
+    <div class="rounded-full p-0.5 bg-emerald-200 text-emerald-800 ring-1 ring-emerald-400/70">
+      <!-- check-circle-2 icon -->
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><path d="m9 12 2 2 4-4"/></svg>
+    </div>
+    <div class="min-w-0 flex-1">
+      <p class="truncate text-[10px] font-semibold uppercase leading-none tracking-[0.11em] opacity-70">Success</p>
+      <p class="mt-[2px] truncate text-xs font-semibold leading-tight">
+        TOAST TITLE<span class="font-normal opacity-90"> - Optional detail message.</span>
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- Error toast -->
+<div class="relative flex h-10 min-w-[14rem] max-w-[22rem] items-center overflow-hidden px-2 py-1 shadow-sm bg-gradient-to-br from-rose-200 to-rose-100 text-rose-950">
+  <div class="flex items-center gap-2">
+    <div class="rounded-full p-0.5 bg-rose-200 text-rose-800 ring-1 ring-rose-400/70">
+      <!-- x-circle icon -->
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>
+    </div>
+    <div class="min-w-0 flex-1">
+      <p class="truncate text-[10px] font-semibold uppercase leading-none tracking-[0.11em] opacity-70">Error</p>
+      <p class="mt-[2px] truncate text-xs font-semibold leading-tight">
+        ERROR TITLE<span class="font-normal opacity-90"> - Something went wrong.</span>
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- Info toast -->
+<div class="relative flex h-10 min-w-[14rem] max-w-[22rem] items-center overflow-hidden px-2 py-1 shadow-sm bg-gradient-to-br from-blue-200 to-blue-100 text-blue-950">
+  <div class="flex items-center gap-2">
+    <div class="rounded-full p-0.5 bg-blue-200 text-blue-800 ring-1 ring-blue-400/70">
+      <!-- info icon -->
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+    </div>
+    <div class="min-w-0 flex-1">
+      <p class="truncate text-[10px] font-semibold uppercase leading-none tracking-[0.11em] opacity-70">Info</p>
+      <p class="mt-[2px] truncate text-xs font-semibold leading-tight">
+        INFO TITLE<span class="font-normal opacity-90"> - Informational detail.</span>
+      </p>
+    </div>
+  </div>
+</div>

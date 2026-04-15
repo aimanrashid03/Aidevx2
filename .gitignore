@@ -41,4 +41,5 @@ supabase/.temp
 User Stories Template.docx
 
 # CORRAD design source — bundled into _shared/corradDesign.ts at build time
-corrad-design/
+# (tracked in git so Vercel can run the prebuild bundle step)
+# corrad-design/
