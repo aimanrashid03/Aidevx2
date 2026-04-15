@@ -1,0 +1,103 @@
+<!-- admin-shell / use when: full admin app layout — topbar + sidebar + main content area -->
+<!-- Composed from topbar.html + sidebar.html + main slot -->
+<!-- Source: client/src/layouts/AdminLayout.vue -->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin — APP NAME</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    /* paste preview/base.css contents here */
+    body { background: #f8f9fb; color: rgb(15 23 42); font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; -webkit-font-smoothing: antialiased; }
+    .page-title { background-image: linear-gradient(to right, #7c3aed, #8b5cf6, #6d28d9); background-clip: text; -webkit-background-clip: text; color: transparent; font-size: 1.45rem; font-weight: 700; letter-spacing: -0.015em; }
+  </style>
+</head>
+<body>
+
+<div class="min-h-screen bg-[#f8f9fb]">
+
+  <!-- ===== TOPBAR ===== -->
+  <header class="sticky top-0 z-40 flex h-10 items-center justify-between border-b border-slate-200 bg-white px-5">
+    <div class="flex items-center gap-1">
+      <div class="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-violet-600 to-violet-500">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-[11px] w-[11px] text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      </div>
+    </div>
+    <div class="flex items-center self-stretch">
+      <div class="flex h-full items-center overflow-hidden whitespace-nowrap">
+        <span class="px-4 text-sm font-light text-slate-900">APP NAME</span>
+        <span class="h-full w-px bg-slate-200"></span>
+      </div>
+      <div class="group relative flex h-full cursor-pointer items-center gap-2 px-4 transition-colors hover:bg-violet-600">
+        <div class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet-600 to-violet-500 text-[10px] font-semibold text-white">AB</div>
+        <div class="leading-tight">
+          <p class="text-sm font-medium text-slate-700 group-hover:text-white">USER NAME</p>
+          <p class="text-[11px] text-slate-500 group-hover:text-white/80">ROLE</p>
+        </div>
+      </div>
+      <span class="h-full w-px bg-slate-200"></span>
+      <button class="group relative flex h-full items-center px-4 text-slate-500 transition-colors hover:bg-violet-600 hover:text-white">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+        <span class="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-rose-500 ring-2 ring-white"></span>
+      </button>
+      <span class="h-full w-px bg-slate-200"></span>
+      <button class="group relative flex h-full items-center px-4 text-slate-500 transition-colors hover:bg-violet-600 hover:text-white">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- ===== BODY: SIDEBAR + MAIN ===== -->
+  <div class="flex flex-col md:flex-row">
+
+    <!-- Sidebar -->
+    <aside class="relative flex w-full flex-col border-r border-slate-200 bg-slate-50/50 md:w-64 md:min-h-[calc(100vh-40px)]">
+      <button class="absolute -right-3.5 top-10 z-40 hidden h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-violet-600 text-white shadow-md hover:bg-violet-700 md:flex">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+      </button>
+
+      <nav class="flex-1 p-3">
+        <p class="mb-1 px-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400">MAIN</p>
+
+        <div class="mb-0.5">
+          <a href="#" class="flex items-center gap-2.5 rounded-lg border border-violet-200 bg-violet-50 px-3 py-1.5 text-sm font-medium text-violet-700 transition-all">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+            <span class="flex-1">Dashboard</span>
+          </a>
+        </div>
+
+        <div class="mb-0.5">
+          <a href="#" class="flex items-center gap-2.5 rounded-lg border border-transparent px-3 py-1.5 text-sm font-medium text-slate-900 transition-all hover:bg-violet-50">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            <span class="flex-1">Users</span>
+          </a>
+        </div>
+
+        <div class="mb-0.5">
+          <a href="#" class="flex items-center gap-2.5 rounded-lg border border-transparent px-3 py-1.5 text-sm font-medium text-slate-900 transition-all hover:bg-violet-50">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+            <span class="flex-1">Settings</span>
+          </a>
+        </div>
+      </nav>
+
+      <div class="border-t border-slate-200 px-3 py-2.5">
+        <p class="text-[11px] leading-relaxed text-slate-400">APP NAME v1.0</p>
+      </div>
+    </aside>
+
+    <!-- ===== MAIN CONTENT AREA ===== -->
+    <main class="w-full min-w-0 flex-1 bg-white p-3 md:p-4">
+      <!-- page content goes here -->
+      <h1 class="page-title">PAGE TITLE</h1>
+      <p class="mt-2 text-sm text-slate-600">PAGE DESCRIPTION</p>
+    </main>
+
+  </div>
+</div>
+
+</body>
+</html>

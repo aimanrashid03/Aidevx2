@@ -1,0 +1,48 @@
+<!-- buttons / use when: rendering any interactive action / avoid when: links that navigate (use <a> instead) -->
+
+<!-- Primary Dark — default action button -->
+<button class="bg-slate-900 text-white hover:bg-slate-800 rounded-lg px-4 py-2 text-sm font-medium shadow-sm transition-colors">
+  Save Changes
+</button>
+
+<!-- Primary Accent Gradient — hero CTA, use sparingly (one per page) -->
+<button class="bg-gradient-to-br from-violet-600 to-violet-500 text-white rounded-lg px-4 py-2 text-sm font-medium shadow-sm transition-all hover:from-violet-700 hover:to-violet-600 flex items-center gap-2">
+  Get Started
+  <!-- arrow-right icon -->
+  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+</button>
+
+<!-- Secondary / Outline — cancel, secondary actions -->
+<button class="border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 rounded-lg px-4 py-2 text-sm font-medium shadow-sm transition-colors">
+  Cancel
+</button>
+
+<!-- Destructive — irreversible actions (delete, remove) -->
+<button class="bg-rose-600 text-white hover:bg-rose-700 rounded-lg px-4 py-2 text-sm font-medium shadow-sm transition-colors">
+  Delete
+</button>
+
+<!-- Ghost / Inline — low-emphasis action, inside cards or tables -->
+<button class="text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-md px-2 py-1.5 text-sm transition-colors">
+  View all
+</button>
+
+<!-- Icon button — topbar style, fills with accent on hover -->
+<button class="group relative flex h-10 items-center px-4 text-slate-500 transition-colors hover:bg-violet-600 hover:text-white">
+  <!-- bell icon -->
+  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+  <!-- tooltip -->
+  <span class="pointer-events-none absolute -bottom-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-xs text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100">Notifications</span>
+</button>
+
+<!-- Button with icon + text — inline icon left of label -->
+<button class="flex items-center gap-2 border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 rounded-lg px-3 py-2 text-sm font-medium shadow-sm transition-colors">
+  <!-- plus icon -->
+  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+  Add Item
+</button>
+
+<!-- Disabled state — applies to any button variant -->
+<button disabled class="bg-slate-900 text-white rounded-lg px-4 py-2 text-sm font-medium shadow-sm opacity-60 cursor-not-allowed">
+  Processing...
+</button>

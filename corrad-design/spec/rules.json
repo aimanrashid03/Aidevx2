@@ -1,0 +1,48 @@
+{
+  "version": "1.0.0",
+  "description": "Corrad design system rules for palette and class compliance validation",
+  "palette": {
+    "accent": [
+      "violet-50", "violet-100", "violet-200",
+      "violet-400", "violet-500", "violet-600", "violet-700"
+    ],
+    "neutral": [
+      "slate-50", "slate-100", "slate-200", "slate-300",
+      "slate-400", "slate-500", "slate-600", "slate-700", "slate-900"
+    ],
+    "status": {
+      "success": ["emerald-100", "emerald-200", "emerald-400", "emerald-500", "emerald-800", "emerald-950"],
+      "error": ["rose-100", "rose-200", "rose-500", "rose-600", "rose-700", "rose-950"],
+      "info": ["blue-100", "blue-200", "blue-500", "blue-800", "blue-950"]
+    },
+    "allowed_custom_hex": ["#f8f9fb"],
+    "forbidden_color_prefixes": [
+      "red-", "purple-", "indigo-", "pink-", "fuchsia-",
+      "orange-", "yellow-", "lime-", "teal-", "cyan-",
+      "sky-", "amber-"
+    ]
+  },
+  "radii": {
+    "allowed": ["rounded-md", "rounded-lg", "rounded-xl", "rounded-full", "rounded-none"],
+    "forbidden": ["rounded-sm", "rounded-2xl", "rounded-3xl"]
+  },
+  "shadows": {
+    "allowed": ["shadow-sm", "shadow-lg", "shadow-2xl", "shadow-none"],
+    "forbidden": ["shadow-md", "shadow-xl"]
+  },
+  "forbidden_classes": [
+    "shadow-md",
+    "shadow-xl",
+    "rounded-sm",
+    "rounded-2xl",
+    "rounded-3xl"
+  ],
+  "allowed_custom_classes": [".page-title"],
+  "typography": {
+    "allowed_font_sizes": [
+      "text-xs", "text-sm", "text-base", "text-lg", "text-xl", "text-2xl", "text-3xl",
+      "text-[10px]", "text-[11px]", "text-[12px]", "text-[13px]"
+    ],
+    "forbidden_font_families": ["font-serif", "font-mono"]
+  }
+}

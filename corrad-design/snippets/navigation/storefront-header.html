@@ -1,0 +1,68 @@
+<!-- storefront-header / use when: public-facing website header with logo and horizontal nav -->
+<!-- Source: client/src/layouts/StorefrontLayout.vue:44-106 -->
+<!-- Key patterns: backdrop-blur frosted glass, max-w-4xl constraint, group-hover dropdown -->
+
+<header class="border-b border-slate-200 bg-white/90 backdrop-blur">
+  <!-- Brand row -->
+  <div class="mx-auto flex w-full max-w-4xl items-center justify-between px-4 py-4">
+    <div class="flex items-center gap-3">
+      <!-- Logo — 40px square, rounded-lg with border -->
+      <div class="flex h-10 w-10 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-white">
+        <!-- Replace with <img> tag for actual logo -->
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-violet-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      </div>
+      <!-- Brand name + tagline -->
+      <div>
+        <p class="text-lg font-semibold text-slate-900">SITE NAME</p>
+        <p class="text-sm text-slate-500">TAGLINE</p>
+      </div>
+    </div>
+
+    <!-- Optional: right-side CTA (e.g. sign in button) -->
+    <a href="#" class="border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 rounded-lg px-3 py-1.5 text-sm font-medium shadow-sm transition-colors">
+      Sign in
+    </a>
+  </div>
+
+  <!-- Navigation row (shown when menu items exist) -->
+  <div class="border-t border-slate-100 bg-white">
+    <nav class="mx-auto flex w-full max-w-4xl flex-wrap items-center gap-1 px-4 py-2">
+
+      <!-- Simple nav link -->
+      <a href="#" class="block rounded-md px-3 py-1.5 text-sm text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900">
+        Home
+      </a>
+
+      <!-- Nav link with dropdown children -->
+      <div class="group relative">
+        <a href="#" class="block rounded-md px-3 py-1.5 text-sm text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900">
+          Products
+        </a>
+        <!-- Dropdown — reveals on group-hover via CSS (no JS) -->
+        <div class="invisible absolute left-0 top-full z-20 min-w-[200px] rounded-lg border border-slate-200 bg-white p-1 opacity-0 shadow-lg transition-all group-hover:visible group-hover:opacity-100">
+          <a href="#" class="block rounded-md px-3 py-2 text-sm text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900">
+            Overview
+          </a>
+          <a href="#" class="block rounded-md px-3 py-2 text-sm text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900">
+            Pricing
+          </a>
+          <a href="#" class="block rounded-md px-3 py-2 text-sm text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900">
+            Changelog
+          </a>
+        </div>
+      </div>
+
+      <a href="#" class="block rounded-md px-3 py-1.5 text-sm text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900">
+        About
+      </a>
+
+      <a href="#" class="block rounded-md px-3 py-1.5 text-sm text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900">
+        Blog
+      </a>
+
+      <a href="#" class="block rounded-md px-3 py-1.5 text-sm text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900">
+        Contact
+      </a>
+    </nav>
+  </div>
+</header>

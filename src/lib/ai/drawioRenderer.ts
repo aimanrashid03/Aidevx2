@@ -2,9 +2,17 @@
  * Renders a draw.io XML (mxGraphModel format) string to a base64 PNG data URI.
  *
  * Uses draw.io's public viewer export API to convert XML → PNG.
- * Falls back to a transparent placeholder if the network request fails.
+ * Falls back to a transparent placeholder if the network request fails,
+ * and reports this via the `fallback` field so callers can warn the user.
  */
-export async function renderDrawioToBase64(xml: string): Promise<string> {
+export interface DrawioRenderResult {
+    png: string
+    /** True when the viewer API failed and a placeholder PNG was returned instead */
+    fallback: boolean
+    reason?: string
+}
+
+export async function renderDrawioToBase64(xml: string): Promise<DrawioRenderResult> {
     // Encode the XML as base64 for the viewer API
     const encoded = encodeDrawio(xml)
 
@@ -14,16 +22,18 @@ export async function renderDrawioToBase64(xml: string): Promise<string> {
         if (!res.ok) throw new Error(`Draw.io viewer returned ${res.status}`)
 
         const blob = await res.blob()
-        return await blobToBase64(blob)
-    } catch {
-        // If network fails, return a simple SVG placeholder rendered to PNG
-        return renderPlaceholderPng(`Draw.io Diagram`)
+        const png = await blobToBase64(blob)
+        return { png, fallback: false }
+    } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err)
+        return { png: renderPlaceholderPng(`Draw.io Diagram`), fallback: true, reason }
     }
 }
 
-/** Base64-encode draw.io XML */
+/** Base64-encode draw.io XML (UTF-8 safe) */
 function encodeDrawio(xml: string): string {
-    return btoa(unescape(encodeURIComponent(xml)))
+    const bytes = new TextEncoder().encode(xml)
+    return btoa(Array.from(bytes, b => String.fromCharCode(b)).join(''))
 }
 
 /** Convert a Blob to a base64 data URI */

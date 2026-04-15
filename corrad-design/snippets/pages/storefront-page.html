@@ -1,0 +1,85 @@
+<!-- storefront-page / use when: public-facing website — header + article/hero content + footer -->
+<!-- Source: client/src/layouts/StorefrontLayout.vue -->
+<!-- Full standalone page — includes Tailwind CDN for direct browser preview -->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PAGE TITLE — SITE NAME</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; -webkit-font-smoothing: antialiased; }
+    .page-title { background-image: linear-gradient(to right, #7c3aed, #8b5cf6, #6d28d9); background-clip: text; -webkit-background-clip: text; color: transparent; font-size: 1.45rem; font-weight: 700; letter-spacing: -0.015em; }
+  </style>
+</head>
+<body class="min-h-screen bg-slate-100 text-slate-900">
+
+  <!-- ===== HEADER ===== -->
+  <header class="border-b border-slate-200 bg-white/90 backdrop-blur">
+    <div class="mx-auto flex w-full max-w-4xl items-center justify-between px-4 py-4">
+      <div class="flex items-center gap-3">
+        <!-- Logo -->
+        <div class="flex h-10 w-10 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-white">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-violet-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        </div>
+        <div>
+          <p class="text-lg font-semibold text-slate-900">SITE NAME</p>
+          <p class="text-sm text-slate-500">TAGLINE</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Navigation -->
+    <div class="border-t border-slate-100 bg-white">
+      <nav class="mx-auto flex w-full max-w-4xl flex-wrap items-center gap-1 px-4 py-2">
+        <a href="#" class="block rounded-md px-3 py-1.5 text-sm text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900">Home</a>
+        <div class="group relative">
+          <a href="#" class="block rounded-md px-3 py-1.5 text-sm text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900">Products</a>
+          <div class="invisible absolute left-0 top-full z-20 min-w-[180px] rounded-lg border border-slate-200 bg-white p-1 opacity-0 shadow-lg transition-all group-hover:visible group-hover:opacity-100">
+            <a href="#" class="block rounded-md px-3 py-2 text-sm text-slate-600 hover:bg-slate-100">Overview</a>
+            <a href="#" class="block rounded-md px-3 py-2 text-sm text-slate-600 hover:bg-slate-100">Pricing</a>
+          </div>
+        </div>
+        <a href="#" class="block rounded-md px-3 py-1.5 text-sm text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900">About</a>
+        <a href="#" class="block rounded-md px-3 py-1.5 text-sm text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900">Contact</a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- ===== MAIN CONTENT ===== -->
+  <main class="mx-auto w-full max-w-4xl px-4 py-8">
+
+    <!-- Article / featured content card -->
+    <article class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <!-- Featured image -->
+      <img src="https://placehold.co/896x224/e2e8f0/94a3b8?text=Featured+Image" alt="FEATURED IMAGE" class="h-56 w-full object-cover" />
+      <div class="space-y-5 p-6">
+        <h1 class="text-3xl font-bold tracking-tight text-slate-900">PAGE TITLE</h1>
+        <!-- Body content — prose style -->
+        <div class="space-y-4 text-sm leading-relaxed text-slate-600">
+          <p>PARAGRAPH ONE. This is the main body content of the page. It uses text-sm text-slate-600 with line-height: 1.7.</p>
+          <p>PARAGRAPH TWO. Additional content continues here with the same typography settings.</p>
+          <h2 class="text-xl font-bold text-slate-900">SUB HEADING</h2>
+          <p>PARAGRAPH THREE under the subheading.</p>
+          <ul class="list-disc pl-5 space-y-1">
+            <li>LIST ITEM ONE</li>
+            <li>LIST ITEM TWO</li>
+            <li>LIST ITEM THREE</li>
+          </ul>
+        </div>
+      </div>
+    </article>
+
+  </main>
+
+  <!-- ===== FOOTER ===== -->
+  <footer class="border-t border-slate-200 bg-white">
+    <div class="mx-auto w-full max-w-4xl px-4 py-4 text-sm text-slate-500">
+      &copy; 2025 SITE NAME. All rights reserved.
+    </div>
+  </footer>
+
+</body>
+</html>
