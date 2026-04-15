@@ -43,10 +43,11 @@ cp .env.example .env
 Edit `.env` and fill in the Supabase Cloud credentials and OnlyOffice server URL:
 
 ```
-VITE_SUPABASE_URL=https://hpjzwpocxuxqntuuqzbr.supabase.co
+VITE_SUPABASE_URL=https://<project-ref>.supabase.co
 VITE_SUPABASE_ANON_KEY=<cloud anon key>
 VITE_ONLYOFFICE_SERVER_URL=http://149.118.143.205:8080
 VITE_ONLYOFFICE_CALLBACK_SECRET=<matching secret>
+VITE_ONLYOFFICE_CALLBACK_BASE_URL=https://<project-ref>.supabase.co
 ```
 
 ### 3. Configure edge function secrets
@@ -60,7 +61,6 @@ Add your API keys to `supabase/.env.local`:
 ```
 OPENROUTER_API_KEY=...
 VOYAGE_API_KEY=...
-SUPABASE_SERVICE_ROLE_KEY=...
 ONLYOFFICE_CALLBACK_SECRET=...
 ```
 
