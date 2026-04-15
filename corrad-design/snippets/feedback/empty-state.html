@@ -1,0 +1,42 @@
+<!-- empty-state / use when: no data to show in a list, table, or section — prompt user to create something -->
+
+<!-- Default empty state — centered in a card or table container -->
+<div class="flex flex-col items-center justify-center py-16 text-center">
+  <!-- icon in muted circle -->
+  <div class="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-slate-100">
+    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+  </div>
+  <p class="text-sm font-semibold text-slate-900">No ITEMS yet</p>
+  <p class="mt-1 text-sm text-slate-500">Get started by creating your first ITEM.</p>
+  <button class="mt-4 flex items-center gap-2 bg-slate-900 text-white hover:bg-slate-800 rounded-lg px-4 py-2 text-sm font-medium shadow-sm transition-colors">
+    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+    Create ITEM
+  </button>
+</div>
+
+<!-- Empty state inside a bordered card container -->
+<div class="rounded-lg border border-slate-200 bg-white shadow-sm">
+  <div class="border-b border-slate-200 px-4 py-3 flex items-center justify-between">
+    <h3 class="text-sm font-semibold text-slate-900">SECTION TITLE</h3>
+  </div>
+  <div class="flex flex-col items-center justify-center py-12 text-center">
+    <div class="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-slate-100">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+    </div>
+    <p class="text-sm font-medium text-slate-900">Nothing found</p>
+    <p class="mt-0.5 text-xs text-slate-500">Try adjusting your search or filters.</p>
+  </div>
+</div>
+
+<!-- Empty state with accent icon — for primary content areas -->
+<div class="flex flex-col items-center justify-center py-16 text-center">
+  <div class="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-violet-50">
+    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-violet-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
+  </div>
+  <h3 class="text-base font-semibold text-slate-900">Start building your SECTION</h3>
+  <p class="mt-1 max-w-sm text-sm text-slate-500">DESCRIPTION of what the user can do here and why they should get started.</p>
+  <button class="mt-5 flex items-center gap-2 bg-gradient-to-br from-violet-600 to-violet-500 text-white rounded-lg px-4 py-2 text-sm font-medium shadow-sm transition-all hover:from-violet-700 hover:to-violet-600">
+    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+    Get Started
+  </button>
+</div>
