@@ -2,9 +2,9 @@ import { Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 export default function AdminRoute() {
-    const { profile, loading } = useAuth();
+    const { profile, loading, profileLoading } = useAuth();
 
-    if (loading) {
+    if (loading || profileLoading) {
         return (
             <div className="flex h-full items-center justify-center bg-slate-50">
                 <div className="text-slate-500 font-medium">Verifying access...</div>

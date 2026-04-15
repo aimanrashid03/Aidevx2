@@ -5,10 +5,10 @@
 
 ## Tech Stack
 - **Frontend**: React 19, TypeScript, Vite, Tailwind CSS
-- **Editor**: OnlyOffice Document Server (self-hosted via Docker) — replaced Tiptap WYSIWYG
-- **Backend**: Supabase (Postgres, Auth, Storage, Edge Functions)
-- **AI**: Anthropic Claude Haiku (streaming SSE), Voyage AI voyage-3-lite for RAG embeddings
-- **Document processing**: mammoth (DOCX→HTML), docx (DOCX generation), docx-preview, PizZip (template manipulation)
+- **Editor**: OnlyOffice Document Server (self-hosted on Oracle Cloud ARM VM) — replaced Tiptap WYSIWYG
+- **Backend**: Supabase Cloud (Postgres, Auth, Storage, Edge Functions) — cloud project `hpjzwpocxuxqntuuqzbr` (ap-southeast-1)
+- **AI**: OpenRouter (default, `deepseek/deepseek-chat-v3-0324`), Voyage AI `voyage-3-lite` for RAG embeddings
+- **Document processing**: mammoth (DOCX→HTML), docx (DOCX generation), docx-preview, PizZip (template manipulation), idb-keyval (client-side persistent preferences)
 - **Diagrams**: Mermaid (client-side rendering), draw.io (via public viewer API)
 - **Routing**: React Router v7
 
@@ -18,34 +18,99 @@ npm run dev          # Start Vite dev server
 npm run build        # Type-check + build (tsc -b && vite build)
 npm run lint         # ESLint
 npm run functions    # Serve Supabase edge functions locally (no JWT verify)
+npm run bundle:corrad  # Rebuild _shared/corradDesign.ts from corrad-design/ assets
 ```
 
 Build must pass with **zero TypeScript errors**. Chunk size warnings are expected (mermaid + pdfjs + tiptap in bundle).
 
+## Deployment Architecture (Primary)
+
+> **The canonical deployment uses Supabase Cloud + a hosted OnlyOffice server.** Local Supabase is supported as a secondary option for contributors who need an isolated environment.
+
+| Component | Where |
+|---|---|
+| Frontend | Vite dev / static build |
+| Supabase (DB, Auth, Storage, Edge Functions) | Supabase Cloud — `hpjzwpocxuxqntuuqzbr` (ap-southeast-1) |
+| OnlyOffice Document Server | Oracle Cloud ARM VM — `149.118.143.205:8080` (`JWT_ENABLED=false`) |
+
+**Env vars for cloud setup** (`.env`):
+```
+VITE_SUPABASE_URL=https://hpjzwpocxuxqntuuqzbr.supabase.co
+VITE_SUPABASE_ANON_KEY=<cloud anon key>
+VITE_ONLYOFFICE_SERVER_URL=http://149.118.143.205:8080
+VITE_ONLYOFFICE_CALLBACK_SECRET=<secret matching OO server>
+# VITE_ONLYOFFICE_JWT_SECRET — leave unset (JWT_ENABLED=false on OO server)
+```
+
+**Edge function secrets** (set once via `supabase secrets set`):
+```
+OPENROUTER_API_KEY=...
+VOYAGE_API_KEY=...
+SUPABASE_SERVICE_ROLE_KEY=...
+ONLYOFFICE_CALLBACK_SECRET=...
+```
+
+### Optional: Local Supabase setup
+
+```bash
+supabase start               # Starts local Postgres, Auth, Storage, Kong
+supabase db reset            # Apply all migrations + seed
+docker compose up -d         # OnlyOffice at http://localhost:8080
+npm run functions            # Edge functions locally
+```
+
+Local `.env` defaults are pre-filled for `http://localhost:54321`. Templates must be manually uploaded after `supabase db reset`:
+```bash
+SERVICE_KEY=$(npx supabase status --output env | grep SERVICE_ROLE_KEY | cut -d'"' -f2)
+curl -X POST "http://127.0.0.1:54404/storage/v1/object/documents/templates/BRS.docx" \
+  -H "Authorization: Bearer $SERVICE_KEY" \
+  -H "Content-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document" \
+  --data-binary @public/templates/BRS.docx
+curl -X POST "http://127.0.0.1:54404/storage/v1/object/documents/templates/URS.docx" \
+  -H "Authorization: Bearer $SERVICE_KEY" \
+  -H "Content-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document" \
+  --data-binary @public/templates/URS.docx
+```
+
 ## Project Structure
 ```
 src/
-  App.tsx                        # Routes
+  App.tsx                        # Routes (includes /admin/* nested routes)
   pages/
     DocumentEditor.tsx           # Main editor page — route /editor/:projectId/:templateId
     ProjectDetails.tsx           # Project detail + document list (with collaboration)
     Dashboard.tsx                # Project list with owner/member info
     AddProject.tsx
     DocumentRepository.tsx
-    AdminDashboard.tsx
+    admin/
+      AdminLayout.tsx            # Admin shell with sidebar nav (AdminRoute-gated)
+      AdminOverview.tsx          # Platform stats overview
+      AdminUsers.tsx             # User list, role management, disable/delete
+      AdminProjects.tsx          # All projects + document counts
+      AdminTechStack.tsx         # Dependency versions, migration history
+      AdminApi.tsx               # Edge function health + latency pings
+      AdminLlmUsage.tsx          # LLM token/cost breakdown from llm_usage_log
+      AdminRagHealth.tsx         # Embedding index stats, chunk counts, re-index trigger
+      AdminStorage.tsx           # Supabase storage bucket usage
+      AdminAudit.tsx             # admin_audit_log viewer
+      AdminSettings.tsx          # Feature flags via app_config table
+      AdminOnlyOffice.tsx        # OO server health check + document stats
+      adminNav.ts                # ADMIN_NAV items (path, label, icon, group)
   components/
     document-editor/
       OnlyOfficeEditor.tsx       # OO iframe wrapper
       AIGeneratePanel.tsx        # Slide-in AI panel: multi-doc-type, chat mode, RAG, diagrams
+      DiagramPreview.tsx         # Live Mermaid/draw.io preview in AI panel (with ErrorBoundary)
       AutoGenerateProgress.tsx   # Modal UI for full-document auto-generation progress
-      SectionTOC.tsx             # TOC sidebar — accepts DocHeading[] from mammoth
       VersionHistory.tsx
       VersionViewer.tsx          # Dual-path: docx-preview (OO) or legacy block renderer
       CommentsSidebar.tsx
+    ErrorBoundary.tsx              # Generic React class error boundary (fallback render prop)
+    AdminRoute.tsx                 # Route guard: redirects to /dashboard if profile.role !== 'admin'
     ConfirmDialog.tsx              # Reusable confirm modal (danger/default variants)
     EmbeddingStatusBadge.tsx      # Unified RAG indexing status badge (pending/processing/processed/failed)
     ProjectMembers.tsx            # Collaborator management UI (invite, remove, role change)
-    Layout.tsx                       # Sticky top header (logo, user avatar, theme picker, logout) — no sidebar
+    Layout.tsx                    # Sticky top header (logo, user avatar, theme picker, logout) — no sidebar
     PresenceIndicator.tsx
     project-tabs/
       DashboardTab.tsx
@@ -57,7 +122,7 @@ src/
       CollaboratorsTab.tsx
       PrototypeTab.tsx
   context/
-    AuthContext.tsx
+    AuthContext.tsx               # Session + user + profile (role: 'admin'|'user') — profileLoading separate flag
     ProjectContext.tsx           # Projects + collaboration (userRole, memberCount, ownerName)
   hooks/
     useProjectMembers.ts         # Invite/remove/update members with role management
@@ -65,6 +130,9 @@ src/
     useDiagramNotes.ts           # Diagram note CRUD
     useConfirmDialog.ts          # Promise-based confirm dialog + toast notification hook
   lib/
+    admin/
+      adminApi.ts                # callAdminUsers(), callAdminTelemetry(), pingEdgeFunction()
+      index.ts                   # Re-exports
     onlyoffice/
       documentService.ts         # OO config builder, template registry, storage URL helpers
       extractSections.ts         # mammoth → DocHeading[] from DOCX
@@ -72,10 +140,7 @@ src/
     ai/
       sectionContext.ts          # Extracts section context from doc structures (fuzzy matching)
       diagramRenderer.ts         # Mermaid → base64 PNG (via canvas)
-      drawioRenderer.ts          # draw.io XML → base64 PNG (via public viewer API)
-    export/
-      docxBuilder.ts             # DOCX export for blank/non-URS docs
-      ursDocxTemplate.ts         # Legal-format URS DOCX export
+      drawioRenderer.ts          # draw.io XML → base64 PNG; returns { png, fallback: boolean }
   tiptap/
     converters/
       tiptapToDocx.ts            # Tiptap JSON → docx nodes (async)
@@ -94,7 +159,8 @@ supabase/
     generate_prototype/          # UI prototype generation from requirement docs (SSE progress events)
     onlyoffice_callback/         # OO save callback — rotates documentKey
     embed_document/              # Document embedding for RAG pipeline
-    admin-users/
+    admin-users/                 # Admin: user CRUD, role management, profile operations
+    admin-telemetry/             # Admin: platform stats, OO health, embedding indexes, storage, migrations
     _shared/
       ragHelper.ts               # RAG pipeline: dual-query embedding, dedup, quality assessment
       promptBuilder.ts           # System/user prompt construction for auto-generate mode
@@ -109,7 +175,10 @@ supabase/
       srsExamples.ts             # Few-shot examples for SRS generation
       sdsExamples.ts             # Few-shot examples for SDS generation
       ursExamples.ts             # Few-shot examples for URS generation
+      corradDesign.ts            # AUTO-GENERATED — do not edit; run npm run bundle:corrad
+      prototypeSchema.ts         # PrototypeModel types, validators, serializers
   migrations/
+    ...                          # See DB Migrations section below
 public/
   templates/
     URS.docx                     # URS template loaded on new document creation
@@ -122,18 +191,7 @@ public/
 - `docPublicUrl` — Supabase public URL used by OO editor and TOC extraction
 - `documentKey` — unique per-save string for OO cache-busting; rotated by `onlyoffice_callback`
 - Version snapshots stored at: `documents/{projectId}/{docId}/v{n}.docx`
-- **Local setup**: bucket is created by migration `20260305000001_create_documents_bucket.sql`; templates must be uploaded manually after `supabase db reset`:
-  ```bash
-  SERVICE_KEY=$(npx supabase status --output env | grep SERVICE_ROLE_KEY | cut -d'"' -f2)
-  curl -X POST "http://127.0.0.1:54404/storage/v1/object/documents/templates/BRS.docx" \
-    -H "Authorization: Bearer $SERVICE_KEY" \
-    -H "Content-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document" \
-    --data-binary @public/templates/BRS.docx
-  curl -X POST "http://127.0.0.1:54404/storage/v1/object/documents/templates/URS.docx" \
-    -H "Authorization: Bearer $SERVICE_KEY" \
-    -H "Content-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document" \
-    --data-binary @public/templates/URS.docx
-  ```
+- **Local setup only**: bucket is created by migration `20260305000001_create_documents_bucket.sql`; templates must be uploaded manually after `supabase db reset` (see Local setup above)
 
 ## Document Templates
 - Template registry in `documentService.ts`: `FILE_TEMPLATE_TYPES = new Set(['URS', 'BRS'])`
@@ -156,12 +214,42 @@ public/
 | `aiPanelSection` | Open AI panel target section |
 
 ## OnlyOffice Setup
-- **Local**: `docker compose up -d` → OO at `http://localhost:8080`
-- **Env vars** (in `.env`):
-  - `VITE_ONLYOFFICE_SERVER_URL=http://localhost:8080`
-  - `VITE_ONLYOFFICE_CALLBACK_SECRET=aidevx-oo-callback-secret-change-in-prod`
-- **JWT**: Disabled locally (`JWT_ENABLED=false`); production OO server also runs with `JWT_ENABLED=false`
-- **OO JWT signing** (`config.token`): only performed if `VITE_ONLYOFFICE_JWT_SECRET` is set in `.env` — this must match `JWT_SECRET` on the OO server. Leave unset when `JWT_ENABLED=false`. Do NOT use `VITE_ONLYOFFICE_CALLBACK_SECRET` for this — they are separate concerns.
+- **Production (primary)**: Oracle Cloud ARM VM at `http://149.118.143.205:8080`
+  - Ubuntu 22.04, Docker, OnlyOffice Document Server
+  - `JWT_ENABLED=false` — `VITE_ONLYOFFICE_JWT_SECRET` must NOT be set in `.env`
+  - SSH: `~/.ssh/ssh-key-2026-04-02.key`, user `ubuntu`
+- **Local (optional)**: `docker compose up -d` → OO at `http://localhost:8080`
+  - `docker-compose.yml` configures the `supabase_net` external network for callback routing
+- **Env vars** (`.env`):
+  - `VITE_ONLYOFFICE_SERVER_URL` — URL of OO server (cloud or local)
+  - `VITE_ONLYOFFICE_CALLBACK_SECRET` — must match `ONLYOFFICE_CALLBACK_SECRET` edge function secret
+- **OO JWT signing** (`config.token`): only if `VITE_ONLYOFFICE_JWT_SECRET` is set — must match `JWT_SECRET` on OO server. Leave unset when `JWT_ENABLED=false`. Do NOT use `VITE_ONLYOFFICE_CALLBACK_SECRET` for this — they are separate concerns.
+
+## Auth and Roles
+- `AuthContext` loads `profiles` row (`id`, `email`, `full_name`, `role: 'admin'|'user'`) after sign-in
+- `profileLoading` is a separate flag from `loading` — prevents flash of unauthorized state
+- `AdminRoute` checks `profile.role === 'admin'` and redirects to `/dashboard` if not
+- Admin actions use service role key server-side (via `admin-users` and `admin-telemetry` edge functions)
+
+## Admin Dashboard (`/admin/*`)
+- Protected by `AdminRoute` (requires `profile.role === 'admin'`)
+- Routes nested under `AdminLayout` which provides the sidebar with `ADMIN_NAV` items
+- Two nav groups: **platform** (Overview, Users, Projects, Audit Log) and **system** (Tech Stack, API & Functions, LLM Usage & Cost, RAG Index, Storage, OnlyOffice, Feature Flags)
+- `src/lib/admin/adminApi.ts` — client-side wrappers: `callAdminUsers()`, `callAdminTelemetry()`, `pingEdgeFunction()`
+- `admin-telemetry` edge function provides: OO health ping, pgvector status, applied migrations, embedding index stats, embedding status counts, storage usage, LLM usage aggregates
+
+## DB Migrations (key)
+| Migration | Description |
+|---|---|
+| `20260305000001_create_documents_bucket.sql` | Supabase Storage `documents` bucket (local only — cloud bucket pre-exists) |
+| `20260401000000_voyage_embeddings.sql` | Resize pgvector 1536d→512d; truncate chunks; reset embedding_status |
+| `20260402000000_create_prototypes.sql` | `prototypes` table |
+| `20260402100000_add_embedding_index.sql` | HNSW index on `document_chunks.embedding` |
+| `20260410000000_add_prototype_model.sql` | Adds nullable `model jsonb` to prototypes |
+| `20260415000000_llm_usage_log.sql` | `llm_usage_log` table — LLM cost/token tracking per call |
+| `20260415000001_admin_audit_log.sql` | `admin_audit_log` table — admin action audit trail |
+| `20260415000002_app_config.sql` | `app_config` table — feature flags + runtime model overrides |
+| `20260415100000_admin_telemetry_helpers.sql` | SQL helper functions for `admin-telemetry` (SECURITY DEFINER, service_role only) |
 
 ## AI Generation
 
@@ -173,6 +261,8 @@ public/
 - Refinement mode: accepts previous output + user feedback
 - RAG-enhanced: uses embedded project documents as context
 - `AIGeneratePanel` is the primary UI — supports doc type selection, document path picker, content type choice, source attribution display
+- `DiagramPreview` component renders live Mermaid SVG or draw.io PNG inline in the panel; draw.io failures show a yellow fallback chip (XML preserved)
+- Diagram format preference persisted across sessions via `idb-keyval` (`localStorage` key `aidevx.diagramFormatPreset`)
 
 ### UI Prototype Generation (`generate_prototype`)
 - Generates a self-contained multi-page HTML UI prototype from any requirement document (BRS/URS/SRS/SDS)
@@ -211,6 +301,7 @@ public/
 - Default model: `deepseek/deepseek-chat-v3-0324` via OpenRouter — strong structured output, Bahasa Malaysia support, ~70% cheaper than Haiku
 - **Per-function model override**: `LLM_MODEL_<FEATURE>` env var overrides model for a specific function (e.g. `LLM_MODEL_PROTOTYPE=google/gemini-2.5-flash-preview`). Use `getLlmConfigForFeature('feature')` in the function instead of `getLlmConfig()`
 - `generate_prototype` uses `LLM_MODEL_PROTOTYPE` (default: `google/gemini-2.5-flash-preview`) — needs 16k+ output for multi-page HTML; DeepSeek V3 caps at 8K
+- `app_config` table supports runtime model overrides via `llm.model_override.*` keys — admin can change models without redeploying
 - Embedding: Voyage AI (`voyage-3-lite`, 512 dimensions) via `VOYAGE_API_KEY`; Voyage AI does **not** accept a `dimensions` param in the request body (unlike OpenAI `text-embedding-3-small`)
 - Per-content-type settings: tables (temp 0.2, 1500 tokens), diagrams (temp 0.2, 1800 tokens), text (temp 0.3, 2500 tokens)
 - Typed interfaces: `LlmConfig`, `EmbeddingConfig` — passed through all helper functions
@@ -238,12 +329,16 @@ supabase functions deploy auto_generate_document --no-verify-jwt
 supabase functions deploy generate_prototype --no-verify-jwt
 supabase functions deploy onlyoffice_callback
 supabase functions deploy embed_document --no-verify-jwt
-supabase secrets set ONLYOFFICE_CALLBACK_SECRET=... SUPABASE_SERVICE_ROLE_KEY=...
+supabase functions deploy admin-users
+supabase functions deploy admin-telemetry --no-verify-jwt
+supabase secrets set ONLYOFFICE_CALLBACK_SECRET=... SUPABASE_SERVICE_ROLE_KEY=... \
+  OPENROUTER_API_KEY=... VOYAGE_API_KEY=...
 ```
 
 ## Edge Function Auth Pattern
 - All functions use `SUPABASE_SERVICE_ROLE_KEY` for DB/storage operations (bypasses RLS)
 - **All SSE-streaming functions (`generate_section`, `auto_generate_document`, `generate_prototype`, `embed_document`) are deployed with `--no-verify-jwt`** — configured via `[functions.<name>] verify_jwt = false` in `supabase/config.toml`. These functions use the service role key internally and don't need the gateway to enforce JWT. The browser may have a stale or cross-project session token; gateway JWT enforcement would cause spurious 401s.
+- `admin-telemetry` is also deployed with `verify_jwt = false` (supports `?mode=ping` unauthenticated health checks from the frontend)
 - **Do NOT use `createClient` + `auth.getUser()` to resolve the caller** — this creates an extra round-trip that fails if `SUPABASE_ANON_KEY` is unavailable in the function env
 - Instead, decode the JWT payload directly (for functions that need `userId`):
   ```typescript
@@ -257,11 +352,12 @@ supabase secrets set ONLYOFFICE_CALLBACK_SECRET=... SUPABASE_SERVICE_ROLE_KEY=..
 - `VersionHistory`: requires `currentVersion` prop; no `onClose`
 - `VersionViewer`: takes `docType: string`, `onRestore(version)` takes argument
 - `CommentsSidebar`: requires `activeSectionIndex: number | null`; no `onClose`
-- `SectionTOC`: accepts `DocHeading[]` (not a Tiptap editor instance)
 - `AutoGenerateProgress`: modal component, receives project/doc IDs and streams progress
 - `useConfirmDialog`: returns `{ dialog, notificationBanner, confirm, notify }` — render `dialog` and `notificationBanner` in JSX
 - `EmbeddingStatusBadge`: accepts `status: string` — unified badge used by both supporting files and user stories
 - `ProjectDetails`: uses URL search param `?tab=` for tab persistence; computes RAG readiness from indexed files + stories
+- `AIGeneratePanel`: accepts optional `onClose` callback; diagram format preference persisted via `idb-keyval`; `DiagramPreview` renders live inside the panel
+- `ErrorBoundary`: class component; accepts optional `fallback: (error: Error) => ReactNode` render prop
 
 ## UI Design Reference
 The UI is being redesigned to closely mirror **CORRAD** (https://github.com/mfauzzury/corrad-laravel) — a Vue 3 + Laravel admin dashboard with a modern, gradient-forward aesthetic. Key design decisions to stay consistent with CORRAD:

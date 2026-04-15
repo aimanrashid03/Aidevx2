@@ -79,9 +79,12 @@ export default function Layout() {
 
     useEffect(() => {
         if (!loading && !session) {
+            // Save current path so Login can restore it after sign-in
+            const path = location.pathname + location.search;
+            if (path !== '/') sessionStorage.setItem('redirectAfterLogin', path);
             navigate('/', { replace: true });
         }
-    }, [session, loading, navigate]);
+    }, [session, loading, navigate, location.pathname, location.search]);
 
     if (loading || !session) {
         return (
