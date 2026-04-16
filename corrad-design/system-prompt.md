@@ -158,10 +158,18 @@ rounded-2xl border border-slate-200 bg-gradient-to-r from-slate-50 to-white p-6 
 
 ## Icons
 
-Use Lucide icons. Standard sizes:
+Use Lucide icons via the named placeholder syntax — **NEVER write inline SVG**:
+
+```html
+<i data-icon="name" class="h-4 w-4"></i>
+```
+
+Standard sizes:
 - Default: `h-4 w-4`
 - Compact (inside badges, small controls): `h-3.5 w-3.5`
 - Hero/emphasis: `h-5 w-5`
+
+Allowed icon names: `home`, `users`, `user`, `file-text`, `settings`, `bar-chart`, `bar-chart-2`, `search`, `plus`, `edit`, `trash`, `eye`, `check`, `x`, `bell`, `calendar`, `shield`, `download`, `upload`, `filter`, `chevron-right`, `chevron-down`, `arrow-up`, `arrow-down`, `clock`, `mail`, `database`, `layout-dashboard`, `list`, `package`, `activity`, `alert-circle`, `log-out`
 
 Icon color inherits text color. In muted contexts: `text-slate-400`. In active nav: `text-violet-700`.
 

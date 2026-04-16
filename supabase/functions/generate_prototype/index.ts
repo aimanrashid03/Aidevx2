@@ -40,12 +40,14 @@ import {
     CORRAD_SNIPPETS_COMPACT,
     CORRAD_SHELL_TEMPLATE,
     CORRAD_FORBIDDEN_CLASSES,
+    CORRAD_ICON_MAP,
     PROTOTYPE_SYSTEM_PROMPT_EXTENSION,
 } from '../_shared/corradDesign.ts'
 import {
     parseLlmJson,
     validatePrototypeModel,
     stripForbiddenClasses,
+    resolveIconPlaceholders,
     serializePages,
     serializePageTitles,
     renderNavItemsHtml,
@@ -140,10 +142,22 @@ Return the JSON object described in the system prompt. No prose, no markdown fen
 function assembleHtml(model: PrototypeModel): string {
     const firstPageKey = model.pages[0]?.key ?? 'dashboard'
 
-    const navItemsHtml = renderNavItemsHtml(model.navGroups)
-    const modalsHtml = renderModalsHtml(model.modals)
-    const pagesJs = serializePages(model.pages)
-    const pageTitlesJs = serializePageTitles(model.pages)
+    // Resolve icon placeholders in page HTML before serialization
+    const resolvedPages = model.pages.map(p => ({
+        ...p,
+        html: resolveIconPlaceholders(p.html, CORRAD_ICON_MAP),
+    }))
+
+    // Resolve icon placeholders in modal HTML
+    const resolvedModals = model.modals.map(m => ({
+        ...m,
+        html: resolveIconPlaceholders(m.html, CORRAD_ICON_MAP),
+    }))
+
+    const navItemsHtml = renderNavItemsHtml(model.navGroups, CORRAD_ICON_MAP)
+    const modalsHtml = renderModalsHtml(resolvedModals)
+    const pagesJs = serializePages(resolvedPages)
+    const pageTitlesJs = serializePageTitles(resolvedPages)
 
     return CORRAD_SHELL_TEMPLATE
         .replace(/\{\{SYSTEM_NAME\}\}/g, escapeHtml(model.systemName))
@@ -270,7 +284,7 @@ serve(async (req) => {
                     { role: 'user', content: buildUserPrompt(docTitle, docType, docText, ragContext) },
                 ]
 
-                const rawJson = await callLlm(messages, llmConfig, 0.4, 24000)
+                const rawJson = await callLlm(messages, llmConfig, 0.4, 16000)
 
                 // Phase 3: Parse + validate JSON
                 sendEvent({ type: 'progress', status: 'Assembling prototype...' })
@@ -282,6 +296,9 @@ serve(async (req) => {
                 for (const page of model.pages) {
                     page.html = stripForbiddenClasses(page.html, CORRAD_FORBIDDEN_CLASSES)
                 }
+                for (const modal of model.modals) {
+                    modal.html = stripForbiddenClasses(modal.html, CORRAD_FORBIDDEN_CLASSES)
+                }
 
                 // Phase 4: Assemble HTML from model + shell template
                 const html = assembleHtml(model)
@@ -291,6 +308,7 @@ serve(async (req) => {
                 }
 
                 // Phase 5: Save to DB (html + model jsonb)
+                sendEvent({ type: 'progress', status: 'Saving prototype to workspace...' })
                 const prototypeName = `${docTitle} Prototype`
                 const { data: inserted, error: insertError } = await supabaseAdmin
                     .from('prototypes')
@@ -314,6 +332,7 @@ serve(async (req) => {
                     prototypeId: inserted.id,
                     name: prototypeName,
                     html,
+                    model,
                     sourceDocId: docId,
                     sourceDocTitle: docTitle,
                     sourceDocType: docType,

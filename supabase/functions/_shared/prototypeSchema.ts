@@ -262,6 +262,32 @@ export function validatePrototypeModel(model: unknown): asserts model is Prototy
   }
 }
 
+// ── Icon resolution ───────────────────────────────────────────────────────
+
+/**
+ * Replace <i data-icon="name" class="..."></i> placeholders with actual SVG
+ * from the icon map. Falls back to a generic circle icon for unknown names.
+ *
+ * The SVG templates in iconMap use {{CLASS}} as a placeholder for the class
+ * attribute value extracted from the <i> element.
+ */
+export function resolveIconPlaceholders(
+  html: string,
+  iconMap: Record<string, string>,
+): string {
+  // Match <i data-icon="name" ...></i> or <i data-icon="name" .../>
+  return html.replace(
+    /<i\s+data-icon="([^"]+)"([^>]*)(?:><\/i>|\/>)/g,
+    (_match, name: string, rest: string) => {
+      const svg = iconMap[name] ?? defaultIcon()
+      // Extract class from the rest of the attributes, e.g. ' class="h-4 w-4 text-slate-400"'
+      const classMatch = rest.match(/class="([^"]*)"/)
+      const cls = classMatch ? classMatch[1] : 'h-4 w-4 shrink-0'
+      return svg.replace('{{CLASS}}', cls)
+    },
+  )
+}
+
 // ── HTML stripping ────────────────────────────────────────────────────────
 
 /**
@@ -311,20 +337,29 @@ export function serializePageTitles(pages: PrototypePage[]): string {
 /**
  * Render sidebar nav items HTML from navGroups.
  * Uses data-nav-key attribute so navigate() can toggle active state.
+ *
+ * If iconMap is provided, item.icon is treated as an icon name and resolved
+ * to SVG. Otherwise item.icon is used as raw HTML (legacy fallback).
  */
-export function renderNavItemsHtml(navGroups: NavGroup[]): string {
+export function renderNavItemsHtml(
+  navGroups: NavGroup[],
+  iconMap?: Record<string, string>,
+): string {
   const parts: string[] = []
   for (const group of navGroups) {
     parts.push(
       `<p class="mb-1 mt-2 px-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400">${escapeHtml(group.label)}</p>`
     )
     for (const item of group.items) {
+      const iconHtml = iconMap
+        ? (iconMap[item.icon]?.replace('{{CLASS}}', 'h-4 w-4 shrink-0') ?? defaultIcon())
+        : (item.icon || defaultIcon())
       parts.push(`
 <div class="mb-0.5">
   <a href="#" data-nav-key="${escapeHtml(item.key)}"
     onclick="navigate('${escapeHtml(item.key)}'); return false;"
     class="flex items-center gap-2.5 rounded-lg border border-transparent px-3 py-1.5 text-sm font-medium text-slate-900 transition-all hover:bg-violet-50">
-    ${item.icon || defaultIcon()}
+    ${iconHtml}
     <span class="flex-1">${escapeHtml(item.title)}</span>
   </a>
 </div>`.trim())

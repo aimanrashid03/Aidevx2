@@ -171,7 +171,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     useEffect(() => {
         fetchProjects();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [user]);
+    }, [user?.id]);
 
     const addProject = async (projectData: Omit<Project, 'id' | 'createdAt' | 'requirementDocs'>) => {
         if (!user) return null;
