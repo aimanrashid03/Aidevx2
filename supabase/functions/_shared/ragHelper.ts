@@ -153,12 +153,28 @@ export function getSources(chunks: MatchedChunk[]): string[] {
     return [...sourceSet]
 }
 
-/** Assess context quality based on average similarity. */
+/**
+ * Assess context quality based on average cosine similarity of the TOP-K chunks.
+ *
+ * Chunks from deduplicateChunks() are already sorted by similarity descending,
+ * so slicing to TOP_K gives the most relevant signal. Using all matchCount
+ * chunks (up to 18) drags the average down with borderline 0.30-threshold
+ * matches, making everything appear "low" even when the best-matching chunks
+ * are genuinely relevant.
+ *
+ * Thresholds calibrated for voyage-3-lite (512d):
+ *   high   : top-K avg > 0.48  — strongly relevant, clear topical match
+ *   medium : top-K avg > 0.38  — relevant, reasonable match
+ *   low    : matched but avg ≤ 0.38 — loosely related or thin coverage
+ *   none   : 0 chunks survived the match threshold (0.30)
+ */
 export function assessContextQuality(chunks: MatchedChunk[]): 'none' | 'low' | 'medium' | 'high' {
     if (chunks.length === 0) return 'none'
-    const avg = chunks.reduce((sum, c) => sum + c.similarity, 0) / chunks.length
-    if (avg > 0.6) return 'high'
-    if (avg > 0.4) return 'medium'
+    const TOP_K = 6
+    const topChunks = chunks.slice(0, TOP_K)
+    const avg = topChunks.reduce((sum, c) => sum + c.similarity, 0) / topChunks.length
+    if (avg > 0.48) return 'high'
+    if (avg > 0.38) return 'medium'
     return 'low'
 }
 

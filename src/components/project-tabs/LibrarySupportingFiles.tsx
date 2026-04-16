@@ -76,6 +76,11 @@ export default function LibrarySupportingFiles({ project, onFilesChanged }: Prop
                 .eq('id', docRow.id);
         }
 
+        // 5. Refresh semantic coverage assessment (fire-and-forget)
+        supabase.functions.invoke('assess_coverage', {
+            body: { projectId: project.id, docType: 'BRS' },
+        }).catch(() => {});
+
         setUploadQueue(q => q.map(item => item.name === file.name ? { ...item, state: 'done' } : item));
     };
 

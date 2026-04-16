@@ -134,6 +134,7 @@ curl -X POST "http://127.0.0.1:54404/storage/v1/object/documents/templates/URS.d
   - *User Stories* — structured 7-section questionnaire, answers indexed into the RAG pipeline
   - *Supporting Files* — multi-file upload (txt/md/csv/docx/pdf) with per-file RAG indexing status
   - *Diagram Notes* — store Mermaid, draw.io, or freeform diagram references
+- **Semantic AI Coverage Assessment** — Lightweight RAG dry-run (no LLM) that checks each of the 19 BRS sections against the project knowledge base; surfaces high/medium/low/none quality per section. Auto-triggers after every file upload or user story embed. Results shown in a Project Health modal (Dashboard tab) and in the BRS creation wizard as a semantic readiness meter replacing the naive document-count threshold
 - **Prototype Generation** — Generate a self-contained multi-page HTML/CSS front-end prototype from any workspace document; view source, copy, and run directly in the browser
 - **Admin Dashboard** — Role-gated `/admin` section with platform stats, user management, LLM cost tracking, RAG index health, OnlyOffice status, feature flags, and audit log
 
@@ -146,8 +147,9 @@ curl -X POST "http://127.0.0.1:54404/storage/v1/object/documents/templates/URS.d
 5. Uploaded project files are chunked and embedded via the **`embed_document`** function, enabling RAG-powered context for AI generation. Each file tracks an `embedding_status` (pending → processing → processed / failed).
 6. The **`auto_generate_document`** function generates a complete document server-side using template-based DOCX building with AI-generated content for all sections in parallel.
 7. **User Stories** answers are also embedded into the RAG pipeline, giving the AI richer project context during generation.
-8. **Prototype Generation** calls the **`generate_prototype`** edge function, which extracts the document, calls the LLM for a structured JSON model, assembles a CORRAD-design HTML prototype, and saves it to the DB.
-9. The **Admin Dashboard** (role: `admin`) surfaces platform telemetry via the **`admin-telemetry`** edge function — OO health, embedding stats, LLM cost log, storage usage, and runtime feature flags.
+8. After every successful embed (file or user story), the **`assess_coverage`** edge function runs in the background — no LLM, just vector search — to update the cached per-section coverage quality stored in `rag_coverage_assessments`. The Project Health panel shows these results and the BRS creation modal uses them as a semantic readiness meter.
+9. **Prototype Generation** calls the **`generate_prototype`** edge function, which extracts the document, calls the LLM for a structured JSON model, assembles a CORRAD-design HTML prototype, and saves it to the DB.
+10. The **Admin Dashboard** (role: `admin`) surfaces platform telemetry via the **`admin-telemetry`** edge function — OO health, embedding stats, LLM cost log, storage usage, and runtime feature flags.
 
 ---
 
@@ -171,6 +173,7 @@ curl -X POST "http://127.0.0.1:54404/storage/v1/object/documents/templates/URS.d
   supabase functions deploy generate_section --no-verify-jwt
   supabase functions deploy auto_generate_document --no-verify-jwt
   supabase functions deploy generate_prototype --no-verify-jwt
+  supabase functions deploy assess_coverage --no-verify-jwt
   supabase functions deploy onlyoffice_callback
   supabase functions deploy embed_document --no-verify-jwt
   supabase functions deploy admin-users

@@ -162,6 +162,11 @@ export function useUserStories(projectId: string) {
 
             // Mark as processed
             await supabase.from('user_stories').update({ embedding_status: 'processed' }).eq('id', story.id);
+
+            // Refresh semantic coverage assessment (fire-and-forget)
+            supabase.functions.invoke('assess_coverage', {
+                body: { projectId, docType: 'BRS' },
+            }).catch(() => {});
             setStories(prev => prev.map(s => s.id === story.id ? { ...s, embeddingStatus: 'processed' } : s));
         } catch (err) {
             console.error('Error embedding user story:', err);

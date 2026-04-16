@@ -1,12 +1,16 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     FileText, File, Users, Plus, Upload, BookOpen, UserPlus,
     Clock, FileCheck, AlertCircle, CheckCircle2, Circle,
-    Calendar, Edit, Check, X, Crown, LibraryBig
+    Calendar, Edit, Check, X, Crown, LibraryBig, RefreshCw,
+    AlertTriangle, LayoutList
 } from 'lucide-react';
 import type { Project } from '../../context/ProjectContext';
 import { useProjectMembers } from '../../hooks/useProjectMembers';
 import { useDiagramNotes } from '../../hooks/useDiagramNotes';
+import { useCoverageAssessment } from '../../hooks/useCoverageAssessment';
+import CoverageBreakdown from '../CoverageBreakdown';
 
 interface Props {
     project: Project;
@@ -59,6 +63,7 @@ export default function DashboardTab({
     const navigate = useNavigate();
     const { members } = useProjectMembers(project.id);
     const { notes: diagramNotes } = useDiagramNotes(project.id);
+    const [coverageModalOpen, setCoverageModalOpen] = useState(false);
 
     const docCount = project.requirementDocs?.length || 0;
     const fileCount = project.documents?.length || 0;
@@ -66,6 +71,12 @@ export default function DashboardTab({
 
     const indexedFiles = project.documents?.filter(d => d.embeddingStatus === 'processed').length || 0;
     const diagramCount = diagramNotes.length;
+
+    // Current chunk count (files + stories) for staleness detection
+    const currentChunkCount = indexedFiles + indexedStories;
+
+    const { assessment, loading: coverageLoading, assessing, assessmentError, isStale, runAssessment } =
+        useCoverageAssessment(project.id, 'BRS', currentChunkCount);
 
     const owner = members.find(m => m.role === 'owner');
     const collaborators = members.filter(m => m.role !== 'owner');
@@ -81,7 +92,11 @@ export default function DashboardTab({
         { label: 'Files indexed for AI', done: indexedFiles > 0 },
         { label: 'Collaborators invited', done: memberCount > 1 },
     ];
-    const healthScore = healthItems.filter(h => h.done).length;
+    const checklistScore = healthItems.filter(h => h.done).length / 4;
+    // Blend checklist (40%) + semantic coverage (60%) when assessment exists
+    const blendedScore = assessment
+        ? Math.round((checklistScore * 0.4 + assessment.overallScore * 0.6) * 100)
+        : Math.round(checklistScore * 100);
 
     // Recent activity: combine docs + files sorted by date
     type ActivityItem = { label: string; date: string; type: 'doc' | 'file'; id?: string };
@@ -262,20 +277,21 @@ export default function DashboardTab({
                         <div className="flex items-center justify-between">
                             <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wide">Project Health</h3>
                             <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                                healthScore === 4 ? 'text-emerald-700 bg-emerald-50 border-emerald-200' :
-                                healthScore >= 2 ? 'text-amber-700 bg-amber-50 border-amber-200' :
+                                blendedScore >= 80 ? 'text-emerald-700 bg-emerald-50 border-emerald-200' :
+                                blendedScore >= 40 ? 'text-amber-700 bg-amber-50 border-amber-200' :
                                 'text-rose-700 bg-rose-50 border-rose-200'
                             }`}>
-                                {healthScore}/4
+                                {blendedScore}%
                             </span>
                         </div>
                         <div className="mt-2 h-1.5 bg-slate-100 rounded overflow-hidden">
                             <div
-                                className={`h-full rounded transition-all ${healthScore === 4 ? 'bg-emerald-500' : healthScore >= 2 ? 'bg-amber-400' : 'bg-rose-400'}`}
-                                style={{ width: `${(healthScore / 4) * 100}%` }}
+                                className={`h-full rounded transition-all ${blendedScore >= 80 ? 'bg-emerald-500' : blendedScore >= 40 ? 'bg-amber-400' : 'bg-rose-400'}`}
+                                style={{ width: `${blendedScore}%` }}
                             />
                         </div>
                     </div>
+                    {/* Checklist */}
                     <div className="divide-y divide-slate-100">
                         {healthItems.map((item, i) => (
                             <div key={i} className="flex items-center gap-3 px-3 py-2.5">
@@ -289,6 +305,71 @@ export default function DashboardTab({
                                 </span>
                             </div>
                         ))}
+                    </div>
+
+                    {/* AI Coverage section */}
+                    <div className="border-t border-slate-100">
+                        <div className="px-3 py-2.5 flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">AI Coverage (BRS)</span>
+                                {isStale && (
+                                    <span className="flex items-center gap-0.5 text-[10px] text-amber-600 font-medium">
+                                        <AlertTriangle size={10} /> Stale
+                                    </span>
+                                )}
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                                {assessment && (
+                                    <button
+                                        onClick={() => setCoverageModalOpen(true)}
+                                        className="flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded border border-[var(--accent-200)] bg-[var(--accent-50)] text-[var(--accent-700)] hover:bg-[var(--accent-100)] transition-colors"
+                                    >
+                                        <LayoutList size={11} />
+                                        View Details
+                                    </button>
+                                )}
+                                <button
+                                    onClick={runAssessment}
+                                    disabled={assessing || coverageLoading}
+                                    className="flex items-center gap-1 text-[10px] font-bold text-[var(--accent-600)] hover:opacity-80 disabled:opacity-40 transition-opacity"
+                                >
+                                    <RefreshCw size={10} className={assessing ? 'animate-spin' : ''} />
+                                    {assessment ? (isStale ? 'Refresh' : 'Re-run') : 'Run Assessment'}
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Summary or loading state */}
+                        {!assessment && !assessing && !coverageLoading && (
+                            <p className="px-3 pb-3 text-[10px] text-slate-400">
+                                Run an assessment to see which BRS sections your documents cover.
+                            </p>
+                        )}
+                        {assessing && (
+                            <p className="px-3 pb-3 text-[10px] text-slate-500 animate-pulse">
+                                Analysing your knowledge base...
+                            </p>
+                        )}
+                        {assessment && !assessing && (
+                            <div className="px-3 pb-3 space-y-1.5">
+                                <div className="flex items-center justify-between text-[10px] text-slate-500 mb-1">
+                                    <span>
+                                        <span className={`font-bold ${
+                                            assessment.overallScore >= 0.66 ? 'text-emerald-600' :
+                                            assessment.overallScore >= 0.33 ? 'text-amber-600' :
+                                            'text-rose-500'
+                                        }`}>
+                                            {Math.round(assessment.overallScore * 100)}%
+                                        </span>
+                                        {' '}overall coverage
+                                    </span>
+                                    <span>
+                                        {assessment.coverageSummary.high + assessment.coverageSummary.medium}/{assessment.coverageSummary.totalSections} sections
+                                    </span>
+                                </div>
+                                <CoverageBreakdown sections={assessment.sections} compact />
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>
@@ -362,6 +443,77 @@ export default function DashboardTab({
                     )}
                 </div>
             </div>
+
+            {/* AI Coverage Modal */}
+            {coverageModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+                    <div className="bg-white rounded-lg w-full max-w-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[85vh] animate-in fade-in zoom-in duration-200">
+                        {/* Modal header */}
+                        <div className="flex items-start justify-between px-5 py-4 border-b border-slate-200 shrink-0">
+                            <div>
+                                <h2 className="text-sm font-bold text-slate-900">AI Coverage — BRS</h2>
+                                <p className="text-[11px] text-slate-500 mt-0.5">Section-by-section knowledge base coverage</p>
+                            </div>
+                            <div className="flex items-center gap-2 ml-4 shrink-0">
+                                <button
+                                    onClick={runAssessment}
+                                    disabled={assessing}
+                                    className="flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded border border-[var(--accent-200)] text-[var(--accent-700)] bg-[var(--accent-50)] hover:bg-[var(--accent-100)] disabled:opacity-40 transition-colors"
+                                >
+                                    <RefreshCw size={12} className={assessing ? 'animate-spin' : ''} />
+                                    {assessing ? 'Running…' : assessment ? (isStale ? 'Refresh' : 'Re-run') : 'Run Assessment'}
+                                </button>
+                                <button
+                                    onClick={() => setCoverageModalOpen(false)}
+                                    className="w-7 h-7 flex items-center justify-center rounded hover:bg-slate-100 text-slate-400 hover:text-slate-900 transition-colors"
+                                >
+                                    <X size={16} />
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Score summary bar */}
+                        {assessment && !assessing && (
+                            <div className="px-5 py-3 bg-slate-50 border-b border-slate-100 shrink-0 flex items-center gap-6">
+                                <div className="shrink-0">
+                                    <span className={`text-2xl font-extrabold leading-none ${
+                                        assessment.overallScore >= 0.66 ? 'text-emerald-600' :
+                                        assessment.overallScore >= 0.33 ? 'text-amber-600' :
+                                        'text-rose-500'
+                                    }`}>{Math.round(assessment.overallScore * 100)}%</span>
+                                    <span className="text-[11px] text-slate-400 ml-1.5">overall</span>
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <CoverageBreakdown sections={assessment.sections} compact />
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Section breakdown */}
+                        <div className="overflow-y-auto flex-1">
+                            {assessmentError && (
+                                <div className="mx-5 mt-4 px-3 py-2.5 rounded border border-rose-200 bg-rose-50 text-xs text-rose-700 flex items-start gap-2">
+                                    <AlertTriangle size={13} className="shrink-0 mt-0.5" />
+                                    <span><span className="font-bold">Assessment failed:</span> {assessmentError}</span>
+                                </div>
+                            )}
+                            {assessing && (
+                                <p className="px-5 py-6 text-sm text-slate-500 animate-pulse text-center">
+                                    Analysing your knowledge base…
+                                </p>
+                            )}
+                            {!assessment && !assessing && !assessmentError && (
+                                <p className="px-5 py-6 text-sm text-slate-400 text-center">
+                                    Run an assessment to see which BRS sections your documents cover.
+                                </p>
+                            )}
+                            {assessment && !assessing && (
+                                <CoverageBreakdown sections={assessment.sections} initialExpandAll />
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Recent Activity */}
             {activity.length > 0 && (

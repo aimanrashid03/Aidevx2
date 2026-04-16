@@ -3,11 +3,14 @@ import { useProjects } from '../context/ProjectContext';
 import {
     ArrowLeft, FileText, File, Calendar, X,
     LayoutTemplate, ChevronRight, LayoutDashboard,
-    CirclePlay, LibraryBig, Users, Sparkles, FileEdit, Check, Edit, FlaskConical, Activity
+    CirclePlay, LibraryBig, Users, Sparkles, FileEdit, Check, Edit, FlaskConical, Activity,
+    RefreshCw
 } from 'lucide-react';
 import { useState } from 'react';
 import { useConfirmDialog } from '../hooks/useConfirmDialog';
 import { useUserStories } from '../hooks/useUserStories';
+import { useCoverageAssessment } from '../hooks/useCoverageAssessment';
+import CoverageBreakdown from '../components/CoverageBreakdown';
 import DashboardTab from '../components/project-tabs/DashboardTab';
 import WorkspaceTab from '../components/project-tabs/WorkspaceTab';
 import LibraryTab from '../components/project-tabs/LibraryTab';
@@ -61,6 +64,12 @@ export default function ProjectDetails() {
     const indexedFiles = project?.documents?.filter(d => d.embeddingStatus === 'processed').length || 0;
     const indexedStories = stories.filter(s => s.embeddingStatus === 'processed').length;
     const totalIndexed = indexedFiles + indexedStories;
+
+    const currentChunkCount = indexedFiles + indexedStories;
+    const { assessment: coverageAssessment, assessing: coverageAssessing, isStale: coverageIsStale, runAssessment: runCoverageAssessment, refetch: refetchCoverage } =
+        useCoverageAssessment(project?.id || '', 'BRS', currentChunkCount);
+
+    // Legacy fallback: still used for "no indexed content" warning when no assessment yet
     const ragReadiness = totalIndexed === 0 ? 'none' : totalIndexed < 5 ? 'limited' : 'ready';
 
     const handleEditClick = () => {
@@ -101,6 +110,7 @@ export default function ProjectDetails() {
     const handleCreateDocument = (templateId: string) => {
         if (templateId === 'BRS') {
             setSelectedTemplate('BRS');
+            refetchCoverage(); // sync with any assessment run in DashboardTab
             return;
         }
         navigate(`/editor/${projectId}/${templateId}`);
@@ -350,10 +360,14 @@ export default function ProjectDetails() {
                         <div className="p-5 space-y-3">
                             <button
                                 onClick={async () => {
-                                    if (ragReadiness === 'none') {
+                                    const poorCoverage = coverageAssessment && coverageAssessment.overallScore < 0.3;
+                                    if (ragReadiness === 'none' || poorCoverage) {
+                                        const msg = ragReadiness === 'none'
+                                            ? 'No files or user stories have been indexed yet. The AI-generated BRS may contain generic placeholder content. Consider uploading and indexing project files first.'
+                                            : `Your knowledge base covers only ${Math.round(coverageAssessment!.overallScore * 100)}% of BRS sections. The generated document may have limited content. Consider uploading more relevant project files.`;
                                         const ok = await confirm({
-                                            title: 'No Indexed Content',
-                                            message: 'No files or user stories have been indexed yet. The AI-generated BRS may contain generic placeholder content. Consider uploading and indexing project files first.',
+                                            title: ragReadiness === 'none' ? 'No Indexed Content' : 'Low Coverage Warning',
+                                            message: msg,
                                             confirmLabel: 'Generate Anyway',
                                             variant: 'danger',
                                         });
@@ -381,32 +395,96 @@ export default function ProjectDetails() {
                                     </p>
                                 </div>
                             </button>
-                            {/* RAG Readiness Meter */}
-                            <div className="px-4 py-3 rounded border border-slate-200 bg-slate-50">
-                                <div className="flex items-center justify-between mb-2">
+
+                            {/* Semantic AI Readiness Meter */}
+                            <div className="px-4 py-3 rounded border border-slate-200 bg-slate-50 space-y-2">
+                                <div className="flex items-center justify-between">
                                     <span className="text-xs font-bold text-slate-700">AI Readiness</span>
-                                    <span className="text-[11px] text-slate-500">
-                                        {totalIndexed} / 5 materials indexed
-                                    </span>
+                                    {coverageAssessment ? (
+                                        <div className="flex items-center gap-2">
+                                            {coverageIsStale && (
+                                                <span className="text-[10px] text-amber-600 font-medium">Stale</span>
+                                            )}
+                                            <span className="text-[11px] text-slate-500">
+                                                {coverageAssessment.coverageSummary.high + coverageAssessment.coverageSummary.medium}/{coverageAssessment.coverageSummary.totalSections} sections covered
+                                            </span>
+                                            <button
+                                                onClick={runCoverageAssessment}
+                                                disabled={coverageAssessing}
+                                                className="text-[10px] text-[var(--accent-600)] hover:opacity-80 disabled:opacity-40 flex items-center gap-0.5 transition-opacity"
+                                            >
+                                                <RefreshCw size={10} className={coverageAssessing ? 'animate-spin' : ''} />
+                                                {coverageIsStale ? 'Refresh' : 'Re-run'}
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-[11px] text-slate-500">
+                                                {totalIndexed} material{totalIndexed !== 1 ? 's' : ''} indexed
+                                            </span>
+                                            <button
+                                                onClick={runCoverageAssessment}
+                                                disabled={coverageAssessing}
+                                                className="text-[10px] text-[var(--accent-600)] hover:opacity-80 disabled:opacity-40 flex items-center gap-0.5 transition-opacity"
+                                            >
+                                                <RefreshCw size={10} className={coverageAssessing ? 'animate-spin' : ''} />
+                                                {coverageAssessing ? 'Checking...' : 'Check Coverage'}
+                                            </button>
+                                        </div>
+                                    )}
                                 </div>
-                                <div className="relative h-2 bg-slate-200 rounded-full overflow-hidden mb-1.5">
-                                    <div
-                                        className={`h-full rounded-full transition-all duration-500 ${
-                                            totalIndexed === 0 ? 'bg-rose-400' :
-                                            totalIndexed < 5 ? 'bg-amber-400' :
-                                            'bg-emerald-500'
-                                        }`}
-                                        style={{ width: `${Math.min((totalIndexed / 5) * 100, 100)}%` }}
-                                    />
-                                </div>
-                                <div className="flex justify-between text-[10px] mb-1">
-                                    <span className={totalIndexed >= 5 ? 'text-slate-400 opacity-0' : 'text-slate-400'}>Not enough materials</span>
-                                    <span className={totalIndexed >= 5 ? 'text-emerald-600 font-bold' : 'text-slate-400'}>Ready</span>
-                                </div>
-                                {totalIndexed > 0 && (
-                                    <p className="text-[10px] text-slate-400">
-                                        {indexedFiles} file{indexedFiles !== 1 ? 's' : ''} · {indexedStories} user stor{indexedStories !== 1 ? 'ies' : 'y'} indexed
-                                    </p>
+
+                                {coverageAssessment ? (
+                                    <>
+                                        {/* Semantic coverage bar */}
+                                        <div className="relative h-2 bg-slate-200 rounded-full overflow-hidden">
+                                            <div
+                                                className={`h-full rounded-full transition-all duration-500 ${
+                                                    coverageAssessment.overallScore >= 0.66 ? 'bg-emerald-500' :
+                                                    coverageAssessment.overallScore >= 0.33 ? 'bg-amber-400' :
+                                                    'bg-rose-400'
+                                                }`}
+                                                style={{ width: `${Math.round(coverageAssessment.overallScore * 100)}%` }}
+                                            />
+                                        </div>
+                                        <div className="flex justify-between text-[10px]">
+                                            <span className="text-slate-400">
+                                                {Math.round(coverageAssessment.overallScore * 100)}% semantic coverage
+                                            </span>
+                                            <span className={
+                                                coverageAssessment.overallScore >= 0.66 ? 'text-emerald-600 font-bold' :
+                                                coverageAssessment.overallScore >= 0.33 ? 'text-amber-600 font-bold' :
+                                                'text-rose-500 font-bold'
+                                            }>
+                                                {coverageAssessment.overallScore >= 0.66 ? 'Good' :
+                                                 coverageAssessment.overallScore >= 0.33 ? 'Partial' : 'Low'}
+                                            </span>
+                                        </div>
+                                        {/* Compact section breakdown */}
+                                        <CoverageBreakdown sections={coverageAssessment.sections} compact />
+                                    </>
+                                ) : (
+                                    <>
+                                        {/* Legacy count-based bar (fallback when no assessment yet) */}
+                                        <div className="relative h-2 bg-slate-200 rounded-full overflow-hidden">
+                                            <div
+                                                className={`h-full rounded-full transition-all duration-500 ${
+                                                    totalIndexed === 0 ? 'bg-rose-400' :
+                                                    totalIndexed < 5 ? 'bg-amber-400' :
+                                                    'bg-emerald-500'
+                                                }`}
+                                                style={{ width: `${Math.min((totalIndexed / 5) * 100, 100)}%` }}
+                                            />
+                                        </div>
+                                        <div className="flex justify-between text-[10px]">
+                                            <span className="text-slate-400">
+                                                {indexedFiles} file{indexedFiles !== 1 ? 's' : ''} · {indexedStories} user stor{indexedStories !== 1 ? 'ies' : 'y'} indexed
+                                            </span>
+                                            <span className={totalIndexed >= 5 ? 'text-emerald-600 font-bold' : 'text-slate-400'}>
+                                                {totalIndexed >= 5 ? 'Ready' : 'Need more'}
+                                            </span>
+                                        </div>
+                                    </>
                                 )}
                             </div>
                             <button
