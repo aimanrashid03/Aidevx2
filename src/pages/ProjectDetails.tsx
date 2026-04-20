@@ -4,9 +4,11 @@ import {
     ArrowLeft, FileText, File, Calendar, X,
     LayoutTemplate, ChevronRight, LayoutDashboard,
     CirclePlay, LibraryBig, Users, Sparkles, FileEdit, Check, Edit, FlaskConical, Activity,
-    RefreshCw
+    RefreshCw, Upload, Loader2
 } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useRef } from 'react';
+import { uploadDocxToStorage, generateDocumentKey, getDocStoragePath } from '../lib/onlyoffice/documentService';
+import { supabase } from '../lib/supabase';
 import { useConfirmDialog } from '../hooks/useConfirmDialog';
 import { useUserStories } from '../hooks/useUserStories';
 import { useCoverageAssessment } from '../hooks/useCoverageAssessment';
@@ -55,6 +57,16 @@ export default function ProjectDetails() {
     const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
     const [isEditing, setIsEditing] = useState(false);
     const [editForm, setEditForm] = useState({ name: '', description: '', notes: '' });
+
+    // Import document modal state
+    const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+    const [importFile, setImportFile] = useState<File | null>(null);
+    const [importTitle, setImportTitle] = useState('');
+    const [importDocType, setImportDocType] = useState('BRS');
+    const [isImporting, setIsImporting] = useState(false);
+    const [importError, setImportError] = useState<string | null>(null);
+    const [isDragOver, setIsDragOver] = useState(false);
+    const importFileRef = useRef<HTMLInputElement>(null);
 
     const { dialog, notificationBanner, confirm, notify } = useConfirmDialog();
 
@@ -114,6 +126,63 @@ export default function ProjectDetails() {
             return;
         }
         navigate(`/editor/${projectId}/${templateId}`);
+    };
+
+    const handleImportFileSelect = (file: File) => {
+        setImportError(null);
+        if (!file.name.toLowerCase().endsWith('.docx')) {
+            setImportError('Only .docx files are supported.');
+            return;
+        }
+        if (file.size > 10 * 1024 * 1024) {
+            setImportError('File exceeds 10 MB limit.');
+            return;
+        }
+        setImportFile(file);
+        setImportTitle(file.name.replace(/\.docx$/i, ''));
+    };
+
+    const handleImportDocument = async () => {
+        if (!importFile || !importTitle.trim() || !projectId) return;
+        setIsImporting(true);
+        setImportError(null);
+        try {
+            const docId = `imported-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+            const storagePath = getDocStoragePath(projectId, docId);
+            await uploadDocxToStorage(importFile, storagePath);
+            const documentKey = generateDocumentKey(docId);
+            const { error } = await supabase.from('requirement_docs').insert({
+                id: docId,
+                project_id: projectId,
+                title: importTitle.trim(),
+                type: importDocType,
+                content: {},
+                storage_path: storagePath,
+                document_key: documentKey,
+                status: 'draft',
+                current_version: 1,
+                last_modified: new Date().toISOString(),
+            });
+            if (error) throw new Error(error.message);
+            await refreshProjects();
+            setIsImportModalOpen(false);
+            setImportFile(null);
+            setImportTitle('');
+            setImportDocType('BRS');
+        } catch (err) {
+            setImportError(err instanceof Error ? err.message : 'Import failed. Please try again.');
+        } finally {
+            setIsImporting(false);
+        }
+    };
+
+    const closeImportModal = () => {
+        if (isImporting) return;
+        setIsImportModalOpen(false);
+        setImportFile(null);
+        setImportTitle('');
+        setImportDocType('BRS');
+        setImportError(null);
     };
 
     if (loading) {
@@ -254,6 +323,7 @@ export default function ProjectDetails() {
                     <WorkspaceTab
                         project={project}
                         onNewDraft={() => setIsCreateModalOpen(true)}
+                        onImportDoc={() => setIsImportModalOpen(true)}
                         onDeleteDoc={handleDeleteRequirement}
                     />
                 )}
@@ -512,6 +582,122 @@ export default function ProjectDetails() {
                                 className="px-4 py-2 text-sm font-bold text-slate-600 hover:text-slate-900"
                             >
                                 Cancel
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Import Document Modal */}
+            {isImportModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+                    <div className="bg-white rounded w-full max-w-md shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in duration-200">
+                        <div className="p-5 border-b border-slate-100 flex justify-between items-center">
+                            <div>
+                                <div className="flex items-center gap-2 mb-1">
+                                    <Upload size={16} className="text-[var(--accent-600)]" />
+                                    <h2 className="text-base font-bold text-slate-900">Import Document</h2>
+                                </div>
+                                <p className="text-xs text-slate-500">Upload an existing .docx file as a workspace document.</p>
+                            </div>
+                            <button onClick={closeImportModal} className="p-1.5 text-slate-400 hover:text-slate-900 hover:bg-slate-50 rounded transition-colors ml-2">
+                                <X size={16} />
+                            </button>
+                        </div>
+
+                        <div className="p-5 space-y-4">
+                            {/* Drop zone or file info */}
+                            {!importFile ? (
+                                <div
+                                    onDragOver={e => { e.preventDefault(); setIsDragOver(true); }}
+                                    onDragLeave={() => setIsDragOver(false)}
+                                    onDrop={e => { e.preventDefault(); setIsDragOver(false); if (e.dataTransfer.files[0]) handleImportFileSelect(e.dataTransfer.files[0]); }}
+                                    onClick={() => importFileRef.current?.click()}
+                                    className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${
+                                        isDragOver
+                                            ? 'border-[var(--accent-400)] bg-[var(--accent-50)]'
+                                            : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                                    }`}
+                                >
+                                    <Upload size={24} className="text-slate-400 mx-auto mb-2" />
+                                    <p className="text-sm font-bold text-slate-600">Drop a .docx file here</p>
+                                    <p className="text-xs text-slate-400 mt-1">or click to browse · max 10 MB</p>
+                                    <input
+                                        ref={importFileRef}
+                                        type="file"
+                                        accept=".docx"
+                                        className="hidden"
+                                        onChange={e => { if (e.target.files?.[0]) handleImportFileSelect(e.target.files[0]); }}
+                                    />
+                                </div>
+                            ) : (
+                                <div className="space-y-4">
+                                    {/* File info */}
+                                    <div className="flex items-center gap-2 p-3 bg-slate-50 rounded border border-slate-200">
+                                        <FileText size={16} className="text-slate-400 shrink-0" />
+                                        <span className="text-xs font-bold text-slate-700 flex-1 truncate">{importFile.name}</span>
+                                        <span className="text-[10px] text-slate-400 shrink-0">{(importFile.size / 1024).toFixed(0)} KB</span>
+                                        <button
+                                            onClick={() => { setImportFile(null); setImportError(null); }}
+                                            disabled={isImporting}
+                                            className="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded transition-colors disabled:opacity-50"
+                                        >
+                                            <X size={13} />
+                                        </button>
+                                    </div>
+
+                                    {/* Title input */}
+                                    <div>
+                                        <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wide block mb-1.5">Document title</label>
+                                        <input
+                                            type="text"
+                                            value={importTitle}
+                                            onChange={e => setImportTitle(e.target.value)}
+                                            disabled={isImporting}
+                                            className="w-full px-3 py-2 border border-slate-200 rounded text-sm text-slate-900 focus:outline-none focus:border-slate-400 disabled:opacity-50"
+                                            placeholder="e.g. My System BRS"
+                                        />
+                                    </div>
+
+                                    {/* Doc type selector */}
+                                    <div>
+                                        <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wide block mb-1.5">Document type</label>
+                                        <div className="flex gap-1.5">
+                                            {(['BRS', 'URS', 'SRS', 'SDS'] as const).map(t => (
+                                                <button
+                                                    key={t}
+                                                    onClick={() => setImportDocType(t)}
+                                                    disabled={isImporting}
+                                                    className={`px-3 py-1.5 rounded text-xs font-bold border transition-colors ${
+                                                        importDocType === t
+                                                            ? 'bg-slate-900 text-white border-slate-900'
+                                                            : 'border-slate-200 text-slate-500 hover:border-slate-400'
+                                                    } disabled:opacity-50`}
+                                                >
+                                                    {t}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {importError && (
+                                <p className="text-xs text-rose-600">{importError}</p>
+                            )}
+                        </div>
+
+                        <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-2">
+                            <button onClick={closeImportModal} disabled={isImporting} className="px-4 py-2 text-sm font-bold text-slate-600 hover:text-slate-900 disabled:opacity-50">
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleImportDocument}
+                                disabled={!importFile || !importTitle.trim() || isImporting}
+                                className="flex items-center gap-1.5 px-4 py-2 bg-slate-900 text-white rounded text-sm font-bold hover:bg-slate-800 disabled:opacity-40 transition-colors"
+                            >
+                                {isImporting ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+                                {isImporting ? 'Importing…' : 'Import'}
                             </button>
                         </div>
                     </div>

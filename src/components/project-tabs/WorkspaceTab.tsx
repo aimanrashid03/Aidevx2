@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     FileText, Clock, FileCheck, AlertCircle, Plus, LayoutTemplate,
-    Trash2, Lock, Unlock, GitBranch, ChevronRight,
+    Trash2, Lock, Unlock, GitBranch, ChevronRight, Upload,
 } from 'lucide-react';
 import type { Project, RequirementDoc } from '../../context/ProjectContext';
 import { useProjects } from '../../context/ProjectContext';
@@ -11,6 +11,7 @@ import CreateCRDialog from '../CreateCRDialog';
 interface Props {
     project: Project;
     onNewDraft: () => void;
+    onImportDoc: () => void;
     onDeleteDoc: (e: React.MouseEvent, id: string) => void;
 }
 
@@ -169,7 +170,7 @@ function DocCard({
 
 // ─── Tab ─────────────────────────────────────────────────────────────────────
 
-export default function WorkspaceTab({ project, onNewDraft, onDeleteDoc }: Props) {
+export default function WorkspaceTab({ project, onNewDraft, onImportDoc, onDeleteDoc }: Props) {
     const [crTargetDocId, setCrTargetDocId] = useState<string | null>(null);
 
     const rootDocs = project.requirementDocs.filter(d => !d.parentDocId);
@@ -188,13 +189,22 @@ export default function WorkspaceTab({ project, onNewDraft, onDeleteDoc }: Props
                     <h2 className="text-sm font-bold text-slate-900">Requirement Documents</h2>
                     <p className="text-[11px] text-slate-500 mt-0.5">Structured templates for requirements engineering.</p>
                 </div>
-                <button
-                    onClick={onNewDraft}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors text-xs font-bold"
-                >
-                    <Plus size={13} />
-                    New Draft
-                </button>
+                <div className="flex items-center gap-2">
+                    <button
+                        onClick={onImportDoc}
+                        className="flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 text-slate-700 rounded-lg hover:border-slate-400 hover:bg-slate-50 transition-colors text-xs font-bold"
+                    >
+                        <Upload size={13} />
+                        Import
+                    </button>
+                    <button
+                        onClick={onNewDraft}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors text-xs font-bold"
+                    >
+                        <Plus size={13} />
+                        New Draft
+                    </button>
+                </div>
             </div>
 
             {project.requirementDocs && project.requirementDocs.length > 0 ? (
@@ -239,12 +249,20 @@ export default function WorkspaceTab({ project, onNewDraft, onDeleteDoc }: Props
                     <LayoutTemplate size={28} className="mx-auto text-slate-300 mb-3" />
                     <h3 className="text-sm font-bold text-slate-900 mb-1">No requirement documents</h3>
                     <p className="text-slate-500 text-[12px] mb-4">Start drafting your first structured requirements spec.</p>
-                    <button
-                        onClick={onNewDraft}
-                        className="px-4 py-2 bg-slate-900 text-white rounded-lg text-xs font-bold hover:bg-slate-800 transition-colors"
-                    >
-                        Create New Draft
-                    </button>
+                    <div className="flex items-center justify-center gap-2">
+                        <button
+                            onClick={onImportDoc}
+                            className="px-4 py-2 border border-slate-200 text-slate-700 rounded-lg text-xs font-bold hover:border-slate-400 hover:bg-white transition-colors"
+                        >
+                            <span className="flex items-center gap-1.5"><Upload size={13} /> Import Document</span>
+                        </button>
+                        <button
+                            onClick={onNewDraft}
+                            className="px-4 py-2 bg-slate-900 text-white rounded-lg text-xs font-bold hover:bg-slate-800 transition-colors"
+                        >
+                            Create New Draft
+                        </button>
+                    </div>
                 </div>
             )}
 
