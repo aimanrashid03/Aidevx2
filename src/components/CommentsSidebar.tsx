@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { MessageSquare, Send, CheckCircle, Trash2, Reply, X } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import { MessageSquare, Send, CheckCircle, Trash2, Reply, X, ChevronDown } from 'lucide-react';
 import type { DocComment } from '../hooks/useDocumentComments';
 import { useAuth } from '../context/AuthContext';
 
@@ -10,6 +10,7 @@ interface CommentsSidebarProps {
     onResolveComment: (commentId: string) => Promise<void>;
     onDeleteComment: (commentId: string) => Promise<void>;
     sectionTitles: string[];
+    onClose?: () => void;
 }
 
 function timeAgo(dateStr: string): string {
@@ -126,6 +127,7 @@ export default function CommentsSidebar({
     onResolveComment,
     onDeleteComment,
     sectionTitles,
+    onClose,
 }: CommentsSidebarProps) {
     const { user } = useAuth();
     const [newComment, setNewComment] = useState('');
@@ -133,6 +135,20 @@ export default function CommentsSidebar({
     const [replyText, setReplyText] = useState('');
     const [commentSection, setCommentSection] = useState<number>(activeSectionIndex ?? 0);
     const [showResolved, setShowResolved] = useState(false);
+    const [sectionPickerOpen, setSectionPickerOpen] = useState(false);
+    const sectionPickerRef = useRef<HTMLDivElement>(null);
+
+    // Close section picker on outside click
+    useEffect(() => {
+        if (!sectionPickerOpen) return;
+        const handler = (e: MouseEvent) => {
+            if (sectionPickerRef.current && !sectionPickerRef.current.contains(e.target as Node)) {
+                setSectionPickerOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, [sectionPickerOpen]);
 
     // Filter comments by active section if one is selected
     const filteredComments = activeSectionIndex !== null
@@ -168,9 +184,16 @@ export default function CommentsSidebar({
                         <MessageSquare size={12} />
                         Comments
                     </h3>
-                    <span className="text-[10px] text-slate-400 font-bold">
-                        {comments.length} total
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] text-slate-400 font-bold">
+                            {comments.length} total
+                        </span>
+                        {onClose && (
+                            <button onClick={onClose} className="p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-600 transition-colors">
+                                <X size={13} />
+                            </button>
+                        )}
+                    </div>
                 </div>
                 <div className="flex items-center gap-2">
                     <button
@@ -250,16 +273,33 @@ export default function CommentsSidebar({
 
             {/* New Comment Input */}
             <div className="px-4 py-3 border-t border-slate-200 bg-white">
-                {activeSectionIndex === null && (
-                    <select
-                        value={commentSection}
-                        onChange={(e) => setCommentSection(Number(e.target.value))}
-                        className="w-full mb-2 px-2 py-1.5 border border-slate-200 rounded text-[10px] focus:outline-none focus:ring-1 focus:ring-slate-400"
-                    >
-                        {sectionTitles.map((title, idx) => (
-                            <option key={idx} value={idx}>{title}</option>
-                        ))}
-                    </select>
+                {activeSectionIndex === null && sectionTitles.length > 0 && (
+                    <div className="relative mb-2" ref={sectionPickerRef}>
+                        <button
+                            onClick={() => setSectionPickerOpen(v => !v)}
+                            className="w-full flex items-center justify-between px-2.5 py-1.5 border border-slate-200 rounded-lg text-[11px] text-slate-700 bg-white hover:border-slate-300 focus:outline-none focus:ring-1 focus:ring-[var(--accent-ring)] transition-colors"
+                        >
+                            <span className="truncate">{sectionTitles[commentSection] || 'Select section'}</span>
+                            <ChevronDown size={12} className={`text-slate-400 shrink-0 transition-transform ${sectionPickerOpen ? 'rotate-180' : ''}`} />
+                        </button>
+                        {sectionPickerOpen && (
+                            <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg z-20 max-h-48 overflow-y-auto py-1">
+                                {sectionTitles.map((title, idx) => (
+                                    <button
+                                        key={idx}
+                                        onClick={() => { setCommentSection(idx); setSectionPickerOpen(false); }}
+                                        className={`w-full text-left px-3 py-1.5 text-[11px] transition-colors ${
+                                            commentSection === idx
+                                                ? 'bg-[var(--accent-50)] text-[var(--accent-700)] font-medium'
+                                                : 'text-slate-700 hover:bg-slate-50'
+                                        }`}
+                                    >
+                                        {title}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </div>
                 )}
                 <div className="flex gap-2">
                     <input
