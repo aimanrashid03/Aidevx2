@@ -1,101 +1,278 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FileText, Calendar, Clock, FileCheck, AlertCircle, Plus, LayoutTemplate, Trash2 } from 'lucide-react';
-import type { Project } from '../../context/ProjectContext';
+import {
+    FileText, Clock, FileCheck, AlertCircle, Plus, LayoutTemplate,
+    Trash2, Lock, Unlock, GitBranch, ChevronRight, Upload,
+} from 'lucide-react';
+import type { Project, RequirementDoc } from '../../context/ProjectContext';
+import { useProjects } from '../../context/ProjectContext';
+import CreateCRDialog from '../CreateCRDialog';
 
 interface Props {
     project: Project;
     onNewDraft: () => void;
+    onImportDoc: () => void;
     onDeleteDoc: (e: React.MouseEvent, id: string) => void;
 }
 
-const getDocumentStatus = (lastModified: string) => {
-    const daysSinceMod = (new Date().getTime() - new Date(lastModified).getTime()) / (1000 * 3600 * 24);
-    if (daysSinceMod < 1) return { label: 'Active Draft', icon: Clock, color: 'text-amber-700 bg-amber-50 border-amber-200' };
-    if (daysSinceMod > 7) return { label: 'Ready for Review', icon: FileCheck, color: 'text-emerald-700 bg-emerald-50 border-emerald-200' };
-    return { label: 'Needs Attention', icon: AlertCircle, color: 'text-rose-700 bg-rose-50 border-rose-200' };
-};
+// ─── Doc type colours ────────────────────────────────────────────────────────
 
-export default function WorkspaceTab({ project, onNewDraft, onDeleteDoc }: Props) {
+const TYPE_COLORS: Record<string, { bg: string; text: string; border: string; icon: string }> = {
+    BRS: { bg: 'bg-violet-50',  text: 'text-violet-700', border: 'border-violet-200', icon: 'text-violet-400' },
+    URS: { bg: 'bg-sky-50',     text: 'text-sky-700',    border: 'border-sky-200',    icon: 'text-sky-400'    },
+    SRS: { bg: 'bg-amber-50',   text: 'text-amber-700',  border: 'border-amber-200',  icon: 'text-amber-400'  },
+    SDS: { bg: 'bg-emerald-50', text: 'text-emerald-700',border: 'border-emerald-200',icon: 'text-emerald-400' },
+};
+const fallbackType = { bg: 'bg-slate-50', text: 'text-slate-600', border: 'border-slate-200', icon: 'text-slate-400' };
+
+// ─── Status helper ────────────────────────────────────────────────────────────
+
+function docStatus(lastModified: string) {
+    const days = (Date.now() - new Date(lastModified).getTime()) / 86_400_000;
+    if (days < 1) return { label: 'Active',      Icon: Clock,       cls: 'text-amber-600 bg-amber-50 border-amber-200'   };
+    if (days > 7) return { label: 'For Review',  Icon: FileCheck,   cls: 'text-emerald-700 bg-emerald-50 border-emerald-200' };
+    return            { label: 'Needs Work',   Icon: AlertCircle, cls: 'text-rose-600 bg-rose-50 border-rose-200'       };
+}
+
+// ─── Card ─────────────────────────────────────────────────────────────────────
+
+function DocCard({
+    doc,
+    project,
+    onDelete,
+    onCreateCR,
+    isChild = false,
+}: {
+    doc: RequirementDoc;
+    project: Project;
+    onDelete: (e: React.MouseEvent, id: string) => void;
+    onCreateCR: (docId: string) => void;
+    isChild?: boolean;
+}) {
     const navigate = useNavigate();
+    const { lockDocument, unlockDocument } = useProjects();
+    const tc = TYPE_COLORS[doc.type] ?? fallbackType;
+    const { label: statusLabel, Icon: StatusIcon, cls: statusCls } = docStatus(doc.lastModified);
+    const updatedDate = new Date(doc.lastModified).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const isOwner = project.userRole === 'owner';
+    const canEdit = project.userRole !== 'viewer';
+
+    const handleLockToggle = async (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (doc.lockedBy) {
+            await unlockDocument(doc.id, project.id);
+        } else {
+            await lockDocument(doc.id, project.id);
+        }
+    };
 
     return (
-        <div className="space-y-6">
-            <section>
-                <div className="flex items-center justify-between mb-3">
-                    <div>
-                        <h2 className="text-base font-bold text-slate-900">Requirement Documents</h2>
-                        <p className="text-[11px] text-slate-500 mt-0.5">Structured templates for requirements engineering.</p>
+        <div
+            onClick={() => navigate(`/editor/${project.id}/${doc.id}`)}
+            className={`relative flex flex-col bg-white border rounded-xl cursor-pointer group transition-all hover:shadow-md hover:border-[var(--accent-300)] ${
+                isChild
+                    ? 'border-[var(--accent-200)] bg-[var(--accent-50)]/20'
+                    : doc.lockedBy
+                        ? 'border-amber-200'
+                        : 'border-slate-200'
+            }`}
+        >
+            {/* Card top: type icon + actions */}
+            <div className="flex items-start justify-between px-3 pt-3 pb-2">
+                {/* Icon */}
+                <div className={`w-8 h-8 rounded-lg flex items-center justify-center border ${tc.bg} ${tc.border}`}>
+                    {isChild
+                        ? <GitBranch size={14} className={tc.text} />
+                        : <FileText size={14} className={tc.text} />
+                    }
+                </div>
+
+                {/* Top-right: lock toggle (owner) + delete */}
+                <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                    {isOwner && (
+                        <button
+                            onClick={handleLockToggle}
+                            title={doc.lockedBy ? 'Unlock document' : 'Lock document'}
+                            className={`p-1.5 rounded-lg transition-colors ${
+                                doc.lockedBy
+                                    ? 'text-amber-500 bg-amber-50 hover:bg-amber-100'
+                                    : 'text-slate-400 hover:text-amber-500 hover:bg-amber-50 opacity-0 group-hover:opacity-100'
+                            }`}
+                        >
+                            {doc.lockedBy ? <Lock size={13} /> : <Unlock size={13} />}
+                        </button>
+                    )}
+                    <button
+                        onClick={(e) => onDelete(e, doc.id)}
+                        title="Delete"
+                        className="p-1.5 rounded-lg text-slate-300 hover:text-rose-500 hover:bg-rose-50 opacity-0 group-hover:opacity-100 transition-colors"
+                    >
+                        <Trash2 size={13} />
+                    </button>
+                </div>
+            </div>
+
+            {/* Title + badges */}
+            <div className="px-3 pb-2 flex-1 min-w-0">
+                <p className="text-[13px] font-semibold text-slate-800 leading-snug line-clamp-2 group-hover:text-[var(--accent-700)] transition-colors mb-1.5">
+                    {doc.title}
+                </p>
+                <div className="flex flex-wrap items-center gap-1">
+                    {/* Type badge */}
+                    <span className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-bold border ${tc.bg} ${tc.text} ${tc.border}`}>
+                        {doc.type}
+                    </span>
+                    {/* CR badge */}
+                    {doc.crNumber != null && (
+                        <span className="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-bold border border-[var(--accent-200)] bg-[var(--accent-50)] text-[var(--accent-700)]">
+                            <GitBranch size={9} />
+                            CR-{doc.crNumber}
+                        </span>
+                    )}
+                    {/* Lock badge */}
+                    {doc.lockedBy && (
+                        <span className="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-bold border border-amber-200 bg-amber-50 text-amber-700">
+                            <Lock size={9} />
+                            Locked
+                        </span>
+                    )}
+                </div>
+            </div>
+
+            {/* Footer */}
+            <div className="px-3 py-2.5 border-t border-slate-100 flex items-end justify-between gap-2">
+                {/* Status + meta */}
+                <div className="flex flex-col gap-0.5 min-w-0">
+                    <div className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium border w-fit ${statusCls}`}>
+                        <StatusIcon size={10} />
+                        {statusLabel}
                     </div>
+                    <div className="text-[10px] text-slate-400 truncate">
+                        {doc.lastEditedByName ? `${doc.lastEditedByName} · ` : ''}{updatedDate}
+                    </div>
+                </div>
+
+                {/* Create CR — always visible for root docs, editors/owners */}
+                {!doc.parentDocId && canEdit && (
+                    <button
+                        onClick={(e) => { e.stopPropagation(); onCreateCR(doc.id); }}
+                        title="Create Change Request"
+                        className="flex items-center gap-1 px-2 py-1 text-[10px] font-bold text-[var(--accent-600)] bg-[var(--accent-50)] hover:bg-[var(--accent-100)] border border-[var(--accent-200)] rounded-lg transition-colors shrink-0 self-end"
+                    >
+                        <GitBranch size={10} />
+                        CR
+                    </button>
+                )}
+            </div>
+        </div>
+    );
+}
+
+// ─── Tab ─────────────────────────────────────────────────────────────────────
+
+export default function WorkspaceTab({ project, onNewDraft, onImportDoc, onDeleteDoc }: Props) {
+    const [crTargetDocId, setCrTargetDocId] = useState<string | null>(null);
+
+    const rootDocs = project.requirementDocs.filter(d => !d.parentDocId);
+    const crDocsByParent: Record<string, RequirementDoc[]> = {};
+    for (const doc of project.requirementDocs) {
+        if (doc.parentDocId) {
+            if (!crDocsByParent[doc.parentDocId]) crDocsByParent[doc.parentDocId] = [];
+            crDocsByParent[doc.parentDocId].push(doc);
+        }
+    }
+
+    return (
+        <div className="space-y-4">
+            <div className="flex items-center justify-between">
+                <div>
+                    <h2 className="text-sm font-bold text-slate-900">Requirement Documents</h2>
+                    <p className="text-[11px] text-slate-500 mt-0.5">Structured templates for requirements engineering.</p>
+                </div>
+                <div className="flex items-center gap-2">
+                    <button
+                        onClick={onImportDoc}
+                        className="flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 text-slate-700 rounded-lg hover:border-slate-400 hover:bg-slate-50 transition-colors text-xs font-bold"
+                    >
+                        <Upload size={13} />
+                        Import
+                    </button>
                     <button
                         onClick={onNewDraft}
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 text-white rounded hover:bg-slate-800 transition-colors shadow-sm text-xs font-bold"
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors text-xs font-bold"
                     >
-                        <Plus size={14} />
+                        <Plus size={13} />
                         New Draft
                     </button>
                 </div>
+            </div>
 
-                {project.requirementDocs && project.requirementDocs.length > 0 ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {project.requirementDocs.map((doc, idx) => {
-                            const status = getDocumentStatus(doc.lastModified);
-                            const StatusIcon = status.icon;
-                            return (
-                                <div
-                                    key={idx}
-                                    onClick={() => navigate(`/editor/${project.id}/${doc.id}`)}
-                                    className="bg-white p-4 rounded-lg border border-slate-200 hover:border-[var(--accent-600)] hover:shadow-md transition-all cursor-pointer group relative flex flex-col justify-between"
-                                >
-                                    <div className="flex justify-between items-start mb-3">
-                                        <div className="flex items-start gap-3">
-                                            <div className="w-10 h-10 rounded bg-slate-50 flex items-center justify-center border border-slate-200 text-slate-400 group-hover:bg-[var(--accent-600)] group-hover:text-white transition-colors group-hover:border-[var(--accent-600)] shrink-0">
-                                                <FileText size={18} />
-                                            </div>
-                                            <div>
-                                                <div className="text-sm font-bold text-slate-900 group-hover:underline decoration-slate-400 underline-offset-2 break-words mr-8 min-w-0 pr-2 leading-tight mb-1">{doc.title}</div>
-                                                <div className="text-[11px] text-slate-500 font-medium flex items-center gap-1">
-                                                    <Calendar size={10} className="text-slate-400" />
-                                                    Updated {new Date(doc.lastModified).toLocaleDateString()}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div className="mt-auto pt-3 border-t border-slate-100 flex items-center justify-between">
-                                        <div className={`rounded-full px-2.5 py-0.5 text-[10px] font-medium border flex items-center gap-1.5 ${status.color}`}>
-                                            <StatusIcon size={12} />
-                                            {status.label}
-                                        </div>
-                                        <div className="rounded-full text-xs font-medium text-slate-600 bg-slate-100 px-2.5 py-0.5 border border-slate-200">
-                                            {doc.type}
-                                        </div>
-                                    </div>
-
-                                    <button
-                                        onClick={(e) => onDeleteDoc(e, doc.id)}
-                                        className="absolute top-4 right-4 text-slate-400 hover:text-rose-600 opacity-0 group-hover:opacity-100 transition-opacity p-2 hover:bg-rose-50 rounded"
-                                        title="Delete Document"
-                                    >
-                                        <Trash2 size={16} />
-                                    </button>
-                                </div>
-                            );
-                        })}
+            {project.requirementDocs && project.requirementDocs.length > 0 ? (
+                <div className="space-y-5">
+                    {/* All root docs in one 3-column grid */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {rootDocs.map((doc) => (
+                            <DocCard
+                                key={doc.id}
+                                doc={doc}
+                                project={project}
+                                onDelete={onDeleteDoc}
+                                onCreateCR={setCrTargetDocId}
+                            />
+                        ))}
                     </div>
-                ) : (
-                    <div className="text-center py-12 bg-slate-50 rounded border border-slate-200 border-dashed">
-                        <LayoutTemplate size={32} className="mx-auto text-slate-300 mb-3" />
-                        <h3 className="text-sm font-bold text-slate-900 mb-1">No requirement documents</h3>
-                        <p className="text-slate-500 text-sm mb-4">Start drafting your first structured requirements spec.</p>
+
+                    {/* CR children grouped per parent */}
+                    {rootDocs.map((doc) => crDocsByParent[doc.id]?.length > 0 && (
+                        <div key={`cr-${doc.id}`} className="ml-4 border-l-2 border-[var(--accent-200)] pl-4 space-y-2">
+                            <div className="flex items-center gap-1.5 text-[10px] text-slate-400 font-bold uppercase tracking-wide">
+                                <ChevronRight size={10} />
+                                Change Requests for <span className="text-slate-500">{doc.title}</span>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                                {crDocsByParent[doc.id].map((crDoc) => (
+                                    <DocCard
+                                        key={crDoc.id}
+                                        doc={crDoc}
+                                        project={project}
+                                        onDelete={onDeleteDoc}
+                                        onCreateCR={setCrTargetDocId}
+                                        isChild
+                                    />
+                                ))}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            ) : (
+                <div className="text-center py-12 bg-slate-50 rounded-xl border border-slate-200 border-dashed">
+                    <LayoutTemplate size={28} className="mx-auto text-slate-300 mb-3" />
+                    <h3 className="text-sm font-bold text-slate-900 mb-1">No requirement documents</h3>
+                    <p className="text-slate-500 text-[12px] mb-4">Start drafting your first structured requirements spec.</p>
+                    <div className="flex items-center justify-center gap-2">
+                        <button
+                            onClick={onImportDoc}
+                            className="px-4 py-2 border border-slate-200 text-slate-700 rounded-lg text-xs font-bold hover:border-slate-400 hover:bg-white transition-colors"
+                        >
+                            <span className="flex items-center gap-1.5"><Upload size={13} /> Import Document</span>
+                        </button>
                         <button
                             onClick={onNewDraft}
-                            className="px-4 py-2 bg-slate-900 text-white rounded text-sm font-bold hover:bg-slate-800 transition-colors shadow-sm"
+                            className="px-4 py-2 bg-slate-900 text-white rounded-lg text-xs font-bold hover:bg-slate-800 transition-colors"
                         >
                             Create New Draft
                         </button>
                     </div>
-                )}
-            </section>
+                </div>
+            )}
+
+            {crTargetDocId && (
+                <CreateCRDialog
+                    projectId={project.id}
+                    originalDocId={crTargetDocId}
+                    onClose={() => setCrTargetDocId(null)}
+                />
+            )}
         </div>
     );
 }

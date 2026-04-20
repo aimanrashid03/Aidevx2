@@ -5,6 +5,8 @@ import { supabase } from '../lib/supabase';
 import { Save, ArrowLeft, Upload, File, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { extractText } from '../lib/extractText';
+import { validateFile, validateFileCount } from '../lib/validateUpload';
+import { UPLOAD_LIMITS, ALLOWED_EXTENSIONS_DISPLAY } from '../constants/upload';
 
 export default function AddProject() {
     const navigate = useNavigate();
@@ -21,9 +23,29 @@ export default function AddProject() {
     });
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files && e.target.files.length > 0) {
-            const newFiles = Array.from(e.target.files);
-            setFormData(prev => ({ ...prev, documents: [...prev.documents, ...newFiles] }));
+        if (!e.target.files || e.target.files.length === 0) return;
+        const incoming = Array.from(e.target.files);
+        e.target.value = '';
+
+        const countCheck = validateFileCount(formData.documents.length, incoming.length);
+        if (!countCheck.valid) {
+            alert(countCheck.error);
+            return;
+        }
+
+        const errors: string[] = [];
+        const validFiles: File[] = [];
+        for (const file of incoming) {
+            const check = validateFile(file);
+            if (!check.valid) {
+                errors.push(check.error!);
+            } else {
+                validFiles.push(file);
+            }
+        }
+        if (errors.length > 0) alert(errors.join('\n'));
+        if (validFiles.length > 0) {
+            setFormData(prev => ({ ...prev, documents: [...prev.documents, ...validFiles] }));
         }
     };
 
@@ -156,7 +178,7 @@ export default function AddProject() {
                                     <Upload size={16} className="text-slate-500" />
                                 </div>
                                 <p className="text-xs font-bold text-slate-900 mb-0.5">Click to upload files</p>
-                                <p className="text-[10px] text-slate-400 mb-2">PDF, DOCX, PNG up to 10MB</p>
+                                <p className="text-[10px] text-slate-400 mb-2">{ALLOWED_EXTENSIONS_DISPLAY} — max {UPLOAD_LIMITS.MAX_FILE_SIZE_MB} MB each</p>
                                 <span className="px-3 py-1 bg-white border border-slate-300 rounded text-xs font-bold text-slate-700 hover:bg-slate-50 shadow-sm">Browse</span>
                                 <input type="file" multiple ref={fileInputRef} className="hidden" onChange={handleFileChange} />
                             </div>

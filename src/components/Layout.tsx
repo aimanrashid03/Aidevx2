@@ -177,23 +177,26 @@ export default function Layout() {
             <div className="flex flex-1 overflow-hidden">
 
                 {/* ── Sidebar ───────────────────────────────────────────── */}
+                {/* Collapse toggle button — outside aside so overflow-hidden doesn't clip it */}
+                <button
+                    onClick={toggleSidebar}
+                    className={clsx(
+                        "fixed top-[calc(2.5rem+2.5rem)] h-7 w-7 rounded-full flex items-center justify-center text-white shadow-sm z-[100] transition-all duration-300 ease-in-out cursor-pointer -translate-x-1/2",
+                        isCollapsed ? "left-14" : "left-64"
+                    )}
+                    style={{ background: 'var(--accent-600)' }}
+                    aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+                >
+                    {isCollapsed ? <ChevronRight size={13} /> : <ChevronLeft size={13} />}
+                </button>
+
                 <aside
                     className={clsx(
                         "bg-slate-50/50 border-r border-slate-200 flex flex-col fixed h-[calc(100vh-2.5rem)] z-30 transition-[width] duration-300 ease-in-out",
                         isCollapsed ? "w-14" : "w-64"
                     )}
                 >
-                    {/* Collapse toggle button */}
-                    <button
-                        onClick={toggleSidebar}
-                        className="absolute -right-3.5 top-10 h-7 w-7 rounded-full flex items-center justify-center text-white shadow-sm z-[100] transition-all cursor-pointer"
-                        style={{ background: 'var(--accent-600)' }}
-                        aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-                    >
-                        {isCollapsed ? <ChevronRight size={13} /> : <ChevronLeft size={13} />}
-                    </button>
-
-                    <nav className="flex-1 overflow-y-auto px-2 py-3 space-y-0.5">
+                    <nav className="flex-1 overflow-y-auto overflow-x-hidden px-2 py-3 space-y-0.5">
                         {!isCollapsed && (
                             <div className="px-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Main</div>
                         )}
@@ -220,13 +223,6 @@ export default function Layout() {
                                     )} />
                                     {!isCollapsed && <span className="whitespace-nowrap truncate font-medium">Projects</span>}
                                 </Link>
-
-                                {/* Collapsed tooltip */}
-                                {isCollapsed && (
-                                    <span className="pointer-events-none absolute left-full z-50 ml-2 whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-xs font-medium text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
-                                        Projects
-                                    </span>
-                                )}
 
                                 {!isCollapsed && (
                                     <button
@@ -284,11 +280,6 @@ export default function Layout() {
                                 )} />
                                 {!isCollapsed && <span className="whitespace-nowrap font-medium">Document Repository</span>}
                             </Link>
-                            {isCollapsed && (
-                                <span className="pointer-events-none absolute left-full top-0 z-50 ml-2 whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-xs font-medium text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
-                                    Document Repository
-                                </span>
-                            )}
                         </div>
 
                         {/* Admin Panel */}
@@ -317,18 +308,13 @@ export default function Layout() {
                                         )} />
                                         {!isCollapsed && <span className="whitespace-nowrap">Admin Panel</span>}
                                     </Link>
-                                    {isCollapsed && (
-                                        <span className="pointer-events-none absolute left-full top-0 z-50 ml-2 whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-xs font-medium text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
-                                            Admin Panel
-                                        </span>
-                                    )}
                                 </div>
                             </div>
                         )}
                     </nav>
 
                     {/* Sign out at bottom */}
-                    <div className="border-t border-slate-200 px-2 py-2">
+                    <div className="border-t border-slate-200 px-2 py-2 overflow-x-hidden shrink-0">
                         <div className="group relative">
                             <button
                                 onClick={async () => {
@@ -343,11 +329,6 @@ export default function Layout() {
                                 <LogOut size={17} className="flex-shrink-0 text-slate-400 group-hover:text-rose-500 transition-colors" />
                                 {!isCollapsed && <span className="whitespace-nowrap font-medium">Sign Out</span>}
                             </button>
-                            {isCollapsed && (
-                                <span className="pointer-events-none absolute left-full bottom-0 z-50 ml-2 whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-xs font-medium text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
-                                    Sign Out
-                                </span>
-                            )}
                         </div>
                     </div>
                 </aside>

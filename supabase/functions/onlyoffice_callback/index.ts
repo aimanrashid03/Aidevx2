@@ -55,9 +55,15 @@ serve(async (req: Request) => {
 
         // deno-lint-ignore no-explicit-any
         const body: any = await req.json()
-        const { status, url: docUrl, key: callbackKey } = body
+        const { status, url: docUrl, key: callbackKey, users, actions } = body
 
         console.log(`OnlyOffice callback: docId=${docId} projectId=${projectId} status=${status} key=${callbackKey}`)
+
+        // Resolve the user who triggered this save.
+        // Prefer actions[0].userid (specific save trigger, OO >= 7.1), fall back to users[0].
+        const editingUserId: string | null =
+            actions?.[0]?.userid ??
+            (Array.isArray(users) && users.length > 0 ? users[0] : null)
 
         // Only process save-ready statuses
         if (status !== 2 && status !== 6) {
@@ -84,7 +90,7 @@ serve(async (req: Request) => {
         // ── Step 1: Fetch current document record ─────────────────────────────
         const { data: currentDoc, error: fetchErr } = await supabaseAdmin
             .from('requirement_docs')
-            .select('id, current_version, storage_path, document_key, title, status, section_statuses')
+            .select('id, current_version, storage_path, document_key, title, status, section_statuses, locked_by')
             .eq('id', docId)
             .eq('project_id', projectId)
             .single()
@@ -95,6 +101,36 @@ serve(async (req: Request) => {
                 status: 200,
                 headers: { 'Content-Type': 'application/json', ...corsHeaders },
             })
+        }
+
+        // ── Lock guard: reject saves from non-owners when doc is locked ──────
+        if (currentDoc.locked_by) {
+            // If we can't identify the editing user, always reject saves on a locked doc
+            if (!editingUserId) {
+                console.log(`OnlyOffice callback: doc locked but no editingUserId, rejecting save`)
+                return new Response(JSON.stringify({ error: 0 }), {
+                    status: 200,
+                    headers: { 'Content-Type': 'application/json', ...corsHeaders },
+                })
+            }
+
+            // Allow the lock owner through without a DB round-trip
+            if (editingUserId !== currentDoc.locked_by) {
+                const { data: memberRow } = await supabaseAdmin
+                    .from('project_members')
+                    .select('role')
+                    .eq('project_id', projectId)
+                    .eq('user_id', editingUserId)
+                    .single()
+
+                if (!memberRow || memberRow.role !== 'owner') {
+                    console.log(`OnlyOffice callback: doc locked by ${currentDoc.locked_by}, rejecting save from ${editingUserId}`)
+                    return new Response(JSON.stringify({ error: 0 }), {
+                        status: 200,
+                        headers: { 'Content-Type': 'application/json', ...corsHeaders },
+                    })
+                }
+            }
         }
 
         // ── Idempotency: skip stale callbacks ─────────────────────────────────
@@ -141,6 +177,7 @@ serve(async (req: Request) => {
                     section_statuses: currentDoc.section_statuses,
                     title: currentDoc.title,
                     status: currentDoc.status,
+                    created_by: editingUserId,
                     change_summary: 'Saved via OnlyOffice',
                 })
 
@@ -181,6 +218,7 @@ serve(async (req: Request) => {
                 document_key: newDocumentKey,
                 current_version: nextVersion,
                 last_modified: new Date().toISOString(),
+                last_edited_by: editingUserId,
                 content: null,
             })
             .eq('id', docId)

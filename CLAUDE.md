@@ -109,14 +109,15 @@ src/
     AdminRoute.tsx                 # Route guard: redirects to /dashboard if profile.role !== 'admin'
     ConfirmDialog.tsx              # Reusable confirm modal (danger/default variants)
     EmbeddingStatusBadge.tsx      # Unified RAG indexing status badge (pending/processing/processed/failed)
+    CoverageBreakdown.tsx         # Per-section BRS coverage table (compact bar + full collapsible grouped view)
     ProjectMembers.tsx            # Collaborator management UI (invite, remove, role change)
     Layout.tsx                    # Sticky top header (logo, user avatar, theme picker, logout) — no sidebar
     PresenceIndicator.tsx
     project-tabs/
-      DashboardTab.tsx
+      DashboardTab.tsx            # Project health panel — blended checklist+coverage score, coverage modal
       WorkspaceTab.tsx
       LibraryTab.tsx               # Tabbed container for supporting files, user stories, diagrams
-      LibrarySupportingFiles.tsx   # File upload, embedding, download, delete
+      LibrarySupportingFiles.tsx   # File upload, embedding, download, delete; fires assess_coverage after embed
       LibraryUserStories.tsx       # User story template CRUD with auto-indexing
       LibraryDiagramNotes.tsx      # Diagram note CRUD
       CollaboratorsTab.tsx
@@ -126,9 +127,10 @@ src/
     ProjectContext.tsx           # Projects + collaboration (userRole, memberCount, ownerName)
   hooks/
     useProjectMembers.ts         # Invite/remove/update members with role management
-    useUserStories.ts            # User story CRUD + RAG embedding + chunk cleanup on delete
+    useUserStories.ts            # User story CRUD + RAG embedding + chunk cleanup on delete; fires assess_coverage after embed
     useDiagramNotes.ts           # Diagram note CRUD
     useConfirmDialog.ts          # Promise-based confirm dialog + toast notification hook
+    useCoverageAssessment.ts     # Fetches/runs semantic coverage assessment; exposes assessment, assessing, isStale, assessmentError, runAssessment, refetch
   lib/
     admin/
       adminApi.ts                # callAdminUsers(), callAdminTelemetry(), pingEdgeFunction()
@@ -157,6 +159,7 @@ supabase/
     generate_section/            # Per-section AI generation (streaming SSE, chat mode, RAG)
     auto_generate_document/      # Full-document auto-generation (BRS) with progress streaming
     generate_prototype/          # UI prototype generation from requirement docs (SSE progress events)
+    assess_coverage/             # Semantic coverage assessment — dry-run RAG against all BRS sections, no LLM (verify_jwt=false)
     onlyoffice_callback/         # OO save callback — rotates documentKey
     embed_document/              # Document embedding for RAG pipeline
     admin-users/                 # Admin: user CRUD, role management, profile operations
@@ -250,6 +253,7 @@ public/
 | `20260415000001_admin_audit_log.sql` | `admin_audit_log` table — admin action audit trail |
 | `20260415000002_app_config.sql` | `app_config` table — feature flags + runtime model overrides |
 | `20260415100000_admin_telemetry_helpers.sql` | SQL helper functions for `admin-telemetry` (SECURITY DEFINER, service_role only) |
+| `20260417000000_rag_coverage_assessments.sql` | `rag_coverage_assessments` table — cached semantic coverage per project per doc type; UNIQUE (project_id, doc_type); RLS: project members read only, service role writes |
 
 ## AI Generation
 
@@ -291,10 +295,26 @@ public/
 - `embedBatch()` in `ragHelper.ts`: batch-embeds N queries in a single Voyage AI API call — used by auto-generate to reduce 40 individual calls to 2
 - `performRagWithEmbeddings()` in `ragHelper.ts`: search-only variant that accepts pre-computed embeddings, skipping the embed step
 - Structure-aware chunker: preserves heading boundaries, keeps tables intact
-- Context quality assessment: none/low/medium/high
+- Context quality assessment: none/low/medium/high — computed from **top-6 highest-similarity chunks** (not all matched chunks) to avoid dilution by borderline 0.30-threshold matches
+- Quality thresholds (calibrated for voyage-3-lite 512d): high > 0.48, medium > 0.38, low ≤ 0.38, none = 0 chunks
 - Default config: match threshold 0.30, match count 18, embedding dimensions 512
 - **DB migration** `20260401000000_voyage_embeddings.sql`: resizes pgvector column from 1536d → 512d, truncates `document_chunks`, resets `embedding_status → pending`. All documents must be re-embedded after applying this migration.
 - **DB migration** `20260402100000_add_embedding_index.sql`: adds HNSW index on `document_chunks.embedding` (`vector_cosine_ops`, m=16, ef_construction=64) for faster similarity search. HNSW chosen over IVFFlat — no training step, better recall, suits incrementally growing data.
+
+### Semantic Coverage Assessment (`assess_coverage`)
+- Lightweight RAG dry-run against all 19 BRS auto-generate sections — **no LLM calls**, only embedding + vector search
+- Cost ~$0.001 per run (2 Voyage AI batch-embed calls + 19 DB vector searches)
+- **Auto-triggered** (fire-and-forget) after every `embed_document` call in `LibrarySupportingFiles` and `useUserStories` — cached result stays fresh automatically
+- Result cached in `rag_coverage_assessments` (upserted on each run); one row per (project_id, doc_type)
+- `sections` JSONB: `[{ title, quality, chunkCount, avgSimilarity, topSources }]` — avgSimilarity is the full-chunk average; quality is derived from top-6 chunks
+- `overall_score`: weighted average (high=1.0, medium=0.66, low=0.33, none=0)
+- `chunk_count_at_assessment`: snapshot for staleness detection (frontend flags stale if delta > 2)
+- **Staleness detection**: `useCoverageAssessment` computes `isStale` by comparing `chunkCountAtAssessment` vs current indexed count
+- **Project Health panel** (DashboardTab): blended score = 40% checklist + 60% coverage; "View Details" button opens a modal with full per-section breakdown (all groups pre-expanded)
+- **BRS creation modal** (ProjectDetails): replaces naive "X/5 materials" meter with semantic coverage bar + compact breakdown; syncs via `refetch()` when modal opens
+- `useCoverageAssessment(projectId, docType, currentChunkCount)` → `{ assessment, loading, assessing, assessmentError, isStale, runAssessment, refetch }`
+- `CoverageBreakdown` component: `compact` mode = stacked quality bar + legend; full mode = collapsible groups; `initialExpandAll` prop pre-expands all groups (used in modal)
+- Deploy: `supabase functions deploy assess_coverage --no-verify-jwt`
 
 ### LLM Configuration (`llmConfig.ts`)
 - Provider: **OpenRouter** (default), configurable via `LLM_PROVIDER` env var — `openai` for OpenAI-compatible (OpenRouter, Ollama, etc.), `anthropic` for Anthropic direct
@@ -327,6 +347,7 @@ public/
 supabase functions deploy generate_section --no-verify-jwt
 supabase functions deploy auto_generate_document --no-verify-jwt
 supabase functions deploy generate_prototype --no-verify-jwt
+supabase functions deploy assess_coverage --no-verify-jwt
 supabase functions deploy onlyoffice_callback
 supabase functions deploy embed_document --no-verify-jwt
 supabase functions deploy admin-users
@@ -355,7 +376,9 @@ supabase secrets set ONLYOFFICE_CALLBACK_SECRET=... SUPABASE_SERVICE_ROLE_KEY=..
 - `AutoGenerateProgress`: modal component, receives project/doc IDs and streams progress
 - `useConfirmDialog`: returns `{ dialog, notificationBanner, confirm, notify }` — render `dialog` and `notificationBanner` in JSX
 - `EmbeddingStatusBadge`: accepts `status: string` — unified badge used by both supporting files and user stories
-- `ProjectDetails`: uses URL search param `?tab=` for tab persistence; computes RAG readiness from indexed files + stories
+- `CoverageBreakdown`: props `{ sections, loading?, compact?, initialExpandAll? }` — compact=true for modal summary bar; initialExpandAll=true pre-expands all groups (modal detail view)
+- `useCoverageAssessment`: returns `{ assessment, loading, assessing, assessmentError, isStale, runAssessment, refetch }` — `refetch` does DB-only re-read (no edge function); call it when opening the BRS modal to sync with DashboardTab
+- `ProjectDetails`: uses URL search param `?tab=` for tab persistence; computes RAG readiness from indexed files + stories; calls `refetchCoverage()` when BRS template selected to sync with DashboardTab assessment
 - `AIGeneratePanel`: accepts optional `onClose` callback; diagram format preference persisted via `idb-keyval`; `DiagramPreview` renders live inside the panel
 - `ErrorBoundary`: class component; accepts optional `fallback: (error: Error) => ReactNode` render prop
 

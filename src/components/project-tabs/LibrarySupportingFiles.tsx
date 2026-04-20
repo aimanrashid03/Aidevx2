@@ -5,6 +5,8 @@ import type { Project } from '../../context/ProjectContext';
 import EmbeddingStatusBadge from '../EmbeddingStatusBadge';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import { extractText } from '../../lib/extractText';
+import { validateFile, validateFileCount } from '../../lib/validateUpload';
+import { UPLOAD_LIMITS, ALLOWED_EXTENSIONS_DISPLAY } from '../../constants/upload';
 
 interface UploadQueueItem {
     name: string;
@@ -74,14 +76,37 @@ export default function LibrarySupportingFiles({ project, onFilesChanged }: Prop
                 .eq('id', docRow.id);
         }
 
+        // 5. Refresh semantic coverage assessment (fire-and-forget)
+        supabase.functions.invoke('assess_coverage', {
+            body: { projectId: project.id, docType: 'BRS' },
+        }).catch(() => {});
+
         setUploadQueue(q => q.map(item => item.name === file.name ? { ...item, state: 'done' } : item));
     };
 
     const processFiles = async (files: File[]) => {
-        const newItems: UploadQueueItem[] = files.map(f => ({ name: f.name, state: 'queued' }));
+        const currentCount = project.documents?.length ?? 0;
+        const countCheck = validateFileCount(currentCount, files.length);
+        if (!countCheck.valid) {
+            notify({ message: countCheck.error!, variant: 'error' });
+            return;
+        }
+
+        const validFiles: File[] = [];
+        for (const file of files) {
+            const check = validateFile(file);
+            if (!check.valid) {
+                notify({ message: check.error!, variant: 'error' });
+            } else {
+                validFiles.push(file);
+            }
+        }
+        if (validFiles.length === 0) return;
+
+        const newItems: UploadQueueItem[] = validFiles.map(f => ({ name: f.name, state: 'queued' }));
         setUploadQueue(prev => [...prev, ...newItems]);
 
-        for (const file of files) {
+        for (const file of validFiles) {
             try {
                 await processFile(file);
             } catch (err) {
@@ -155,7 +180,7 @@ export default function LibrarySupportingFiles({ project, onFilesChanged }: Prop
                     <h3 className="text-sm font-bold text-slate-900">Supporting Files</h3>
                     <span className="rounded-full bg-[var(--accent-100)] text-[var(--accent-700)] px-2.5 py-0.5 text-[10px] font-medium border border-[var(--accent-200)]">AI Indexed</span>
                 </div>
-                <p className="text-[11px] text-slate-500">PDF, DOCX, TXT — used by AI for context</p>
+                <p className="text-[11px] text-slate-500">{ALLOWED_EXTENSIONS_DISPLAY} — max {UPLOAD_LIMITS.MAX_FILE_SIZE_MB} MB each, up to {UPLOAD_LIMITS.MAX_FILES_PER_PROJECT} files</p>
             </div>
 
             {/* Fixed Upload Zone */}
@@ -177,7 +202,7 @@ export default function LibrarySupportingFiles({ project, onFilesChanged }: Prop
                     <CloudUpload size={18} className="text-slate-600" />
                 </div>
                 <p className="text-xs font-bold text-slate-900 mb-0.5">Drop files here or browse</p>
-                <p className="text-[10px] text-slate-400 mb-2">Multiple files supported</p>
+                <p className="text-[10px] text-slate-400 mb-2">Up to {UPLOAD_LIMITS.MAX_FILES_PER_PROJECT} files · {UPLOAD_LIMITS.MAX_FILE_SIZE_MB} MB max each</p>
                 <button
                     onClick={() => fileInputRef.current?.click()}
                     className="px-3 py-1 bg-white border border-slate-300 rounded text-xs font-bold text-slate-700 hover:bg-slate-50 shadow-sm transition-all"

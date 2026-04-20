@@ -372,6 +372,9 @@ verify_jwt = false
 [functions.admin-telemetry]
 verify_jwt = false
 
+[functions.assess_coverage]
+verify_jwt = false
+
 [edge_runtime]
 enabled = true
 # Supported request policies: `oneshot`, `per_worker`.

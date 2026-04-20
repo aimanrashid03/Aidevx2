@@ -32,6 +32,7 @@ function escTs(s) {
 const systemPrompt = read('corrad-design/system-prompt.md')
 const baseCss = read('corrad-design/preview/base.css')
 const rules = JSON.parse(read('corrad-design/spec/rules.json'))
+const iconMap = JSON.parse(read('corrad-design/icons.json'))
 
 // Curated snippets — compact set for few-shot context
 const statCard = read('corrad-design/snippets/cards/stat-card.html')
@@ -325,10 +326,11 @@ Return your response in exactly TWO sections, in this order. No other text.
 ### SECTION 1 — STRUCTURE (JSON, no page HTML)
 
 Emit a single line starting with "STRUCTURE:" followed by a compact JSON object.
-Do NOT include html fields for pages here. Modal html IS included here (keep modals small).
+Do NOT include html fields for pages here. Modal html IS included here (keep modals small, max 2 modals, each under 15 lines of HTML).
+For nav item icons, use the icon name string (e.g. "home", "users") — NOT inline SVG.
 Use single quotes for all HTML attributes inside modal html strings.
 
-STRUCTURE:{"systemName":"Short Name","shortDescription":"One-line subtitle","navGroups":[{"label":"MAIN","items":[{"key":"dashboard","title":"Dashboard","icon":"<svg xmlns='http://www.w3.org/2000/svg' class='h-4 w-4 shrink-0' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z'/><polyline points='9 22 9 12 15 12 15 22'/></svg>"}]}],"pages":[{"key":"dashboard","title":"Dashboard","type":"dashboard"},{"key":"users","title":"Users","type":"list"}],"modals":[{"id":"confirm-delete","html":"<div id='confirm-delete' class='hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm'><div class='w-full max-w-md rounded-lg border border-slate-200 bg-white p-4 shadow-2xl'><p class='text-base font-semibold text-slate-900'>Delete item?</p><p class='mt-1 text-sm text-slate-600'>This cannot be undone.</p><div class='mt-4 flex justify-end gap-2'><button onclick='closeModal(\"confirm-delete\")' class='rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium shadow-sm hover:bg-slate-50'>Cancel</button><button onclick='closeModal(\"confirm-delete\");showToast(\"Deleted\",\"success\")' class='rounded-lg bg-rose-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-rose-700'>Delete</button></div></div></div>"}]}
+STRUCTURE:{"systemName":"Short Name","shortDescription":"One-line subtitle","navGroups":[{"label":"MAIN","items":[{"key":"dashboard","title":"Dashboard","icon":"layout-dashboard"},{"key":"users","title":"Users","icon":"users"}]}],"pages":[{"key":"dashboard","title":"Dashboard","type":"dashboard"},{"key":"users","title":"Users","type":"list"}],"modals":[{"id":"confirm-delete","html":"<div id='confirm-delete' class='hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm'><div class='w-full max-w-md rounded-lg border border-slate-200 bg-white p-4 shadow-2xl'><p class='text-base font-semibold text-slate-900'>Delete item?</p><p class='mt-1 text-sm text-slate-600'>This cannot be undone.</p><div class='mt-4 flex justify-end gap-2'><button onclick='closeModal(\"confirm-delete\")' class='rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium shadow-sm hover:bg-slate-50'>Cancel</button><button onclick='closeModal(\"confirm-delete\");showToast(\"Deleted\",\"success\")' class='rounded-lg bg-rose-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-rose-700'>Delete</button></div></div></div>"}]}
 
 ### SECTION 2 — PAGE HTML BLOCKS
 
@@ -349,14 +351,14 @@ Page HTML rules:
 - Do NOT include a page-title h1 (the shell topbar shows the current page title)
 - Tailwind utility classes only; only permitted inline style: style="width: X%" on bar chart fills
 - Tables must have id="tbl-<pagekey>" and be wrapped in <div class="rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden">
-- List pages: 10-15 sample rows with varied status badges
+- List pages: 5-8 sample rows with varied status badges
 - Wire interactivity via onclick: openModal('id'), closeModal('id'), showToast('msg','success'|'error'|'info'), sortTable('tbl-id',colIdx), switchTab('group-id','tab-key'), toggleDropdown('id'), navigate('page-key')
-- Icons: inline SVG only with class="h-4 w-4" — never emoji or remote URL
+- Icons: use <i data-icon="name" class="h-4 w-4"></i> — NEVER write inline SVG for icons. Allowed names: home, users, user, file-text, settings, bar-chart, bar-chart-2, search, plus, edit, trash, eye, check, x, bell, calendar, shield, download, upload, filter, chevron-right, chevron-down, arrow-up, arrow-down, clock, mail, database, layout-dashboard, list, package, activity, alert-circle, log-out
 - You may freely use double or single quotes for HTML attributes here (no JSON escaping needed)
 
-## REQUIRED PAGES (generate 6-8)
+## REQUIRED PAGES (generate 5-7)
 
-1. Dashboard (type:dashboard) — hero banner + 4 stat cards + 1 bar chart + 1 donut + recent activity table
+1. Dashboard (type:dashboard) — hero banner + 3-4 stat cards + 1 chart (bar or donut, not both) + recent activity table (5 rows max)
 2-3. Entity list pages (type:list) — search bar + filter tabs + sortable table + "+ New" button
 1. Detail/edit (type:detail) — breadcrumb + switchTab tabs + form grid + Save button
 1. Analytics (type:analytics) — date range selector + 2 bar charts + breakdown table
@@ -404,6 +406,7 @@ const output = `// GENERATED — DO NOT EDIT — regenerate with: npm run bundle
  *   CORRAD_BASE_CSS               — preview/base.css verbatim
  *   CORRAD_FORBIDDEN_CLASSES      — forbidden Tailwind classes array
  *   CORRAD_FORBIDDEN_COLOR_PREFIXES — forbidden color prefix strings array
+ *   CORRAD_ICON_MAP               — icon name → SVG lookup for server-side resolution
  *   CORRAD_SHELL_TEMPLATE         — hand-written HTML shell with {{PLACEHOLDERS}}
  *   PROTOTYPE_SYSTEM_PROMPT_EXTENSION — JSON output format + page rules addendum
  */
@@ -417,6 +420,8 @@ export const CORRAD_BASE_CSS = \`${escTs(baseCss)}\`
 export const CORRAD_FORBIDDEN_CLASSES: string[] = ${JSON.stringify(forbiddenClasses, null, 2)}
 
 export const CORRAD_FORBIDDEN_COLOR_PREFIXES: string[] = ${JSON.stringify(forbiddenColorPrefixes, null, 2)}
+
+export const CORRAD_ICON_MAP: Record<string, string> = ${JSON.stringify(iconMap, null, 2)}
 
 export const CORRAD_SHELL_TEMPLATE = \`${escTs(shellTemplate)}\`
 

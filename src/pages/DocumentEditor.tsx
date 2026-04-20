@@ -1,7 +1,8 @@
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom'
 import {
     ArrowLeft, Download, History, MessageSquare,
-    FileText, FileDown, Loader2, AlertCircle, Sparkles
+    FileText, FileDown, Loader2, AlertCircle, Sparkles,
+    Lock, Unlock, GitBranch, ChevronRight,
 } from 'lucide-react'
 import { useProjects, type DocVersion } from '../context/ProjectContext'
 import { useState, useEffect, useRef, useCallback } from 'react'
@@ -9,6 +10,8 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useDocumentComments } from '../hooks/useDocumentComments'
 import { useDocumentPresence } from '../hooks/useDocumentPresence'
+import { useDocumentLock } from '../hooks/useDocumentLock'
+import { useConfirmDialog } from '../hooks/useConfirmDialog'
 import VersionHistory from '../components/VersionHistory'
 import VersionViewer from '../components/VersionViewer'
 import CommentsSidebar from '../components/CommentsSidebar'
@@ -24,6 +27,14 @@ import {
 import { extractSectionsFromDocx, type DocHeading } from '../lib/onlyoffice/extractSections'
 import { detectDocMode } from '../lib/onlyoffice/docModeDetector'
 
+// ─── Doc type badge colours (matches Dashboard.tsx) ────────────────────────
+const DOC_TYPE_COLORS: Record<string, { bg: string; text: string; border: string }> = {
+    BRS: { bg: 'bg-violet-100', text: 'text-violet-700', border: 'border-violet-200' },
+    URS: { bg: 'bg-sky-100', text: 'text-sky-700', border: 'border-sky-200' },
+    SRS: { bg: 'bg-amber-100', text: 'text-amber-700', border: 'border-amber-200' },
+    SDS: { bg: 'bg-emerald-100', text: 'text-emerald-700', border: 'border-emerald-200' },
+}
+
 // ─── Component ─────────────────────────────────────────────────────────────────
 
 export default function DocumentEditor() {
@@ -31,13 +42,14 @@ export default function DocumentEditor() {
     const navigate = useNavigate()
     const [searchParams] = useSearchParams()
     const { user, profile } = useAuth()
-    const { projects, loading: projectsLoading, restoreVersion, restoreOnlyOfficeVersion, refreshProjects } = useProjects()
+    const { projects, loading: projectsLoading, restoreVersion, restoreOnlyOfficeVersion, refreshProjects, lockDocument, unlockDocument } = useProjects()
     const project = projects.find(p => p.id === projectId)
 
     const existingDoc = project?.requirementDocs.find(d => d.id === templateId)
     const isNewDoc = !existingDoc
 
     const docType = existingDoc ? existingDoc.type : (templateId || 'BRS')
+    const docTypeColors = DOC_TYPE_COLORS[docType] || DOC_TYPE_COLORS['BRS']
 
     // ─── State ─────────────────────────────────────────────────────────────────
 
@@ -54,13 +66,13 @@ export default function DocumentEditor() {
     // TOC populated by mammoth parse on doc load
     const [tocSections, setTocSections] = useState<DocHeading[]>([])
 
-
     // Auto-generate mode (detected from ?autoGenerate=true query param)
     const isAutoGenerate = searchParams.get('autoGenerate') === 'true' && isNewDoc && templateId === 'BRS'
     const [autoGenerateComplete, setAutoGenerateComplete] = useState(false)
 
     // AI panel state
     const [showAiPanel, setShowAiPanel] = useState(true)
+    const prevAiPanelVisible = useRef(true)
 
     // Sidebar toggles
     const [showVersionHistory, setShowVersionHistory] = useState(false)
@@ -69,22 +81,36 @@ export default function DocumentEditor() {
     const [showExport, setShowExport] = useState(false)
 
     const editorRef = useRef<OnlyOfficeEditorHandle>(null)
-    // stable docId ref (doesn't go stale in callbacks)
     const docIdRef = useRef<string | null>(existingDoc?.id ?? null)
-    // prevents React StrictMode double-fire from creating duplicate docs
     const initKeyRef = useRef<string | null>(null)
-    // tracks previous documentKey to detect rotations (for TOC re-extract)
     const prevDocumentKeyRef = useRef<string | null>(null)
-    // ref for export dropdown click-outside detection
     const exportDropdownRef = useRef<HTMLDivElement>(null)
 
-    // ─── Collaboration hooks ────────────────────────────────────────────────────
+    // ─── Hooks ──────────────────────────────────────────────────────────────────
 
     const docId = existingDoc?.id
     const { comments, addComment, resolveComment, deleteComment } = useDocumentComments(docId, projectId)
     const { otherUsers, totalViewers } = useDocumentPresence(docId)
+    const { lockedBy: realtimeLockedBy } = useDocumentLock(docId, projectId)
+    const { dialog, notificationBanner, confirm, notify } = useConfirmDialog()
+
+    // Effective lock state: prefer realtime subscription value, fall back to DB value on initial load
+    const lockedBy = realtimeLockedBy !== null ? realtimeLockedBy : (existingDoc?.lockedBy ?? null)
+    const isDocLocked = Boolean(lockedBy)
+    const isOwner = project?.userRole === 'owner'
 
     const sectionTitles = tocSections.map(s => s.title)
+
+    // ─── AI panel auto-hide toast ────────────────────────────────────────────
+
+    const aiPanelVisible = showAiPanel && !showVersionHistory && !showComments
+
+    useEffect(() => {
+        if (prevAiPanelVisible.current && !aiPanelVisible && showAiPanel) {
+            notify({ message: 'AI panel hidden — click ✨ to reopen', variant: 'success', duration: 2500 })
+        }
+        prevAiPanelVisible.current = aiPanelVisible
+    }, [aiPanelVisible, showAiPanel, notify])
 
     // ─── Document initialization ────────────────────────────────────────────────
 
@@ -98,8 +124,6 @@ export default function DocumentEditor() {
     ) => {
         // Case 1: Already an OnlyOffice document (has storage_path + document_key)
         if (doc && detectDocMode(doc) === 'onlyoffice' && doc.storagePath && doc.documentKey) {
-            // Verify the DOCX actually exists in storage — ghost entries (storage_path in DB
-            // but file missing) happen when a previous upload failed mid-init.
             const bucketPath = doc.storagePath.startsWith('documents/')
                 ? doc.storagePath.slice('documents/'.length)
                 : doc.storagePath
@@ -117,7 +141,6 @@ export default function DocumentEditor() {
                     .catch(() => setTocSections([]))
                 return
             }
-            // File missing — fall through to Case 2 to re-initialize
         }
 
         // Case 2: New, tiptap-v1, or legacy — initialize DOCX in Supabase Storage
@@ -134,7 +157,6 @@ export default function DocumentEditor() {
                 type,
             )
 
-            // Persist the new storage fields to DB
             await supabase.from('requirement_docs').upsert({
                 id: did,
                 project_id: pid,
@@ -175,17 +197,11 @@ export default function DocumentEditor() {
         const pid = projectId
         if (!pid) return
 
-        // Only doc-type templateIds (BRS, URS, SRS, SDS) represent genuinely new documents.
-        // Any other templateId is an existing doc ID — don't proceed until existingDoc is
-        // resolved from the project context. Without this, a reload would see existingDoc as
-        // undefined (projects not yet fetched), treat it as new, and create a phantom entry.
         const isDocType = templateId && ['BRS', 'URS', 'SRS', 'SDS'].includes(templateId)
         if (!isDocType && !existingDoc) return
 
         const did = existingDoc?.id ?? `req-${Date.now()}`
 
-        // Deduplicate: React StrictMode fires effects twice with no cleanup.
-        // Using an init key prevents two concurrent inits from creating duplicate docs.
         const initKey = `${pid}::${existingDoc?.id ?? 'new'}`
         if (initKeyRef.current === initKey) return
         initKeyRef.current = initKey
@@ -199,11 +215,8 @@ export default function DocumentEditor() {
         setDocTitle(title)
         setDocStatus(existingDoc?.status || 'draft')
 
-        // Skip normal initialization when auto-generating — the edge function handles doc creation
         if (isAutoGenerate && !autoGenerateComplete) return
 
-        // After auto-generate completes, docPublicUrl and documentKey are already set by onComplete.
-        // Only extract TOC — do NOT call loadDocumentState which would create a duplicate document.
         if (autoGenerateComplete && docPublicUrl) {
             extractSectionsFromDocx(docPublicUrl)
                 .then(setTocSections)
@@ -215,7 +228,6 @@ export default function DocumentEditor() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [existingDoc?.id, projectId, projectsLoading, autoGenerateComplete])
 
-    // Sync document_key when OnlyOffice callback rotates it (other tabs, or after save)
     useEffect(() => {
         if (!existingDoc?.documentKey) return
         if (!hasUnsavedChanges && existingDoc.documentKey !== documentKey) {
@@ -223,22 +235,19 @@ export default function DocumentEditor() {
         }
     }, [existingDoc?.documentKey, hasUnsavedChanges, documentKey])
 
-    // Reset editor-ready flag whenever documentKey changes (OO remounts on save/restore)
     useEffect(() => { if (documentKey) setIsEditorReady(false) }, [documentKey])
 
-    // Re-parse TOC headings when documentKey rotates (OO callback saved new content)
     useEffect(() => {
         if (!documentKey || !docPublicUrl) return
         if (prevDocumentKeyRef.current === null) {
             prevDocumentKeyRef.current = documentKey
-            return // skip initial set — loadDocumentState already extracted
+            return
         }
         if (prevDocumentKeyRef.current === documentKey) return
         prevDocumentKeyRef.current = documentKey
         extractSectionsFromDocx(docPublicUrl).then(setTocSections).catch(() => {})
     }, [documentKey, docPublicUrl])
 
-    // Close export dropdown on outside click
     useEffect(() => {
         if (!showExport) return
         const handler = (e: MouseEvent) => {
@@ -248,7 +257,6 @@ export default function DocumentEditor() {
         document.addEventListener('mousedown', handler)
         return () => document.removeEventListener('mousedown', handler)
     }, [showExport])
-
 
     // ─── OnlyOffice config ────────────────────────────────────────────────────
 
@@ -268,6 +276,11 @@ export default function DocumentEditor() {
             `${ooBase}/functions/v1/onlyoffice_callback` +
             `?docId=${currentDocId}&projectId=${projectId}&token=${callbackSecret}`
 
+        // Determine edit mode: locked docs are view-only for non-owners
+        const isViewMode = viewingVersion
+            || project?.userRole === 'viewer'
+            || (isDocLocked && !isOwner)
+
         getOnlyOfficeConfig({
             docId: currentDocId,
             projectId,
@@ -275,18 +288,17 @@ export default function DocumentEditor() {
             publicUrl: ooDocUrl,
             documentKey,
             callbackUrl,
-            mode: (viewingVersion || project?.userRole === 'viewer') ? 'view' : 'edit',
+            mode: isViewMode ? 'view' : 'edit',
             userId: user?.id ?? 'anonymous',
             userDisplayName: profile?.full_name || user?.email || 'User',
         }).then(setOnlyOfficeConfig)
-    }, [docPublicUrl, documentKey, docTitle, viewingVersion, projectId, user?.id, profile?.full_name, project?.userRole, user?.email])
+    }, [docPublicUrl, documentKey, docTitle, viewingVersion, projectId, user?.id, profile?.full_name, project?.userRole, user?.email, isDocLocked, isOwner])
 
     // ─── Export ──────────────────────────────────────────────────────────────
 
     const handleDownload = () => {
         if (!docPublicUrl) return
         const a = document.createElement('a')
-        // Cache-buster so the browser fetches the latest saved DOCX, not a cached copy
         a.href = docPublicUrl.includes('?') ? `${docPublicUrl}&t=${Date.now()}` : `${docPublicUrl}?t=${Date.now()}`
         a.download = `${docTitle.replace(/\s+/g, '_')}.docx`
         document.body.appendChild(a)
@@ -304,7 +316,13 @@ export default function DocumentEditor() {
 
     const handleRestoreVersion = useCallback(async (version: DocVersion) => {
         if (!projectId) return
-        if (!confirm(`Restore to version ${version.versionNumber}? Current content will be kept as a version.`)) return
+        const confirmed = await confirm({
+            title: 'Restore Version',
+            message: `Restore to version ${version.versionNumber}? Current content will be preserved as a new version.`,
+            confirmLabel: 'Restore',
+            variant: 'danger',
+        })
+        if (!confirmed) return
         if (version.storagePath) {
             await restoreOnlyOfficeVersion(version, projectId)
             setViewingVersion(null)
@@ -312,7 +330,7 @@ export default function DocumentEditor() {
             await restoreVersion(version, projectId)
             window.location.reload()
         }
-    }, [projectId, restoreVersion, restoreOnlyOfficeVersion])
+    }, [projectId, restoreVersion, restoreOnlyOfficeVersion, confirm])
 
     // ─── Title / status persistence ──────────────────────────────────────────
 
@@ -324,8 +342,8 @@ export default function DocumentEditor() {
             .eq('id', did).eq('project_id', projectId)
     }, [docTitle, projectId])
 
-    const handleStatusToggle = useCallback(async () => {
-        const newStatus = docStatus === 'draft' ? 'final' : 'draft'
+    const handleStatusSet = useCallback(async (newStatus: 'draft' | 'final') => {
+        if (newStatus === docStatus) return
         setDocStatus(newStatus)
         const did = docIdRef.current
         if (!did || !projectId) return
@@ -334,12 +352,26 @@ export default function DocumentEditor() {
             .eq('id', did).eq('project_id', projectId)
     }, [docStatus, projectId])
 
+    // ─── Lock / Unlock ────────────────────────────────────────────────────────
+
+    const handleToggleLock = useCallback(async () => {
+        const did = docIdRef.current
+        if (!did || !projectId) return
+        if (isDocLocked) {
+            await unlockDocument(did, projectId)
+        } else {
+            await lockDocument(did, projectId)
+        }
+    }, [isDocLocked, projectId, lockDocument, unlockDocument])
+
     // ─── Render ──────────────────────────────────────────────────────────────
 
     const serverUrl = (import.meta.env.VITE_ONLYOFFICE_SERVER_URL as string) || 'http://localhost:8080'
 
-    // Whether the AI panel should be visible (toggled independently, hidden when other panels are open)
-    const aiPanelVisible = showAiPanel && !showVersionHistory && !showComments
+    // Parent doc for breadcrumb "View original" link
+    const parentDoc = existingDoc?.parentDocId
+        ? project?.requirementDocs.find(d => d.id === existingDoc.parentDocId)
+        : null
 
     // ─── Auto-generate overlay ──────────────────────────────────────────────
     if (isAutoGenerate && !autoGenerateComplete) {
@@ -354,15 +386,10 @@ export default function DocumentEditor() {
                     setDocPublicUrl(result.publicUrl)
                     setDocumentKey(result.documentKey)
                     docIdRef.current = result.docId
-                    // Navigate to the new doc URL (removes ?autoGenerate param)
                     navigate(`/editor/${projectId}/${result.docId}`, { replace: true })
                 }}
-                onCancel={() => {
-                    navigate(`/project/${projectId}`)
-                }}
-                onFallbackEmpty={() => {
-                    navigate(`/editor/${projectId}/BRS`, { replace: true })
-                }}
+                onCancel={() => { navigate(`/project/${projectId}`) }}
+                onFallbackEmpty={() => { navigate(`/editor/${projectId}/BRS`, { replace: true }) }}
             />
         )
     }
@@ -371,10 +398,49 @@ export default function DocumentEditor() {
         <div className="flex flex-col h-screen bg-[#f8f9fb] overflow-hidden">
 
             {/* ── Header ── */}
-            <header className="h-10 bg-white border-b border-slate-200 flex items-center gap-2 px-3 shrink-0 z-20 relative">
-                <button onClick={() => navigate(-1)} className="p-1.5 hover:bg-slate-100 rounded text-slate-500">
+            <header className="h-10 bg-white border-b border-slate-200 flex items-center px-3 shrink-0 z-20 relative gap-2">
+
+                {/* Left zone: back + breadcrumb + title */}
+                <button onClick={() => navigate(-1)} className="p-1.5 hover:bg-slate-100 rounded text-slate-500 shrink-0">
                     <ArrowLeft size={16} />
                 </button>
+
+                {/* Project name */}
+                {project && (
+                    <>
+                        <Link
+                            to={`/projects/${projectId}`}
+                            onClick={e => e.stopPropagation()}
+                            className="text-[11px] text-slate-400 hover:text-[var(--accent-600)] hover:underline transition-colors truncate max-w-[120px] shrink-0"
+                        >
+                            {project.name}
+                        </Link>
+                        <ChevronRight size={11} className="text-slate-300 shrink-0" />
+                    </>
+                )}
+
+                {/* Doc type badge */}
+                <span className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-bold border shrink-0 ${docTypeColors.bg} ${docTypeColors.text} ${docTypeColors.border}`}>
+                    {docType}
+                </span>
+
+                {/* CR badge */}
+                {existingDoc?.crNumber != null && (
+                    <span className="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-bold border border-[var(--accent-200)] bg-[var(--accent-50)] text-[var(--accent-700)] shrink-0">
+                        <GitBranch size={9} />
+                        CR-{existingDoc.crNumber}
+                    </span>
+                )}
+
+                {/* View original link (CR docs only) */}
+                {parentDoc && (
+                    <button
+                        onClick={() => navigate(`/editor/${projectId}/${parentDoc.id}`)}
+                        className="text-[10px] text-[var(--accent-600)] hover:underline shrink-0"
+                    >
+                        ← original
+                    </button>
+                )}
 
                 <input
                     value={docTitle}
@@ -384,21 +450,90 @@ export default function DocumentEditor() {
                     placeholder="Document title…"
                 />
 
-                <div className="flex items-center gap-1.5 shrink-0">
+                {/* Divider */}
+                <div className="w-px h-5 bg-slate-200 shrink-0" />
+
+                {/* Center zone: status + presence + unsaved */}
+                <div className="flex items-center gap-2 shrink-0">
                     {hasUnsavedChanges && (
-                        <span className="text-[11px] text-amber-500">Unsaved changes</span>
+                        <span className="text-[11px] text-amber-500 shrink-0">Unsaved</span>
+                    )}
+                    {existingDoc?.lastEditedByName && !hasUnsavedChanges && (
+                        <span className="text-[10px] text-slate-400 truncate max-w-[140px]" title={`Last edited by ${existingDoc.lastEditedByName}`}>
+                            Last edit by <span className="font-medium">{existingDoc.lastEditedByName}</span>
+                        </span>
                     )}
 
                     <PresenceIndicator otherUsers={otherUsers} totalViewers={totalViewers} />
 
+                    {/* Locked banner for non-owners */}
+                    {isDocLocked && !isOwner && (
+                        <span className="flex items-center gap-1 text-[10px] text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full font-medium">
+                            <Lock size={10} />
+                            Locked
+                        </span>
+                    )}
+
+                    {/* Status segmented control */}
+                    <div className="flex items-center border border-slate-200 rounded-lg overflow-hidden shrink-0">
+                        <button
+                            onClick={() => handleStatusSet('draft')}
+                            className={`px-2.5 py-0.5 text-[10px] font-bold transition-colors ${
+                                docStatus === 'draft'
+                                    ? 'bg-[var(--accent-600)] text-white'
+                                    : 'bg-white text-slate-500 hover:bg-slate-50'
+                            }`}
+                        >
+                            Draft
+                        </button>
+                        <button
+                            onClick={() => handleStatusSet('final')}
+                            className={`px-2.5 py-0.5 text-[10px] font-bold transition-colors border-l border-slate-200 ${
+                                docStatus === 'final'
+                                    ? 'bg-[var(--accent-600)] text-white'
+                                    : 'bg-white text-slate-500 hover:bg-slate-50'
+                            }`}
+                        >
+                            Final
+                        </button>
+                    </div>
+                </div>
+
+                {/* Divider */}
+                <div className="w-px h-5 bg-slate-200 shrink-0" />
+
+                {/* Right zone: action buttons */}
+                <div className="flex items-center gap-0.5 shrink-0">
+                    {/* Lock/Unlock — owner only */}
+                    {isOwner && docId && (
+                        <button
+                            onClick={handleToggleLock}
+                            className={`p-1.5 rounded hover:bg-slate-100 transition-colors ${isDocLocked ? 'text-amber-600' : 'text-slate-500'}`}
+                            title={isDocLocked ? 'Unlock Document' : 'Lock Document'}
+                        >
+                            {isDocLocked ? <Lock size={15} /> : <Unlock size={15} />}
+                        </button>
+                    )}
+
+                    {/* Divider if lock button present */}
+                    {isOwner && docId && <div className="w-px h-4 bg-slate-200 mx-0.5" />}
+
                     <button
-                        onClick={handleStatusToggle}
-                        className={`text-xs px-2.5 py-0.5 rounded-full font-medium transition-colors ${docStatus === 'final'
-                            ? 'bg-emerald-100 text-emerald-700'
-                            : 'bg-amber-100 text-amber-700'}`}
+                        onClick={() => setShowAiPanel(v => !v)}
+                        className={`p-1.5 rounded hover:bg-slate-100 transition-colors ${showAiPanel ? 'bg-[var(--accent-100)] text-[var(--accent-600)]' : 'text-slate-500'}`}
+                        title="AI Assistant"
                     >
-                        {docStatus}
+                        <Sparkles size={15} />
                     </button>
+                    <button
+                        onClick={() => setShowExport(v => !v)}
+                        className={`p-1.5 rounded hover:bg-slate-100 text-slate-500 ${showExport ? 'bg-slate-100' : ''}`}
+                        title="Export"
+                    >
+                        <Download size={15} />
+                    </button>
+
+                    <div className="w-px h-4 bg-slate-200 mx-0.5" />
 
                     <button
                         onClick={() => { setShowVersionHistory(v => !v); setShowComments(false) }}
@@ -414,38 +549,27 @@ export default function DocumentEditor() {
                     >
                         <MessageSquare size={15} />
                     </button>
-                    <button
-                        onClick={() => setShowAiPanel(v => !v)}
-                        className={`p-1.5 rounded hover:bg-slate-100 transition-colors ${showAiPanel ? 'bg-[var(--accent-100)] text-[var(--accent-600)]' : 'text-slate-500'}`}
-                        title="AI Assistant"
-                    >
-                        <Sparkles size={15} />
-                    </button>
-                    <button
-                        onClick={() => setShowExport(v => !v)}
-                        className={`p-1.5 rounded hover:bg-slate-100 text-slate-500 ${showExport ? 'bg-slate-100' : ''}`}
-                        title="Export"
-                    >
-                        <Download size={15} />
-                    </button>
                 </div>
 
                 {/* Export dropdown */}
                 {showExport && (
                     <div ref={exportDropdownRef} className="absolute right-3 top-10 bg-white border border-slate-200 rounded-lg shadow-lg z-30 w-44 py-1">
-                        <button
-                            onClick={handleDownload}
-                            disabled={!docPublicUrl}
-                            className="flex items-center gap-2 w-full px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-                        >
-                            <FileText size={14} /> Word (.docx)
-                        </button>
-                        <button
-                            onClick={handlePdfDownload}
-                            className="flex items-center gap-2 w-full px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
-                        >
-                            <FileDown size={14} /> PDF
-                        </button>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-3 pt-2 pb-1">Export As</p>
+                        <div className="border-t border-slate-100 mt-1">
+                            <button
+                                onClick={handleDownload}
+                                disabled={!docPublicUrl}
+                                className="flex items-center gap-2 w-full px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                            >
+                                <FileText size={14} /> Word (.docx)
+                            </button>
+                            <button
+                                onClick={handlePdfDownload}
+                                className="flex items-center gap-2 w-full px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                            >
+                                <FileDown size={14} /> PDF
+                            </button>
+                        </div>
                     </div>
                 )}
             </header>
@@ -534,6 +658,7 @@ export default function DocumentEditor() {
                                 currentVersion={existingDoc?.currentVersion ?? 1}
                                 onViewVersion={v => { setViewingVersion(v); setShowVersionHistory(false) }}
                                 onRestoreVersion={handleRestoreVersion}
+                                onClose={() => setShowVersionHistory(false)}
                             />
                         )}
                         {showComments && (
@@ -544,13 +669,14 @@ export default function DocumentEditor() {
                                 onAddComment={addComment}
                                 onResolveComment={resolveComment}
                                 onDeleteComment={deleteComment}
+                                onClose={() => setShowComments(false)}
                             />
                         )}
                     </aside>
                 )}
             </div>
 
-            {/* Version viewer — self-contained modal, renders its own overlay */}
+            {/* Version viewer — self-contained modal */}
             {viewingVersion && (
                 <VersionViewer
                     version={viewingVersion}
@@ -559,6 +685,10 @@ export default function DocumentEditor() {
                     onRestore={() => handleRestoreVersion(viewingVersion)}
                 />
             )}
+
+            {/* Confirm dialog + toast */}
+            {dialog}
+            {notificationBanner}
         </div>
     )
 }

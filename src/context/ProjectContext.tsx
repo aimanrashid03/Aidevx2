@@ -14,6 +14,15 @@ export interface RequirementDoc {
     // OnlyOffice storage fields
     storagePath?: string | null;   // path in Supabase Storage: documents/{projectId}/{docId}/current.docx
     documentKey?: string | null;   // cache-busting key for OnlyOffice, rotated on every save
+    // Last edited info (Phase 2)
+    lastEditedBy?: string | null;
+    lastEditedByName?: string | null;
+    // Document locking (Phase 3)
+    lockedBy?: string | null;
+    lockedAt?: string | null;
+    // CR versioning (Phase 4)
+    parentDocId?: string | null;
+    crNumber?: number | null;
 }
 
 export interface DocVersion {
@@ -58,6 +67,11 @@ interface ProjectContextType {
     fetchDocVersions: (docId: string, projectId: string) => Promise<DocVersion[]>;
     restoreVersion: (version: DocVersion, projectId: string) => Promise<void>;
     restoreOnlyOfficeVersion: (version: DocVersion, projectId: string) => Promise<void>;
+    // Phase 3: locking
+    lockDocument: (docId: string, projectId: string) => Promise<void>;
+    unlockDocument: (docId: string, projectId: string) => Promise<void>;
+    // Phase 4: CR versioning
+    createChangeRequest: (projectId: string, originalDocId: string, description: string) => Promise<string | null>;
 }
 
 const ProjectContext = createContext<ProjectContextType | undefined>(undefined);
@@ -135,6 +149,23 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
                     .select('*')
                     .eq('project_id', p.id);
 
+                // 6. Batch-fetch profiles for unique last_edited_by UUIDs in this project
+                const editorIds = [...new Set(
+                    (reqDocsData || [])
+                        .map(d => d.last_edited_by as string | null)
+                        .filter((id): id is string => Boolean(id))
+                )];
+                const editorNameById: Record<string, string> = {};
+                if (editorIds.length > 0) {
+                    const { data: editorProfiles } = await supabase
+                        .from('profiles')
+                        .select('id, full_name, email')
+                        .in('id', editorIds);
+                    for (const ep of editorProfiles || []) {
+                        editorNameById[ep.id] = ep.full_name || ep.email || ep.id;
+                    }
+                }
+
                 return {
                     id: p.id,
                     name: p.name,
@@ -154,6 +185,12 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
                         currentVersion: d.current_version || 1,
                         storagePath: d.storage_path || null,
                         documentKey: d.document_key || null,
+                        lastEditedBy: d.last_edited_by || null,
+                        lastEditedByName: d.last_edited_by ? (editorNameById[d.last_edited_by] || null) : null,
+                        lockedBy: d.locked_by || null,
+                        lockedAt: d.locked_at || null,
+                        parentDocId: d.parent_doc_id || null,
+                        crNumber: d.cr_number || null,
                     })) || [],
                     memberCount: memberCountByProject[p.id] || 0,
                     ownerName: ownerNameById[p.user_id] || undefined,
@@ -171,7 +208,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     useEffect(() => {
         fetchProjects();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [user]);
+    }, [user?.id]);
 
     const addProject = async (projectData: Omit<Project, 'id' | 'createdAt' | 'requirementDocs'>) => {
         if (!user) return null;
@@ -407,6 +444,122 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
         }
     };
 
+    // ── Phase 3: Document Locking ────────────────────────────────────────────
+
+    const lockDocument = async (docId: string, projectId: string) => {
+        if (!user) return;
+        const { error } = await supabase
+            .from('requirement_docs')
+            .update({ locked_by: user.id, locked_at: new Date().toISOString() })
+            .eq('id', docId)
+            .eq('project_id', projectId);
+        if (error) console.error('Error locking document:', error);
+        else await fetchProjects();
+    };
+
+    const unlockDocument = async (docId: string, projectId: string) => {
+        if (!user) return;
+        const { error } = await supabase
+            .from('requirement_docs')
+            .update({ locked_by: null, locked_at: null })
+            .eq('id', docId)
+            .eq('project_id', projectId);
+        if (error) console.error('Error unlocking document:', error);
+        else await fetchProjects();
+    };
+
+    // ── Phase 4: Change Request Versioning ──────────────────────────────────
+
+    const createChangeRequest = async (
+        projectId: string,
+        originalDocId: string,
+        description: string,
+    ): Promise<string | null> => {
+        if (!user) return null;
+
+        try {
+            // 1. Get next CR number
+            const { data: existingCRs } = await supabase
+                .from('change_requests')
+                .select('cr_number')
+                .eq('project_id', projectId)
+                .eq('original_doc_id', originalDocId)
+                .order('cr_number', { ascending: false })
+                .limit(1);
+
+            const nextCR = ((existingCRs?.[0]?.cr_number as number) ?? 0) + 1;
+
+            // 2. Fetch original doc
+            const { data: origDoc, error: origErr } = await supabase
+                .from('requirement_docs')
+                .select('*')
+                .eq('id', originalDocId)
+                .eq('project_id', projectId)
+                .single();
+
+            if (origErr || !origDoc) throw new Error('Original document not found');
+
+            // 3. Build CR doc ID and clone storage
+            const crDocId = `${originalDocId}-cr-${nextCR}`;
+            const origBucketPath = `${projectId}/${originalDocId}/current.docx`;
+            const crBucketPath = `${projectId}/${crDocId}/current.docx`;
+
+            const { data: docxBlob } = await supabase.storage
+                .from('documents')
+                .download(origBucketPath);
+
+            if (docxBlob) {
+                await supabase.storage.from('documents').upload(crBucketPath, docxBlob, {
+                    contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                    upsert: true,
+                });
+            }
+
+            // 4. Insert CR doc record
+            const newKey = `${crDocId}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+            const { error: insertErr } = await supabase.from('requirement_docs').insert({
+                id: crDocId,
+                project_id: projectId,
+                title: `${origDoc.title} — CR-${nextCR}`,
+                type: origDoc.type,
+                content: null,
+                storage_path: `documents/${crBucketPath}`,
+                document_key: newKey,
+                status: 'draft',
+                current_version: 1,
+                parent_doc_id: originalDocId,
+                cr_number: nextCR,
+                last_modified: new Date().toISOString(),
+            });
+
+            if (insertErr) throw insertErr;
+
+            // 5. Auto-lock the original document
+            await supabase
+                .from('requirement_docs')
+                .update({ locked_by: user.id, locked_at: new Date().toISOString() })
+                .eq('id', originalDocId)
+                .eq('project_id', projectId);
+
+            // 6. Insert change_requests tracking row
+            await supabase.from('change_requests').insert({
+                project_id: projectId,
+                original_doc_id: originalDocId,
+                cr_doc_id: crDocId,
+                cr_number: nextCR,
+                status: 'draft',
+                created_by: user.id,
+                description,
+            });
+
+            await fetchProjects();
+            return crDocId;
+        } catch (error) {
+            console.error('Error creating change request:', error);
+            return null;
+        }
+    };
+
     const updateProject = async (projectId: string, updates: Partial<Pick<Project, 'name' | 'description' | 'notes'>>) => {
         if (!user) return;
         try {
@@ -466,7 +619,22 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     };
 
     return (
-        <ProjectContext.Provider value={{ projects, loading, refreshProjects: fetchProjects, addProject, updateProject, deleteProjectDocument, deleteRequirementDoc, saveRequirementDoc, fetchDocVersions, restoreVersion, restoreOnlyOfficeVersion }}>
+        <ProjectContext.Provider value={{
+            projects,
+            loading,
+            refreshProjects: fetchProjects,
+            addProject,
+            updateProject,
+            deleteProjectDocument,
+            deleteRequirementDoc,
+            saveRequirementDoc,
+            fetchDocVersions,
+            restoreVersion,
+            restoreOnlyOfficeVersion,
+            lockDocument,
+            unlockDocument,
+            createChangeRequest,
+        }}>
             {children}
         </ProjectContext.Provider>
     );

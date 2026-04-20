@@ -212,7 +212,7 @@ export default function AutoGenerateProgress({
         : 0
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-50">
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-50">
             <div className="w-full max-w-2xl mx-auto px-6">
                 {/* Header */}
                 <div className="text-center mb-8">

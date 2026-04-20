@@ -89,15 +89,16 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         initializeAuth();
 
         // Listen for changes
-        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
             if (!mounted) return;
             setSession(session);
             setUser(session?.user ?? null);
-            if (session?.user) {
-                fetchProfile(session.user.id); // DO NOT AWAIT
-            } else {
+            if (event === 'SIGNED_OUT') {
                 setProfile(null);
                 setProfileLoading(false);
+            } else if (session?.user && event !== 'TOKEN_REFRESHED') {
+                // TOKEN_REFRESHED fires on every tab focus — same user, no need to re-fetch profile
+                fetchProfile(session.user.id); // DO NOT AWAIT
             }
             if (mounted) setLoading(false);
         });

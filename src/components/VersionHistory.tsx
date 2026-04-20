@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Clock, RotateCcw, Eye } from 'lucide-react';
+import { Clock, RotateCcw, Eye, X } from 'lucide-react';
 import { useProjects, type DocVersion } from '../context/ProjectContext';
 
 interface VersionHistoryProps {
@@ -8,6 +8,7 @@ interface VersionHistoryProps {
     currentVersion: number;
     onViewVersion: (version: DocVersion) => void;
     onRestoreVersion: (version: DocVersion) => void;
+    onClose?: () => void;
 }
 
 export default function VersionHistory({
@@ -16,6 +17,7 @@ export default function VersionHistory({
     currentVersion,
     onViewVersion,
     onRestoreVersion,
+    onClose,
 }: VersionHistoryProps) {
     const { fetchDocVersions } = useProjects();
     const [versions, setVersions] = useState<DocVersion[]>([]);
@@ -33,7 +35,7 @@ export default function VersionHistory({
 
     const formatDate = (dateStr: string) => {
         const date = new Date(dateStr);
-        return date.toLocaleDateString('en-US', {
+        return date.toLocaleString('en-US', {
             month: 'short',
             day: 'numeric',
             year: 'numeric',
@@ -54,10 +56,17 @@ export default function VersionHistory({
     return (
         <div className="flex flex-col h-full">
             <div className="px-4 py-3 border-b border-slate-200 bg-white">
-                <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
-                    <Clock size={12} />
-                    Version History
-                </h3>
+                <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                        <Clock size={12} />
+                        Version History
+                    </h3>
+                    {onClose && (
+                        <button onClick={onClose} className="p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-600 transition-colors">
+                            <X size={13} />
+                        </button>
+                    )}
+                </div>
                 <p className="text-[10px] text-slate-400 mt-1">
                     Current: v{currentVersion}
                 </p>
