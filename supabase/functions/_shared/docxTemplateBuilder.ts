@@ -7,7 +7,7 @@
 
 import PizZip from 'https://esm.sh/pizzip@3.1.7'
 import type { ServerDocSection } from './brsStructure.ts'
-import { markdownToOoxml, generateNumberingEntries } from './markdownToOoxml.ts'
+import { markdownToOoxml, generateNumberingEntries, diagramOoxml } from './markdownToOoxml.ts'
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -299,6 +299,13 @@ function escapeXml(text: string): string {
 
 // ── Main builder ────────────────────────────────────────────────────────────
 
+/** Rendered diagram image data for embedding into DOCX. */
+export interface DiagramImage {
+    pngBytes: Uint8Array
+    width: number   // pixels
+    height: number  // pixels
+}
+
 /**
  * Build a DOCX from the BRS template by injecting generated content
  * into the template's section content regions.
@@ -308,6 +315,7 @@ function escapeXml(text: string): string {
  * @param docTitle - Document title
  * @param structure - BRS section structure
  * @param generatedContent - Map of section title → generated markdown content
+ * @param diagramImages - Map of section title → rendered PNG diagram data (optional)
  * @returns Uint8Array of the modified DOCX
  */
 export async function buildFromTemplate(
@@ -316,6 +324,7 @@ export async function buildFromTemplate(
     docTitle: string,
     structure: ServerDocSection[],
     generatedContent: Map<string, string>,
+    diagramImages?: Map<string, DiagramImage>,
 ): Promise<Uint8Array> {
     // Load template as ZIP
     const zip = new PizZip(templateBytes)
@@ -382,6 +391,74 @@ export async function buildFromTemplate(
         const bulletNumId = NUM_ID_BASE + idx * 2 + 1
         const ooxmlFragment = markdownToOoxml(markdown, numberedNumId, bulletNumId)
         elements = replaceContentRange(elements, range, ooxmlFragment)
+    }
+
+    // ── Inject diagram images ──────────────────────────────────────────────
+    if (diagramImages && diagramImages.size > 0) {
+        // Read existing relationships to determine next available rId
+        const relsPath = 'word/_rels/document.xml.rels'
+        let relsXml = zip.file(relsPath)?.asText() ?? ''
+        const IMAGE_REL_TYPE = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/image'
+
+        // Find the highest existing rId number
+        let maxRId = 0
+        const rIdRegex = /Id="rId(\d+)"/g
+        let rIdMatch: RegExpExecArray | null
+        while ((rIdMatch = rIdRegex.exec(relsXml)) !== null) {
+            maxRId = Math.max(maxRId, parseInt(rIdMatch[1]))
+        }
+
+        let diagramCounter = 0
+        const DOC_PR_ID_BASE = 1000 // high base to avoid conflicts with template
+
+        // Build a title→element-index lookup for appending diagram OOXML
+        const titleToLastContentIndex = new Map<string, number>()
+        for (const range of sectionRanges) {
+            if (range.section.autoGenerate) {
+                // After replacement, content is a single synthetic element at contentStart
+                titleToLastContentIndex.set(range.section.title, range.contentStart)
+            }
+        }
+
+        for (const [sectionTitle, img] of diagramImages) {
+            diagramCounter++
+            const relId = `rId${maxRId + diagramCounter}`
+            const mediaFileName = `diagram_${diagramCounter}.png`
+
+            // 1. Add PNG to word/media/
+            zip.file(`word/media/${mediaFileName}`, img.pngBytes)
+
+            // 2. Add relationship entry
+            const relEntry = `<Relationship Id="${relId}" Type="${IMAGE_REL_TYPE}" Target="media/${mediaFileName}"/>`
+            relsXml = relsXml.replace('</Relationships>', relEntry + '\n</Relationships>')
+
+            // 3. Generate diagram OOXML and append to the section's content
+            const docPrId = DOC_PR_ID_BASE + diagramCounter
+            const caption = `Rajah: ${sectionTitle}`
+            const diagXml = diagramOoxml(relId, img.width, img.height, caption, docPrId)
+
+            const contentIdx = titleToLastContentIndex.get(sectionTitle)
+            if (contentIdx !== undefined) {
+                const el = elements[contentIdx]
+                if (el) {
+                    elements[contentIdx] = { ...el, xml: el.xml + diagXml }
+                }
+            }
+        }
+
+        // Write updated relationships
+        zip.file(relsPath, relsXml)
+
+        // Ensure [Content_Types].xml has PNG default
+        const ctPath = '[Content_Types].xml'
+        let ctXml = zip.file(ctPath)?.asText() ?? ''
+        if (ctXml && !ctXml.includes('Extension="png"')) {
+            ctXml = ctXml.replace(
+                '</Types>',
+                '<Default Extension="png" ContentType="image/png"/>\n</Types>'
+            )
+            zip.file(ctPath, ctXml)
+        }
     }
 
     // Update title page

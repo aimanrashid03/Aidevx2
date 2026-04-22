@@ -419,3 +419,51 @@ Two separate server environments exist:
   - Ubuntu 22.04, Docker, OnlyOffice Document Server (`JWT_ENABLED=false`)
   - SSH key: `~/.ssh/ssh-key-2026-04-02.key`, user `ubuntu`
   - Supabase: cloud project `hpjzwpocxuxqntuuqzbr` (ap-southeast-1)
+
+## Behavioral Rules
+
+### Verify-After-Complete (MANDATORY)
+After finishing any implementation, task, or plan — ALWAYS run a verification step before declaring it done.
+
+| Work Type | Verification |
+|---|---|
+| Code / feature | `npm run build` (type-check + build) |
+| Edge function change | Re-read file; remind to deploy with `supabase functions deploy` |
+| SQL migration | Check for missing RLS policies; confirm migration filename convention |
+| Config change | Re-read config to confirm change landed |
+| Git operation | `git status` to confirm clean state; `git log` to confirm commit |
+| File edit | Re-read the file after editing to confirm the change is correct |
+| Fact/data update | Grep for the OLD value (confirm absent everywhere) AND NEW value (confirm present) |
+
+- **Don't assume it worked** — run the check.
+- **End-to-end over unit** — the most important check is the final output the user would see.
+- **Return to plan after interruptions** — after any side-task, check the todo list and resume.
+- **Finish the current task before expanding scope** — note adjacent issues but don't detour mid-task.
+
+### Diagnose-First (Before Any Fix)
+Before writing any fix, always run these checks:
+
+1. **Check git state** — `git status` (is the file missing due to an unstaged deletion?) and `git log --oneline -5` (was this already fixed?)
+2. **Identify error source** — VSCode Problems panel vs terminal CLI vs runtime logs. Never treat a VSCode editor diagnostic as a CLI error without confirming.
+3. **Check for existing suppression** — `.vscode/settings.json`, recent commits (`git log --grep=keyword`)
+4. **Minimum viable diagnosis** — what is the simplest explanation that fits all evidence?
+
+Only proceed with investigation and planning AFTER these checks pass.
+
+### Plan-First (MANDATORY)
+ALWAYS enter plan mode (`EnterPlanMode`) before making any non-trivial changes — even if the user doesn't ask.
+
+- **Non-trivial** = modifies more than 1 file, adds new functionality, changes behavior, or touches configuration.
+- **Trivial** (skip plan) = single-line typo fix, renaming a variable in one file.
+
+Sequence: **Plan → User Review → Execute**.
+
+### Verify-Before-Exit-Plan
+Before calling `ExitPlanMode`, run these checks on your own plan:
+
+1. **Count check** — if the plan says "N files modified", count them. Do the numbers match?
+2. **Path check** — for every file path in the plan, verify it exists (`Read`/`Glob`) or is explicitly marked as "new file".
+3. **Wiring check** — for every new file or feature, ask "who consumes this?" Read each consumer's actual code and confirm it can use the new thing.
+4. **Policy check** — if the plan references any rule in `CLAUDE.md` or `MEMORY.md`, grep the source file and verify the actual text. Don't rely on memory.
+5. **Completeness check** — for each item, trace its full lifecycle: creation → wiring → type-check → deploy (if edge function). Add missing steps, then re-run check #1.
+6. **Stale value check** — when the plan updates a fact (count, version, date), grep the entire target file for the OLD value to catch stale copies elsewhere.

@@ -40,6 +40,45 @@ export const BRS_DIAGRAM_EXAMPLE = `<pre class="mermaid">flowchart LR
 </pre>
 <p><strong>Rajah: Proses Bisnes Pemenuhan Pesanan</strong></p>`
 
+// ── Markdown diagram example (used by auto_generate_document diagram calls) ─
+
+/** Example of a BRS business process Mermaid diagram (raw Mermaid for auto-generate) */
+export const BRS_MD_DIAGRAM_EXAMPLE = `flowchart LR
+    A[Pesanan Pelanggan] --> B{Semakan Inventori}
+    B -->|Ada Stok| C[Rizab Inventori]
+    B -->|Tiada Stok| D[Giliran Pesanan Belakang]
+    C --> E[Jana Senarai Kutip]
+    D --> F[Maklumkan Perolehan]
+    E --> G[Pemenuhan Gudang]
+    F --> H[PO Pembekal Dicipta]
+    G --> I[Hantar & Jejak]
+    H --> D
+    I --> J[Pemberitahuan Pelanggan]`
+
+/** Example of a BRS entity-relationship Mermaid diagram (raw Mermaid for auto-generate) */
+export const BRS_MD_ER_EXAMPLE = `erDiagram
+    PENGGUNA {
+        string id_pengguna
+        string nama
+        string emel
+        string peranan
+    }
+    PROJEK {
+        string id_projek
+        string nama_projek
+        string status
+        date tarikh_mula
+    }
+    DOKUMEN {
+        string id_dokumen
+        string jenis
+        string versi
+        date tarikh_kemaskini
+    }
+    PENGGUNA ||--o{ PROJEK : "mengurus"
+    PROJEK ||--|{ DOKUMEN : "mengandungi"
+    PENGGUNA ||--o{ DOKUMEN : "mengubah"`
+
 // ── Markdown examples (used by auto_generate_document → DOCX builder) ───────
 
 /** Example of a well-written BRS text section (markdown format for auto-generate) */
