@@ -112,6 +112,40 @@ export default function DocumentEditor() {
         prevAiPanelVisible.current = aiPanelVisible
     }, [aiPanelVisible, showAiPanel, notify])
 
+    // ─── BRS auto-generate reload guard ────────────────────────────────────────
+    // Prevents silent re-generation if the user reloads the page mid-generation.
+    useEffect(() => {
+        if (!isAutoGenerate || !project) return
+
+        // Guard 1: project already has a saved BRS — navigate there instead of re-generating
+        const existingBRS = project.requirementDocs.find(d => d.type === 'BRS' && d.storagePath)
+        if (existingBRS) {
+            navigate(`/editor/${projectId}/${existingBRS.id}`, { replace: true })
+            return
+        }
+
+        // Guard 2: a recent in-progress session entry exists — check if the doc was saved
+        const raw = sessionStorage.getItem('autoGenInProgress')
+        if (!raw) return
+        try {
+            const { docId, projectId: pid, timestamp } = JSON.parse(raw)
+            if (pid !== projectId || Date.now() - timestamp > 30 * 60 * 1000) {
+                sessionStorage.removeItem('autoGenInProgress')
+                return // stale — allow re-generation
+            }
+            supabase.from('requirement_docs').select('id, storage_path').eq('id', docId).single()
+                .then(({ data }) => {
+                    if (data?.storage_path) {
+                        sessionStorage.removeItem('autoGenInProgress')
+                        navigate(`/editor/${projectId}/${data.id}`, { replace: true })
+                    }
+                    // not in DB yet — generation was interrupted mid-run, let it re-trigger
+                })
+        } catch {
+            sessionStorage.removeItem('autoGenInProgress')
+        }
+    }, [isAutoGenerate, project, projectId, navigate])
+
     // ─── Document initialization ────────────────────────────────────────────────
 
     const loadDocumentState = useCallback(async (
@@ -386,6 +420,7 @@ export default function DocumentEditor() {
                     setDocPublicUrl(result.publicUrl)
                     setDocumentKey(result.documentKey)
                     docIdRef.current = result.docId
+                    refreshProjects()
                     navigate(`/editor/${projectId}/${result.docId}`, { replace: true })
                 }}
                 onCancel={() => { navigate(`/project/${projectId}`) }}

@@ -87,6 +87,36 @@ export function useCoverageAssessment(
         fetchAssessment()
     }, [fetchAssessment])
 
+    // Auto-refresh whenever the cached assessment row is updated in the DB.
+    // Fires after any ingestion source (files, stories, description, notes)
+    // completes its fire-and-forget assess_coverage call.
+    useEffect(() => {
+        if (!projectId) return
+
+        const channel = supabase
+            .channel(`coverage-${projectId}-${docType}`)
+            .on(
+                'postgres_changes',
+                {
+                    event: '*',
+                    schema: 'public',
+                    table: 'rag_coverage_assessments',
+                    filter: `project_id=eq.${projectId}`,
+                },
+                (payload) => {
+                    // Only react to the doc_type this hook instance cares about
+                    const row = (payload.new ?? payload.old) as { doc_type?: string } | null
+                    if (row?.doc_type && row.doc_type !== docType) return
+                    fetchAssessment()
+                },
+            )
+            .subscribe()
+
+        return () => {
+            supabase.removeChannel(channel)
+        }
+    }, [projectId, docType, fetchAssessment])
+
     const runAssessment = useCallback(async () => {
         if (!projectId || assessing) return
         setAssessing(true)

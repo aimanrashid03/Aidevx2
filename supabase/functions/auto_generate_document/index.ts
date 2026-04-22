@@ -177,6 +177,11 @@ serve(async (req) => {
                 const sectionEmbeddings: [number[], number[]][] =
                     generatableSections.map((_, i) => [embeddings1[i], embeddings2[i]])
 
+                // Allocate docId now so the frontend can poll the DB if SSE drops
+                const docId = `req-${Date.now()}`
+                const storagePath = `documents/${projectId}/${docId}/current.docx`
+                sendEvent({ type: 'started', docId, total: totalSections })
+
                 // ── Phase 2: Vector search + LLM for all sections in parallel ────
                 await Promise.all(
                     generatableSections.map(async (section, idx) => {
@@ -427,8 +432,6 @@ serve(async (req) => {
                 }
 
                 // ── Upload to storage ────────────────────────────────────────
-                const docId = `req-${Date.now()}`
-                const storagePath = `documents/${projectId}/${docId}/current.docx`
                 const documentKey = `${docId}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
 
                 const { error: uploadError } = await supabaseAdmin.storage

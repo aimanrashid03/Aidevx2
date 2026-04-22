@@ -12,7 +12,9 @@ import { supabase } from '../lib/supabase';
 import { useConfirmDialog } from '../hooks/useConfirmDialog';
 import { useUserStories } from '../hooks/useUserStories';
 import { useCoverageAssessment } from '../hooks/useCoverageAssessment';
+import { useProjectMetadataEmbedding } from '../hooks/useProjectMetadataEmbedding';
 import CoverageBreakdown from '../components/CoverageBreakdown';
+import EmbeddingStatusBadge from '../components/EmbeddingStatusBadge';
 import DashboardTab from '../components/project-tabs/DashboardTab';
 import WorkspaceTab from '../components/project-tabs/WorkspaceTab';
 import LibraryTab from '../components/project-tabs/LibraryTab';
@@ -72,6 +74,8 @@ export default function ProjectDetails() {
 
     const project = projects.find(p => p.id === projectId);
 
+    const { embedDescription, embedNotes } = useProjectMetadataEmbedding(project?.id || '');
+
     const { stories } = useUserStories(project?.id || '');
     const indexedFiles = project?.documents?.filter(d => d.embeddingStatus === 'processed').length || 0;
     const indexedStories = stories.filter(s => s.embeddingStatus === 'processed').length;
@@ -93,9 +97,14 @@ export default function ProjectDetails() {
 
     const handleSaveEdit = async () => {
         if (!project || !editForm.name) return;
+        const prevDescription = project.description || '';
+        const prevNotes = project.notes || '';
         try {
             await updateProject(project.id, editForm);
             setIsEditing(false);
+            // Re-embed only fields that actually changed
+            if (editForm.description !== prevDescription) void embedDescription(editForm.description);
+            if (editForm.notes !== prevNotes) void embedNotes(editForm.notes);
         } catch {
             notify({ message: 'Failed to update project details.', variant: 'error' });
         }
@@ -265,9 +274,12 @@ export default function ProjectDetails() {
                             </div>
                         </div>
                         {project.description && (
-                            <p className="text-slate-600 text-xs leading-relaxed max-w-3xl mt-1.5">
-                                {project.description}
-                            </p>
+                            <div className="flex items-start gap-2 mt-1.5">
+                                <p className="text-slate-600 text-xs leading-relaxed max-w-3xl">
+                                    {project.description}
+                                </p>
+                                <EmbeddingStatusBadge status={project.description_embedding_status ?? 'pending'} />
+                            </div>
                         )}
                     </div>
                 )}
@@ -325,6 +337,7 @@ export default function ProjectDetails() {
                         onNewDraft={() => setIsCreateModalOpen(true)}
                         onImportDoc={() => setIsImportModalOpen(true)}
                         onDeleteDoc={handleDeleteRequirement}
+                        onRefresh={refreshProjects}
                     />
                 )}
                 {activeTab === 'library' && (

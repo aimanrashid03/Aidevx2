@@ -53,6 +53,8 @@ export interface Project {
     userRole?: 'owner' | 'editor' | 'viewer';
     memberCount?: number;
     ownerName?: string;
+    description_embedding_status?: 'pending' | 'processing' | 'processed' | 'failed';
+    notes_embedding_status?: 'pending' | 'processing' | 'processed' | 'failed';
 }
 
 interface ProjectContextType {
@@ -171,6 +173,8 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
                     name: p.name,
                     description: p.description,
                     notes: p.notes,
+                    description_embedding_status: (p.description_embedding_status as Project['description_embedding_status']) || 'pending',
+                    notes_embedding_status: (p.notes_embedding_status as Project['notes_embedding_status']) || 'pending',
                     createdAt: p.created_at,
                     userRole: (roleByProject[p.id] || (p.user_id === user.id ? 'owner' : 'viewer')) as 'owner' | 'editor' | 'viewer',
                     documents: docsData?.map(d => ({ id: d.id, name: d.file_name, path: d.file_path, embeddingStatus: d.embedding_status || 'pending' })) || [],

@@ -284,7 +284,7 @@ serve(async (req) => {
                     { role: 'user', content: buildUserPrompt(docTitle, docType, docText, ragContext) },
                 ]
 
-                const rawJson = await callLlm(messages, llmConfig, 0.4, 16000)
+                const rawJson = await callLlm(messages, llmConfig, 0.4, 32000)
 
                 // Phase 3: Parse + validate JSON
                 sendEvent({ type: 'progress', status: 'Assembling prototype...' })
