@@ -226,6 +226,57 @@ export function generateNumberingEntries(
     return parts.join('\n')
 }
 
+// ── Diagram image OOXML ────────────────────────────────────────────────────
+
+/** 1 inch = 914400 EMU. Max diagram width = ~15 cm ≈ 5400000 EMU. */
+const MAX_WIDTH_EMU = 5_400_000
+
+/**
+ * Convert pixel dimensions to EMU, scaling to fit within MAX_WIDTH_EMU.
+ * Assumes 96 DPI source (1 px = 9525 EMU).
+ */
+function pixelsToEmu(widthPx: number, heightPx: number): { cx: number; cy: number } {
+    const PX_TO_EMU = 9525
+    let cx = widthPx * PX_TO_EMU
+    let cy = heightPx * PX_TO_EMU
+
+    if (cx > MAX_WIDTH_EMU) {
+        const scale = MAX_WIDTH_EMU / cx
+        cx = MAX_WIDTH_EMU
+        cy = Math.round(cy * scale)
+    }
+    return { cx, cy }
+}
+
+/**
+ * Generate OOXML for an inline image with a centered caption below.
+ * The image is referenced by a relationship ID that must exist in
+ * word/_rels/document.xml.rels and point to a file in word/media/.
+ *
+ * @param imageRelId   Relationship ID (e.g. "rIdDiag1")
+ * @param widthPx      Source image width in pixels
+ * @param heightPx     Source image height in pixels
+ * @param caption      Caption text below the image
+ * @param docPrId      Unique document property ID for the drawing
+ */
+export function diagramOoxml(
+    imageRelId: string,
+    widthPx: number,
+    heightPx: number,
+    caption: string,
+    docPrId: number,
+): string {
+    const { cx, cy } = pixelsToEmu(widthPx, heightPx)
+
+    // Image paragraph (centered)
+    const imgParagraph = `<w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:noProof/></w:rPr><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"><wp:extent cx="${cx}" cy="${cy}"/><wp:docPr id="${docPrId}" name="Diagram ${docPrId}"/><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="${docPrId}" name="diagram_${docPrId}.png"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="${imageRelId}" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>`
+
+    // Caption paragraph (centered, italic, smaller font)
+    const captionParagraph = `<w:p><w:pPr><w:pStyle w:val="Content"/><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/><w:i/><w:iCs/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr><w:t xml:space="preserve">${escapeXml(caption)}</w:t></w:r></w:p>`
+
+    return imgParagraph + captionParagraph
+}
+
 // ── Main converter ──────────────────────────────────────────────────────────
 
 /**

@@ -10,6 +10,10 @@ export interface ServerDocSection {
     expectedFormat: 'text' | 'table' | 'mixed'
     tableSchemas?: { columns: string[]; exampleData?: string[][] }[]
     autoGenerate: boolean
+    /** Mermaid diagram type to generate alongside text content. */
+    diagramType?: 'flowchart' | 'erDiagram' | 'sequenceDiagram'
+    /** Hint describing what the diagram should visualize. */
+    diagramHint?: string
 }
 
 export const BRS_SERVER_STRUCTURE: ServerDocSection[] = [
@@ -69,6 +73,8 @@ export const BRS_SERVER_STRUCTURE: ServerDocSection[] = [
         ],
         expectedFormat: 'text',
         autoGenerate: true,
+        diagramType: 'flowchart',
+        diagramHint: 'Rajah perbandingan proses AS-IS dan TO-BE yang menunjukkan aliran kerja semasa dan penambahbaikan sistem baharu',
     },
     {
         title: "1.4 SENARAI PEMEGANG TARUH",
@@ -108,6 +114,8 @@ export const BRS_SERVER_STRUCTURE: ServerDocSection[] = [
         ],
         expectedFormat: 'text',
         autoGenerate: true,
+        diagramType: 'flowchart',
+        diagramHint: 'Rajah arkitektur bisnes menunjukkan lapisan perkhidmatan organisasi, proses bisnes, sistem aplikasi, dan infrastruktur teknologi',
     },
     {
         title: "2.3 ARKITEKTUR MAKLUMAT",
@@ -117,6 +125,8 @@ export const BRS_SERVER_STRUCTURE: ServerDocSection[] = [
         ],
         expectedFormat: 'text',
         autoGenerate: true,
+        diagramType: 'erDiagram',
+        diagramHint: 'Rajah hubungan entiti (ER) menunjukkan entiti data utama sistem dan hubungan antara mereka — contoh: PENGGUNA, KENDERAAN, TRANSAKSI, LAPORAN',
     },
     {
         title: "3.0 KEPERLUAN PENGOPERASIAN BISNES",
@@ -164,6 +174,8 @@ export const BRS_SERVER_STRUCTURE: ServerDocSection[] = [
         ],
         expectedFormat: 'text',
         autoGenerate: true,
+        diagramType: 'flowchart',
+        diagramHint: 'Rajah hierarki fungsi bisnes (top-down tree) menunjukkan fungsi utama, sub fungsi, dan fungsi terperinci',
     },
     {
         title: "3.1.2.2 KETERANGAN DEFINISI FUNGSI BISNES",
@@ -216,6 +228,8 @@ export const BRS_SERVER_STRUCTURE: ServerDocSection[] = [
             columns: ["Rujukan Fungsi", "Nama Fungsi", "Rujukan Aktiviti", "Nama Aktiviti", "Keterangan Aktiviti", "Aktor", "Tanggungjawab", "Kekerapan", "Aktiviti Sebelum", "Aktiviti Selepas"],
         }],
         autoGenerate: true,
+        diagramType: 'flowchart',
+        diagramHint: 'Rajah aliran proses bisnes (flowchart) menunjukkan urutan aktiviti, keputusan (decision), dan interaksi antara peranan/aktor',
     },
 
     // ── Appendix (skip) ──────────────────────────────────────────────────

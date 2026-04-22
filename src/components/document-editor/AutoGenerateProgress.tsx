@@ -42,6 +42,7 @@ export default function AutoGenerateProgress({
     const [statusText, setStatusText] = useState('Starting generation...')
     const [sections, setSections] = useState<SectionStatus[]>([])
     const [fatalError, setFatalError] = useState<string | null>(null)
+    const [pendingDocId, setPendingDocId] = useState<string | null>(null)
 
     const abortRef = useRef<AbortController | null>(null)
     const startedRef = useRef(false)
@@ -146,6 +147,12 @@ export default function AutoGenerateProgress({
                                 setPhase('building')
                                 setStatusText('Building DOCX document...')
                             }
+                        } else if (event.type === 'started') {
+                            setPendingDocId(event.docId)
+                            if (event.total) setTotal(event.total)
+                            sessionStorage.setItem('autoGenInProgress', JSON.stringify({
+                                docId: event.docId, projectId, timestamp: Date.now(),
+                            }))
                         } else if (event.type === 'section_complete') {
                             setCompletedCount(prev => prev + 1)
                             setSections(prev => {
@@ -163,6 +170,7 @@ export default function AutoGenerateProgress({
                                 return base.map(s => s.title === event.section ? { ...s, status: 'error', error: event.error } : s)
                             })
                         } else if (event.type === 'complete') {
+                            sessionStorage.removeItem('autoGenInProgress')
                             setPhase('complete')
                             onCompleteRef.current({
                                 docId: event.docId,
@@ -171,6 +179,7 @@ export default function AutoGenerateProgress({
                                 publicUrl: event.publicUrl,
                             })
                         } else if (event.type === 'error') {
+                            sessionStorage.removeItem('autoGenInProgress')
                             setPhase('error')
                             setFatalError(event.message)
                         }
@@ -198,6 +207,43 @@ export default function AutoGenerateProgress({
             startedRef.current = false
         }
     }, [startGeneration])
+
+    // Polling fallback: if SSE drops while building, poll DB every 5s.
+    // When the doc row appears with a storage_path the SSE complete was missed —
+    // reconstruct the result and call onComplete. The `cancelled` flag prevents
+    // this from double-firing if the SSE complete event arrives first.
+    useEffect(() => {
+        if (phase !== 'building' || !pendingDocId) return
+        let cancelled = false
+
+        const poll = async () => {
+            if (cancelled) return
+            const { data } = await supabase
+                .from('requirement_docs')
+                .select('id, storage_path, document_key')
+                .eq('id', pendingDocId)
+                .single()
+
+            if (data?.storage_path && !cancelled) {
+                const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+                const publicUrl = `${supabaseUrl}/storage/v1/object/public/documents/${data.storage_path.replace('documents/', '')}`
+                cancelled = true
+                sessionStorage.removeItem('autoGenInProgress')
+                setPhase('complete')
+                onCompleteRef.current({
+                    docId: data.id,
+                    storagePath: data.storage_path,
+                    documentKey: data.document_key,
+                    publicUrl,
+                })
+            } else if (!cancelled) {
+                setTimeout(poll, 5000)
+            }
+        }
+
+        const timer = setTimeout(poll, 5000)
+        return () => { cancelled = true; clearTimeout(timer) }
+    }, [phase, pendingDocId])
 
     const handleCancel = () => {
         abortRef.current?.abort()

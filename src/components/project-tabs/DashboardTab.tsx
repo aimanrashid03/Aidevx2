@@ -11,6 +11,7 @@ import { useProjectMembers } from '../../hooks/useProjectMembers';
 import { useDiagramNotes } from '../../hooks/useDiagramNotes';
 import { useCoverageAssessment } from '../../hooks/useCoverageAssessment';
 import CoverageBreakdown from '../CoverageBreakdown';
+import EmbeddingStatusBadge from '../EmbeddingStatusBadge';
 
 interface Props {
     project: Project;
@@ -408,7 +409,10 @@ export default function DashboardTab({
             {/* Internal Notes */}
             <div className="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden">
                 <div className="px-4 py-2.5 border-b border-slate-100 flex items-center justify-between">
-                    <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wide">Internal Notes</h3>
+                    <div className="flex items-center gap-2">
+                        <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wide">Internal Notes</h3>
+                        <EmbeddingStatusBadge status={project.notes_embedding_status ?? 'pending'} />
+                    </div>
                     {!isEditing && (
                         <button
                             onClick={onEditClick}

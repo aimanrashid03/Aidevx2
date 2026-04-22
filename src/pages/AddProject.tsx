@@ -7,6 +7,7 @@ import { useAuth } from '../context/AuthContext';
 import { extractText } from '../lib/extractText';
 import { validateFile, validateFileCount } from '../lib/validateUpload';
 import { UPLOAD_LIMITS, ALLOWED_EXTENSIONS_DISPLAY } from '../constants/upload';
+import { embedProjectField } from '../hooks/useProjectMetadataEmbedding';
 
 export default function AddProject() {
     const navigate = useNavigate();
@@ -64,6 +65,10 @@ export default function AddProject() {
                 notes: formData.notes,
             });
             if (!projectId) throw new Error('Failed to create project');
+
+            // Auto-ingest description and notes into RAG (fire-and-forget, non-blocking)
+            if (formData.description.trim()) void embedProjectField(projectId, 'description', formData.description)
+            if (formData.notes.trim()) void embedProjectField(projectId, 'notes', formData.notes)
 
             if (formData.documents.length > 0) {
                 const embeddingPromises: Promise<void>[] = [];

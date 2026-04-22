@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { Plus, Play, Eye, Trash2, FileText, Loader2, Monitor, X, ChevronRight, Copy, Check as CheckIcon, Code2, Upload } from 'lucide-react';
+import { Plus, Play, Eye, Trash2, FileText, Loader2, Monitor, X, ChevronRight, Copy, Check as CheckIcon, Code2, Upload, AlertTriangle } from 'lucide-react';
 import type { Project } from '../../context/ProjectContext';
 import { useProjects } from '../../context/ProjectContext';
 import { supabase } from '../../lib/supabase';
@@ -67,7 +67,7 @@ function CodeViewerModal({ proto, onClose, onRun, onDelete }: CodeViewerProps) {
         : `${(activeContent.length / 1024).toFixed(1)} KB fragment`;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
             <div
                 className="bg-white rounded-lg w-full max-w-5xl shadow-2xl border border-slate-200 flex flex-col animate-in fade-in zoom-in duration-200"
                 style={{ maxHeight: '92vh' }}
@@ -314,7 +314,7 @@ function WizardModal({ project, onClose, onStartGenerate, refreshProjects }: Wiz
     const canGenerate = isUploadMode ? (uploadDocTitle.trim().length > 0 && !isUploading) : !!selectedDocId;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
             <div className="bg-white rounded-lg w-full max-w-md shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in duration-200">
                 {/* Header */}
                 <div className="p-5 border-b border-slate-100 flex justify-between items-start">
@@ -502,11 +502,28 @@ export default function PrototypeTab({ project }: Props) {
     const [generatingDoc, setGeneratingDoc] = useState<GeneratingDoc | null>(null);
     const [viewingProto, setViewingProto] = useState<Prototype | null>(null);
     const [loading, setLoading] = useState(true);
+    const [generationWarning, setGenerationWarning] = useState(false);
     const revokeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     useEffect(() => {
         return () => { if (revokeTimerRef.current) clearTimeout(revokeTimerRef.current); };
     }, []);
+
+    // On mount, check if a prototype generation was interrupted by a page reload
+    useEffect(() => {
+        const raw = sessionStorage.getItem('protoGenerating')
+        if (!raw) return
+        try {
+            const { projectId: pid, timestamp } = JSON.parse(raw)
+            if (pid === project.id && Date.now() - timestamp < 30 * 60 * 1000) {
+                setGenerationWarning(true)
+            } else {
+                sessionStorage.removeItem('protoGenerating')
+            }
+        } catch {
+            sessionStorage.removeItem('protoGenerating')
+        }
+    }, [project.id])
 
     // Load prototypes from DB on mount
     useEffect(() => {
@@ -533,11 +550,15 @@ export default function PrototypeTab({ project }: Props) {
     }, [project.id]);
 
     const handleStartGenerate = (docId: string, docTitle: string, docType: string) => {
+        sessionStorage.setItem('protoGenerating', JSON.stringify({
+            projectId: project.id, docId, timestamp: Date.now(),
+        }))
         setIsWizardOpen(false);
         setGeneratingDoc({ docId, docTitle, docType });
     };
 
     const handleGenerated = (proto: Prototype) => {
+        sessionStorage.removeItem('protoGenerating')
         setPrototypes(prev => [proto, ...prev]);
         setGeneratingDoc(null);
         setViewingProto(proto);
@@ -574,12 +595,29 @@ export default function PrototypeTab({ project }: Props) {
                 </div>
                 <button
                     onClick={() => setIsWizardOpen(true)}
-                    className="flex items-center gap-1.5 px-3 py-2 bg-slate-900 text-white rounded text-xs font-bold hover:bg-slate-800 transition-colors shadow-sm shrink-0 ml-4"
+                    disabled={generationWarning}
+                    className="flex items-center gap-1.5 px-3 py-2 bg-slate-900 text-white rounded text-xs font-bold hover:bg-slate-800 transition-colors shadow-sm shrink-0 ml-4 disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                     <Plus size={13} />
                     New Prototype
                 </button>
             </div>
+
+            {/* Reload-protection warning banner */}
+            {generationWarning && (
+                <div className="flex items-start gap-3 px-4 py-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-800">
+                    <AlertTriangle size={15} className="mt-0.5 shrink-0 text-amber-500" />
+                    <p className="text-xs flex-1">
+                        A prototype generation may still be running. Refresh to check for results.
+                    </p>
+                    <button
+                        onClick={() => { sessionStorage.removeItem('protoGenerating'); setGenerationWarning(false); }}
+                        className="text-xs font-bold text-amber-700 hover:text-amber-900 shrink-0"
+                    >
+                        Dismiss
+                    </button>
+                </div>
+            )}
 
             {/* List */}
             {loading ? (
@@ -673,7 +711,7 @@ export default function PrototypeTab({ project }: Props) {
                     docTitle={generatingDoc.docTitle}
                     docType={generatingDoc.docType}
                     onComplete={handleGenerated}
-                    onCancel={() => setGeneratingDoc(null)}
+                    onCancel={() => { sessionStorage.removeItem('protoGenerating'); setGeneratingDoc(null); }}
                 />
             )}
 

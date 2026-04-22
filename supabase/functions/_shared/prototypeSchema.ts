@@ -49,6 +49,11 @@ export interface PrototypeModel {
   modals: PrototypeModal[]
 }
 
+// ── Constants ─────────────────────────────────────────────────────────────
+
+/** Sentinel inserted when the LLM declares a page but never generates its HTML (token limit). */
+const UNGENERATED_PAGE_HTML = `<div class="p-6 text-slate-500 text-sm">Page content not generated.</div>`
+
 // ── JSON parsing ──────────────────────────────────────────────────────────
 
 /**
@@ -153,17 +158,29 @@ function parseHybridFormat(raw: string): PrototypeModel {
     key: String(p.key ?? ''),
     title: String(p.title ?? ''),
     type: (p.type as PageType) ?? 'list',
-    html: pageHtmlMap[String(p.key ?? '')] ??
-      `<div class="p-6 text-slate-500 text-sm">Page content not generated.</div>`,
+    html: pageHtmlMap[String(p.key ?? '')] ?? UNGENERATED_PAGE_HTML,
   }))
 
   if (pages.length === 0) throw new Error('STRUCTURE JSON has no pages')
 
+  // Drop pages the LLM declared but never generated (token limit exhaustion).
+  // A prototype with fewer fully-built pages is better than one with stub pages.
+  const generatedPages = pages.filter(p => p.html !== UNGENERATED_PAGE_HTML)
+  if (generatedPages.length === 0) {
+    throw new Error('No pages were generated — LLM output was truncated before any page HTML was produced')
+  }
+
+  // Remove nav items whose page was filtered out, then drop empty groups.
+  const generatedKeys = new Set(generatedPages.map(p => p.key))
+  const filteredNavGroups = ((structure.navGroups as NavGroup[]) ?? [])
+    .map(g => ({ ...g, items: g.items.filter(item => generatedKeys.has(item.key)) }))
+    .filter(g => g.items.length > 0)
+
   const model: PrototypeModel = {
     systemName: String(structure.systemName ?? 'System'),
     shortDescription: String(structure.shortDescription ?? ''),
-    navGroups: (structure.navGroups as NavGroup[]) ?? [],
-    pages,
+    navGroups: filteredNavGroups,
+    pages: generatedPages,
     modals: (structure.modals as PrototypeModal[]) ?? [],
   }
 

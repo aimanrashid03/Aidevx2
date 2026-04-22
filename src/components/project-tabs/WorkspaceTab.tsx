@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     FileText, Clock, FileCheck, AlertCircle, Plus, LayoutTemplate,
-    Trash2, Lock, Unlock, GitBranch, ChevronRight, Upload,
+    Trash2, Lock, Unlock, GitBranch, ChevronRight, Upload, RefreshCw,
 } from 'lucide-react';
 import type { Project, RequirementDoc } from '../../context/ProjectContext';
 import { useProjects } from '../../context/ProjectContext';
@@ -13,6 +13,7 @@ interface Props {
     onNewDraft: () => void;
     onImportDoc: () => void;
     onDeleteDoc: (e: React.MouseEvent, id: string) => void;
+    onRefresh?: () => void;
 }
 
 // ─── Doc type colours ────────────────────────────────────────────────────────
@@ -170,8 +171,16 @@ function DocCard({
 
 // ─── Tab ─────────────────────────────────────────────────────────────────────
 
-export default function WorkspaceTab({ project, onNewDraft, onImportDoc, onDeleteDoc }: Props) {
+export default function WorkspaceTab({ project, onNewDraft, onImportDoc, onDeleteDoc, onRefresh }: Props) {
     const [crTargetDocId, setCrTargetDocId] = useState<string | null>(null);
+    const [refreshing, setRefreshing] = useState(false);
+
+    const handleRefresh = async () => {
+        if (!onRefresh || refreshing) return;
+        setRefreshing(true);
+        await onRefresh();
+        setRefreshing(false);
+    };
 
     const rootDocs = project.requirementDocs.filter(d => !d.parentDocId);
     const crDocsByParent: Record<string, RequirementDoc[]> = {};
@@ -190,6 +199,16 @@ export default function WorkspaceTab({ project, onNewDraft, onImportDoc, onDelet
                     <p className="text-[11px] text-slate-500 mt-0.5">Structured templates for requirements engineering.</p>
                 </div>
                 <div className="flex items-center gap-2">
+                    {onRefresh && (
+                        <button
+                            onClick={handleRefresh}
+                            disabled={refreshing}
+                            title="Refresh documents"
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 border border-slate-200 text-slate-500 rounded-lg hover:border-slate-400 hover:bg-slate-50 transition-colors disabled:opacity-50"
+                        >
+                            <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} />
+                        </button>
+                    )}
                     <button
                         onClick={onImportDoc}
                         className="flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 text-slate-700 rounded-lg hover:border-slate-400 hover:bg-slate-50 transition-colors text-xs font-bold"

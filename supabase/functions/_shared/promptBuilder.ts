@@ -39,6 +39,76 @@ function buildOutlineBlock(documentOutline?: string[], sectionTitle?: string): s
 }
 
 /**
+ * Build prompts for diagram generation in auto-generate mode.
+ * The LLM produces raw Mermaid syntax (no wrapping tags).
+ */
+export function buildDiagramPrompt(
+    docType: string,
+    sectionTitle: string,
+    diagramType: 'flowchart' | 'erDiagram' | 'sequenceDiagram',
+    diagramHint: string,
+    contextText: string,
+    documentOutline?: string[],
+    fewShotExample?: string,
+): PromptResult {
+    const outlineBlock = buildOutlineBlock(documentOutline, sectionTitle)
+
+    const diagramTypeGuide: Record<string, string> = {
+        flowchart: `Use "flowchart TD" (top-down) or "flowchart LR" (left-right).
+ALLOWED node shapes: A[Rectangle], B{Diamond}, C([Stadium]), D((Circle)).
+Edges: A --> B, A -->|label| B.
+CRITICAL RULES for flowchart:
+- Node labels MUST NOT contain ( or ) characters — write "Jika Perlu" not "(Jika Perlu)"
+- Do NOT use subgraph blocks
+- Do NOT add style/classDef declarations
+- Do NOT add comments (%% ...)
+- Keep labels short: max 5 words per node`,
+        erDiagram: `Use "erDiagram" — the FIRST LINE must be exactly the word: erDiagram
+Entity block: ENTITY_NAME { datatype attribute_name }
+Relationship: ENTITY1 ||--o{ ENTITY2 : "label"
+Cardinality symbols: ||=exactly one, o|=zero or one, }|=one or more, }o=zero or more.
+CRITICAL RULES for erDiagram:
+- Entity names must be UPPERCASE with no spaces — use underscores: NAMA_ENTITI
+- Attribute names must be lowercase with no spaces: nama_atribut
+- Relationship labels must be quoted: : "mengandungi"
+- Do NOT add style or any other blocks after the relationships`,
+        sequenceDiagram: `Use "sequenceDiagram".
+Participants: participant A as Nama.
+Messages: A->>B: mesej, B-->>A: respons.
+Notes: Note over A,B: teks.`,
+    }
+
+    const systemPrompt = `You are an expert technical writer creating a Mermaid diagram for a ${docType} requirements document section titled "${sectionTitle}".
+${outlineBlock}
+DIAGRAM TYPE: ${diagramType}
+${diagramTypeGuide[diagramType] || ''}
+
+DIAGRAM GOAL: ${diagramHint}
+
+OUTPUT RULES:
+- Output ONLY valid Mermaid syntax — no markdown fences, no \`\`\`, no <pre> tags, no explanation text before or after
+- The VERY FIRST LINE of your response must be the diagram type declaration (e.g. "flowchart TD", "erDiagram")
+- Use Bahasa Malaysia for all labels and text in the diagram
+- Keep the diagram focused: 5–12 nodes for flowcharts, 3–7 entities for ER diagrams
+${fewShotExample ? `\nEXAMPLE — follow this exact syntax style but use project-specific content:\n${fewShotExample}\n` : ''}`
+
+    const userPrompt = `Section: ${sectionTitle}
+
+--- PROJECT CONTEXT (from uploaded documents) ---
+${contextText}
+-------------------------------------------------
+
+Generate the Mermaid diagram now.`
+
+    return {
+        messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt },
+        ],
+    }
+}
+
+/**
  * Build prompts for auto-generate mode (markdown/plain text output).
  * The LLM produces markdown that gets converted to DOCX nodes server-side.
  */
