@@ -19,6 +19,7 @@ import AdminOnlyOffice from './pages/admin/AdminOnlyOffice';
 
 import DocumentRepository from './pages/DocumentRepository';
 import DocumentEditor from './pages/DocumentEditor';
+import Trash from './pages/Trash';
 import Layout from './components/Layout';
 import { ProjectProvider } from './context/ProjectContext';
 import { AuthProvider } from './context/AuthContext';
@@ -36,6 +37,7 @@ function App() {
               <Route path="/projects/:projectId" element={<ProjectDetails />} />
 
               <Route path="/documents" element={<DocumentRepository />} />
+              <Route path="/trash" element={<Trash />} />
               <Route path="/editor/:projectId/:templateId" element={<DocumentEditor />} />
 
               {/* Admin Routes */}
