@@ -136,6 +136,10 @@ curl -X POST "http://127.0.0.1:54404/storage/v1/object/documents/templates/URS.d
   - *Diagram Notes* — store Mermaid, draw.io, or freeform diagram references
 - **Semantic AI Coverage Assessment** — Lightweight RAG dry-run (no LLM) that checks each of the 19 BRS sections against the project knowledge base; surfaces high/medium/low/none quality per section. Auto-triggers after every file upload or user story embed. Results shown in a Project Health modal (Dashboard tab) and in the BRS creation wizard as a semantic readiness meter replacing the naive document-count threshold
 - **Prototype Generation** — Generate a self-contained multi-page HTML/CSS front-end prototype from any workspace document; view source, copy, and run directly in the browser
+- **Document Locking & Change Requests** — Lock a document to prevent edits; create a Change Request to fork a locked doc into a versioned child with its own CR number, storage clone, and review badge in the editor
+- **Direct Document Import** — Upload `.docx` files directly as first-class requirement docs (editable in OnlyOffice, embedded for RAG) from the Workspace tab; "Upload & Generate" shortcut in the Prototype wizard triggers generation immediately after upload
+- **Project Lifecycle** — Archive, duplicate, and soft-delete (Trash) projects with 30-day grace period + Undo toasts; Dashboard tabs separate "Mine" / "Shared" / "Admin" views with search, sort, and archived filter
+- **Server-Side Diagram Pipeline** — BRS auto-generation renders Mermaid diagrams server-side via kroki.io / mermaid.ink, with sanitization and syntax auto-fixes, and embeds them as PNGs in the final DOCX
 - **Admin Dashboard** — Role-gated `/admin` section with platform stats, user management, LLM cost tracking, RAG index health, OnlyOffice status, feature flags, and audit log
 
 ## How It Works
@@ -176,6 +180,7 @@ curl -X POST "http://127.0.0.1:54404/storage/v1/object/documents/templates/URS.d
   supabase functions deploy assess_coverage --no-verify-jwt
   supabase functions deploy onlyoffice_callback
   supabase functions deploy embed_document --no-verify-jwt
+  supabase functions deploy replace_section --no-verify-jwt
   supabase functions deploy admin-users
   supabase functions deploy admin-telemetry --no-verify-jwt
   ```
@@ -188,6 +193,18 @@ curl -X POST "http://127.0.0.1:54404/storage/v1/object/documents/templates/URS.d
     VOYAGE_API_KEY=...
   ```
 - OnlyOffice runs with `JWT_ENABLED=false`; do not set `VITE_ONLYOFFICE_JWT_SECRET` unless you explicitly enable JWT on the OO server.
+
+---
+
+---
+
+## Operational Docs
+
+| File | Purpose |
+|---|---|
+| [`CLAUDE.md`](./CLAUDE.md) | Full project instructions, architecture, and AI coding conventions |
+| [`DEPLOYMENT.md`](./DEPLOYMENT.md) | Coolify frontend deployment guide |
+| [`SERVER-SETUP.md`](./SERVER-SETUP.md) | Test/client server setup (Docker, Coolify, tunnels, credentials) |
 
 ---
 

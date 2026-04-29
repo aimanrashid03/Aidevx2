@@ -82,6 +82,7 @@ src/
     Dashboard.tsx                # Project list with owner/member info
     AddProject.tsx
     DocumentRepository.tsx
+    Trash.tsx                        # Trashed projects — restore or permanently delete
     admin/
       AdminLayout.tsx            # Admin shell with sidebar nav (AdminRoute-gated)
       AdminOverview.tsx          # Platform stats overview
@@ -102,26 +103,42 @@ src/
       AIGeneratePanel.tsx        # Slide-in AI panel: multi-doc-type, chat mode, RAG, diagrams
       DiagramPreview.tsx         # Live Mermaid/draw.io preview in AI panel (with ErrorBoundary)
       AutoGenerateProgress.tsx   # Modal UI for full-document auto-generation progress
-      VersionHistory.tsx
+      VersionHistory.tsx         # Version list; requires currentVersion prop and onClose prop
       VersionViewer.tsx          # Dual-path: docx-preview (OO) or legacy block renderer
-      CommentsSidebar.tsx
+      CommentsSidebar.tsx        # Requires activeSectionIndex + onClose props; styled section picker
     ErrorBoundary.tsx              # Generic React class error boundary (fallback render prop)
     AdminRoute.tsx                 # Route guard: redirects to /dashboard if profile.role !== 'admin'
     ConfirmDialog.tsx              # Reusable confirm modal (danger/default variants)
+    CRStatusBadge.tsx              # CR status pill: draft | in_review | approved | rejected | merged
+    CreateCRDialog.tsx             # Modal to create a Change Request from a locked doc; inline error state
     EmbeddingStatusBadge.tsx      # Unified RAG indexing status badge (pending/processing/processed/failed)
     CoverageBreakdown.tsx         # Per-section BRS coverage table (compact bar + full collapsible grouped view)
     ProjectMembers.tsx            # Collaborator management UI (invite, remove, role change)
-    Layout.tsx                    # Sticky top header (logo, user avatar, theme picker, logout) — no sidebar
+    Layout.tsx                    # Collapsible sidebar + header; reads trashedCount from ProjectContext for Trash badge
     PresenceIndicator.tsx
+    TableEditor.tsx                # Reusable inline table editor
+    UndoToast.tsx                  # Bottom-center toast with Undo button (8s default timeout); used by Dashboard lifecycle actions
+    dashboard/
+      AdminViewBanner.tsx          # Read-only info banner shown when admin views projects they don't own
+      DashboardEmptyState.tsx      # Empty state for no-owned / no-shared / no-search-results
+      DashboardFilters.tsx         # Search input + sort select + Show-archived chip
+      DashboardTabs.tsx            # Tab control: mine | shared | admin (DashboardTab type)
+      DeleteProjectModal.tsx       # Permanent-delete confirm modal (from Trash)
+      DuplicateProjectModal.tsx    # Duplicate project modal with name prompt
+      EditProjectModal.tsx         # Edit project name / description / notes
+      ProjectCardMenu.tsx          # Context menu on project card (edit / duplicate / archive / trash)
+      StatCardsRow.tsx             # Top-of-dashboard stat cards (total / active / archived / shared)
     project-tabs/
+      ActivityTab.tsx              # Activity timeline: day-grouped, Lucide icons, consecutive-action collapse, filter
       DashboardTab.tsx            # Project health panel — blended checklist+coverage score, coverage modal
-      WorkspaceTab.tsx
+      WorkspaceTab.tsx             # Document list; Import Document modal; optional onRefresh prop
       LibraryTab.tsx               # Tabbed container for supporting files, user stories, diagrams
       LibrarySupportingFiles.tsx   # File upload, embedding, download, delete; fires assess_coverage after embed
       LibraryUserStories.tsx       # User story template CRUD with auto-indexing
       LibraryDiagramNotes.tsx      # Diagram note CRUD
       CollaboratorsTab.tsx
-      PrototypeTab.tsx
+      PrototypeTab.tsx             # Prototype list; WizardModal (doc select + Upload-and-Generate shortcut); CodeViewerModal
+      PrototypeGenerateProgress.tsx # Progress UI for prototype generation
   context/
     AuthContext.tsx               # Session + user + profile (role: 'admin'|'user') — profileLoading separate flag
     ProjectContext.tsx           # Projects + collaboration (userRole, memberCount, ownerName)
@@ -131,6 +148,12 @@ src/
     useDiagramNotes.ts           # Diagram note CRUD
     useConfirmDialog.ts          # Promise-based confirm dialog + toast notification hook
     useCoverageAssessment.ts     # Fetches/runs semantic coverage assessment; exposes assessment, assessing, isStale, assessmentError, runAssessment, refetch
+    useActivityLog.ts            # Activity log read/write (timeline data for ActivityTab)
+    useDocumentComments.ts       # Comment CRUD per document
+    useDocumentLock.ts           # Realtime postgres_changes subscription for live lock state in editor
+    useDocumentPresence.ts       # Live presence tracking for OO editor sessions
+    useProjectMetadataEmbedding.ts # Embeds project description + notes into RAG; tracks description_embedding_status / notes_embedding_status
+    useSectionContent.ts         # Per-section AI-generated content read/write (backed by section_content table)
   lib/
     admin/
       adminApi.ts                # callAdminUsers(), callAdminTelemetry(), pingEdgeFunction()
@@ -143,6 +166,9 @@ src/
       sectionContext.ts          # Extracts section context from doc structures (fuzzy matching)
       diagramRenderer.ts         # Mermaid → base64 PNG (via canvas)
       drawioRenderer.ts          # draw.io XML → base64 PNG; returns { png, fallback: boolean }
+    export/                      # DOCX/PDF export helpers
+    extractText.ts               # Generic text extraction utility
+    validateUpload.ts            # File-upload validation (size limits, MIME types)
   tiptap/
     converters/
       tiptapToDocx.ts            # Tiptap JSON → docx nodes (async)
@@ -157,11 +183,12 @@ src/
 supabase/
   functions/
     generate_section/            # Per-section AI generation (streaming SSE, chat mode, RAG)
-    auto_generate_document/      # Full-document auto-generation (BRS) with progress streaming
+    auto_generate_document/      # Full-document auto-generation (BRS) with progress streaming + server-side diagrams
     generate_prototype/          # UI prototype generation from requirement docs (SSE progress events)
     assess_coverage/             # Semantic coverage assessment — dry-run RAG against all BRS sections, no LLM (verify_jwt=false)
-    onlyoffice_callback/         # OO save callback — rotates documentKey
+    onlyoffice_callback/         # OO save callback — rotates documentKey, captures last_edited_by, enforces lock guard
     embed_document/              # Document embedding for RAG pipeline
+    replace_section/             # Targeted server-side section replacement in DOCX (verify_jwt=false)
     admin-users/                 # Admin: user CRUD, role management, profile operations
     admin-telemetry/             # Admin: platform stats, OO health, embedding indexes, storage, migrations
     _shared/
@@ -169,10 +196,13 @@ supabase/
       promptBuilder.ts           # System/user prompt construction for auto-generate mode
       llmConfig.ts               # Environment-based LLM/embedding config (model, temp, tokens)
       chunker.ts                 # Structure-aware text splitter with heading/table detection
-      markdownToOoxml.ts         # Markdown → raw OOXML fragments (preserves template styles)
+      markdownToOoxml.ts         # Markdown → raw OOXML fragments; includes diagramOoxml() for inline image fragments
+      markdownToHtml.ts          # Markdown → HTML conversion helper
+      htmlToOoxml.ts             # HTML → OOXML fragments (used by replace_section)
       docxTemplateBuilder.ts     # Template-based DOCX builder (PizZip, preserves formatting)
       docxServerBuilder.ts       # From-scratch DOCX builder (markdown → docx library nodes)
       docxTextExtractor.ts       # DOCX → plaintext extractor (PizZip, strips XML) for LLM prompts
+      renderMermaidServer.ts     # Server-side Mermaid → PNG via kroki.io / mermaid.ink (sanitization, retry, syntax auto-fixes)
       brsStructure.ts            # Server-side BRS structure with autoGenerate flags
       brsExamples.ts             # Few-shot examples for BRS generation
       srsExamples.ts             # Few-shot examples for SRS generation
@@ -254,6 +284,65 @@ public/
 | `20260415000002_app_config.sql` | `app_config` table — feature flags + runtime model overrides |
 | `20260415100000_admin_telemetry_helpers.sql` | SQL helper functions for `admin-telemetry` (SECURITY DEFINER, service_role only) |
 | `20260417000000_rag_coverage_assessments.sql` | `rag_coverage_assessments` table — cached semantic coverage per project per doc type; UNIQUE (project_id, doc_type); RLS: project members read only, service role writes |
+| `20260418000000_doc_management_features.sql` | `requirement_docs`: adds `last_edited_by`, `locked_by/locked_at`, `parent_doc_id/cr_number`; new `change_requests` table (status: draft/in_review/approved/rejected/merged) with RLS; enables Realtime on `requirement_docs` |
+| `20260403000000_section_content.sql` | `section_content` table — stores AI-generated HTML per section (doc_id, section_title, html, sources, content_type, is_in_document); used by `replace_section` and AI panel reload |
+| `20260404000000_activity_log.sql` | `activity_log` table — workspace activity timeline (project_id, doc_id, user_id, action, details jsonb) with typed action kinds |
+| `20260416000000_upload_limits.sql` | Upload size and MIME type constraints |
+| `20260422000000_project_metadata_embedding_status.sql` | Adds `description_embedding_status` and `notes_embedding_status` columns to `projects` for tracking project-metadata RAG indexing |
+| `20260428000000_project_lifecycle.sql` | `projects`: adds `archived_at`, `deleted_at`, `updated_at` + auto-update trigger; partial indices; replaces UPDATE/DELETE RLS policies (editors can update, owners can hard-delete) |
+| `20260429000000_phase5_hardening.sql` | pg_cron job to hard-delete projects trashed > 30 days; admin INSERT policy on `admin_audit_log` for client-side audit writes |
+
+## Document Lifecycle Features
+
+### Document Locking
+- Owner can lock/unlock any document from the editor header (lock icon, owner-only)
+- **`onlyoffice_callback`** enforces the lock server-side: rejects saves from non-lock-holders and returns a `403` with `{ error: 'locked' }`
+- `useDocumentLock(docId)` subscribes to `requirement_docs` Realtime `postgres_changes` so the lock state updates live in the editor without polling
+- Locked docs open in view-mode for non-owners; AI panel is hidden with an explanatory toast
+
+### Change Requests (CR Versioning)
+- Any editor/owner can create a CR from a locked doc via `CreateCRDialog` (opens from editor header CR badge or WorkspaceTab card)
+- `createChangeRequest()` in `ProjectContext`: clones the storage DOCX object, inserts a new `requirement_docs` row with `parent_doc_id` + `cr_number`, auto-locks the parent, creates a `change_requests` row
+- CR children grouped under their parent doc in `WorkspaceTab` (indented, with `CRStatusBadge`)
+- `change_requests` table status values: `draft | in_review | approved | rejected | merged`
+
+### Last-Edited-By Tracking
+- `onlyoffice_callback` captures the OO `actions[].users` payload and writes `last_edited_by` (UUID) + `last_edited_by_name` to `requirement_docs`
+- `ProjectContext` exposes this per-document and displays it on WorkspaceTab doc cards
+
+### Direct DOCX Import
+- **WorkspaceTab** "Import Document" modal: upload any `.docx` and register it as a first-class `requirement_docs` row — editable in OnlyOffice, usable for AI generation and RAG
+- **PrototypeTab** WizardModal has an "Upload & Generate" shortcut: upload a doc and immediately trigger prototype generation in one step
+
+## Project Lifecycle (Dashboard)
+
+### Dashboard Tabs
+- `mine` — projects the current user owns
+- `shared` — projects where user is an editor or viewer
+- `admin` — all projects (admin role only); shows `AdminViewBanner` ("read-only, you don't own these")
+- Tab state is local; `DashboardTabs` component drives the UI
+
+### Filters and Sorting
+- `DashboardFilters`: search by name, sort by Recent or Name A–Z, Show-archived chip (amber toggle)
+- Archived projects are hidden by default; toggle chip reveals them inline
+- `StatCardsRow` shows total / active / archived / shared counts at the top of the dashboard
+
+### Project Card Actions (`ProjectCardMenu`)
+- **Edit** — `EditProjectModal`: update name, description, notes in-place
+- **Duplicate** — `DuplicateProjectModal`: clone project with "(Copy)" suffix, no documents copied
+- **Archive / Unarchive** — soft status change (`archived_at`); project hidden from default view but not deleted
+- **Trash** — soft-delete (`deleted_at` set); project moves to `/trash`; `UndoToast` shown for 8 s to reverse
+- **Permanent Delete** — from Trash page (`DeleteProjectModal`): hard deletes immediately (cascades to all child rows)
+
+### Trash Page (`/trash`)
+- Lists all soft-deleted projects (where `deleted_at IS NOT NULL`)
+- Actions: Restore (clears `deleted_at`) or Permanently Delete
+- pg_cron job (migration `20260429000000_phase5_hardening.sql`) auto-purges rows older than 30 days daily at 03:00 UTC (requires `pg_cron` extension)
+
+### Undo Pattern
+- `UndoToast` component: fixed bottom-center, 8 s timeout, Undo + close buttons
+- Destructive actions (archive, trash, duplicate) fire the DB write after the toast timeout unless Undo is clicked; "Undo" reverses via ProjectContext methods
+- `trashedCount` exposed from `ProjectContext` — drives the Trash badge in the sidebar (red pill, shows 9+ if > 9)
 
 ## AI Generation
 
@@ -289,6 +378,23 @@ public/
 - Currently supports BRS documents
 - **`AutoGenerateProgress` design note**: `onComplete` and `selectedDocumentPaths` props are stored in refs inside the component — do NOT add them back to the `useCallback` dep array. The parent (`DocumentEditor`) re-renders frequently (real-time hooks) and creating new function references causes duplicate requests.
 
+#### Server-Side Diagram Pipeline (BRS auto-generation)
+- `renderMermaidServer.ts`: renders Mermaid code to PNG server-side; primary renderer is **kroki.io**, fallback is **mermaid.ink**
+- Per-diagram retry: 2 attempts per API before falling back; common syntax auto-fixes applied pre-render: strip prose preamble, fix parentheses in labels, `graph` → `flowchart`, decode HTML entities, case-insensitive type detection (erDiagram, sequenceDiagram, etc.)
+- Rendered PNGs embedded inline in the DOCX via `diagramOoxml()` helper in `markdownToOoxml.ts`
+- **Per-diagram-type model routing**: `LLM_MODEL_DIAGRAM` env var overrides the LLM for erDiagram and sequenceDiagram sections specifically (defaults to base model if unset)
+- SSE emits a progress event per diagram section; heartbeat keeps connection alive during rendering
+
+#### Auto-Generate Reload Guards
+- `auto_generate_document` emits a `started { docId }` SSE event immediately so the frontend can register the job before streaming begins
+- `AutoGenerateProgress` polls the DB for completion if the SSE connection drops mid-stream
+- `DocumentEditor` checks if a BRS already exists before triggering auto-generate — skips if already generated to prevent duplicate requests on page reload
+
+#### Prototype Reload Guard
+- A `sessionStorage` flag is set when prototype generation starts and cleared on completion
+- On page reload during an active generation, `PrototypeTab` shows a warning banner ("Generation was interrupted")
+- `WorkspaceTab` accepts an optional `onRefresh` prop; `DocumentEditor` passes `refreshProjects` after auto-generate completes
+
 ### RAG Pipeline
 - `embed_document` edge function chunks and embeds uploaded project files
 - Dual-query embedding strategy (direct + template-aware) for better recall
@@ -301,6 +407,11 @@ public/
 - **DB migration** `20260401000000_voyage_embeddings.sql`: resizes pgvector column from 1536d → 512d, truncates `document_chunks`, resets `embedding_status → pending`. All documents must be re-embedded after applying this migration.
 - **DB migration** `20260402100000_add_embedding_index.sql`: adds HNSW index on `document_chunks.embedding` (`vector_cosine_ops`, m=16, ef_construction=64) for faster similarity search. HNSW chosen over IVFFlat — no training step, better recall, suits incrementally growing data.
 
+#### Project Metadata Indexing
+- `useProjectMetadataEmbedding(projectId)` hook embeds the project's description and notes into the RAG pipeline whenever they change
+- Embedding status tracked in two new `projects` columns: `description_embedding_status` and `notes_embedding_status` (same pending/processing/processed/failed values)
+- `EmbeddingStatusBadge` shown in `ProjectDetails` and `DashboardTab` for both fields
+
 ### Semantic Coverage Assessment (`assess_coverage`)
 - Lightweight RAG dry-run against all 19 BRS auto-generate sections — **no LLM calls**, only embedding + vector search
 - Cost ~$0.001 per run (2 Voyage AI batch-embed calls + 19 DB vector searches)
@@ -309,6 +420,7 @@ public/
 - `sections` JSONB: `[{ title, quality, chunkCount, avgSimilarity, topSources }]` — avgSimilarity is the full-chunk average; quality is derived from top-6 chunks
 - `overall_score`: weighted average (high=1.0, medium=0.66, low=0.33, none=0)
 - `chunk_count_at_assessment`: snapshot for staleness detection (frontend flags stale if delta > 2)
+- **Realtime refresh**: `rag_coverage_assessments` is on Supabase Realtime; `useCoverageAssessment` subscribes to row changes and auto-refreshes the cached result — no manual polling needed
 - **Staleness detection**: `useCoverageAssessment` computes `isStale` by comparing `chunkCountAtAssessment` vs current indexed count
 - **Project Health panel** (DashboardTab): blended score = 40% checklist + 60% coverage; "View Details" button opens a modal with full per-section breakdown (all groups pre-expanded)
 - **BRS creation modal** (ProjectDetails): replaces naive "X/5 materials" meter with semantic coverage bar + compact breakdown; syncs via `refetch()` when modal opens
@@ -321,6 +433,7 @@ public/
 - Default model: `deepseek/deepseek-chat-v3-0324` via OpenRouter — strong structured output, Bahasa Malaysia support, ~70% cheaper than Haiku
 - **Per-function model override**: `LLM_MODEL_<FEATURE>` env var overrides model for a specific function (e.g. `LLM_MODEL_PROTOTYPE=google/gemini-2.5-flash-preview`). Use `getLlmConfigForFeature('feature')` in the function instead of `getLlmConfig()`
 - `generate_prototype` uses `LLM_MODEL_PROTOTYPE` (default: `google/gemini-2.5-flash-preview`) — needs 16k+ output for multi-page HTML; DeepSeek V3 caps at 8K
+- `auto_generate_document` diagram sections use `LLM_MODEL_DIAGRAM` — overrides model for erDiagram/sequenceDiagram sections; defaults to base model if unset
 - `app_config` table supports runtime model overrides via `llm.model_override.*` keys — admin can change models without redeploying
 - Embedding: Voyage AI (`voyage-3-lite`, 512 dimensions) via `VOYAGE_API_KEY`; Voyage AI does **not** accept a `dimensions` param in the request body (unlike OpenAI `text-embedding-3-small`)
 - Per-content-type settings: tables (temp 0.2, 1500 tokens), diagrams (temp 0.2, 1800 tokens), text (temp 0.3, 2500 tokens)
@@ -350,6 +463,7 @@ supabase functions deploy generate_prototype --no-verify-jwt
 supabase functions deploy assess_coverage --no-verify-jwt
 supabase functions deploy onlyoffice_callback
 supabase functions deploy embed_document --no-verify-jwt
+supabase functions deploy replace_section --no-verify-jwt
 supabase functions deploy admin-users
 supabase functions deploy admin-telemetry --no-verify-jwt
 supabase secrets set ONLYOFFICE_CALLBACK_SECRET=... SUPABASE_SERVICE_ROLE_KEY=... \
@@ -370,17 +484,24 @@ supabase secrets set ONLYOFFICE_CALLBACK_SECRET=... SUPABASE_SERVICE_ROLE_KEY=..
 
 ## Component Prop Contracts (non-obvious)
 - `PresenceIndicator`: requires both `otherUsers` and `totalViewers` props
-- `VersionHistory`: requires `currentVersion` prop; no `onClose`
+- `VersionHistory`: requires `currentVersion` prop and `onClose` prop (added in c78a6ce)
 - `VersionViewer`: takes `docType: string`, `onRestore(version)` takes argument
-- `CommentsSidebar`: requires `activeSectionIndex: number | null`; no `onClose`
+- `CommentsSidebar`: requires `activeSectionIndex: number | null` and `onClose` prop (added in c78a6ce); uses styled section picker
 - `AutoGenerateProgress`: modal component, receives project/doc IDs and streams progress
 - `useConfirmDialog`: returns `{ dialog, notificationBanner, confirm, notify }` — render `dialog` and `notificationBanner` in JSX
-- `EmbeddingStatusBadge`: accepts `status: string` — unified badge used by both supporting files and user stories
+- `EmbeddingStatusBadge`: accepts `status: string` — unified badge used by supporting files, user stories, and project metadata fields
 - `CoverageBreakdown`: props `{ sections, loading?, compact?, initialExpandAll? }` — compact=true for modal summary bar; initialExpandAll=true pre-expands all groups (modal detail view)
-- `useCoverageAssessment`: returns `{ assessment, loading, assessing, assessmentError, isStale, runAssessment, refetch }` — `refetch` does DB-only re-read (no edge function); call it when opening the BRS modal to sync with DashboardTab
+- `useCoverageAssessment`: returns `{ assessment, loading, assessing, assessmentError, isStale, runAssessment, refetch }` — `refetch` does DB-only re-read (no edge function); auto-refreshes via Realtime subscription; call `refetch()` when opening the BRS modal to sync with DashboardTab
 - `ProjectDetails`: uses URL search param `?tab=` for tab persistence; computes RAG readiness from indexed files + stories; calls `refetchCoverage()` when BRS template selected to sync with DashboardTab assessment
 - `AIGeneratePanel`: accepts optional `onClose` callback; diagram format preference persisted via `idb-keyval`; `DiagramPreview` renders live inside the panel
 - `ErrorBoundary`: class component; accepts optional `fallback: (error: Error) => ReactNode` render prop
+- `UndoToast`: props `{ message, onUndo, onClose, durationMs? }` — durationMs defaults 8000; clears its own timer on Undo
+- `CreateCRDialog`: modal; `onClose` + `onCreate(docId, title)` callbacks; inline error state
+- `CRStatusBadge`: `status: 'draft' | 'in_review' | 'approved' | 'rejected' | 'merged'`
+- `useDocumentLock(docId)`: returns `{ lockedBy, lockedAt, isLocked }` live via Realtime postgres_changes
+- `useProjectMetadataEmbedding(projectId)`: auto-triggers embed when project description/notes change; tracks per-field status
+- `WorkspaceTab`: optional `onRefresh` prop — parent passes `refreshProjects` callback; component shows spinner button
+- `Layout`: reads `trashedCount` from `ProjectContext` to drive the Trash sidebar badge
 
 ## UI Design Reference
 The UI is being redesigned to closely mirror **CORRAD** (https://github.com/mfauzzury/corrad-laravel) — a Vue 3 + Laravel admin dashboard with a modern, gradient-forward aesthetic. Key design decisions to stay consistent with CORRAD:
@@ -414,6 +535,7 @@ The UI is being redesigned to closely mirror **CORRAD** (https://github.com/mfau
 Two separate server environments exist:
 
 - **Test/Client server** (self-hosted full stack — Docker, Coolify, tunnels, networking, credentials): see [SERVER-SETUP.md](./SERVER-SETUP.md)
+- **Frontend deployment** (Coolify static build): see [DEPLOYMENT.md](./DEPLOYMENT.md)
 - **Production OnlyOffice server** (Oracle Cloud free tier ARM VM):
   - Public IP: `149.118.143.205`, port `8080`
   - Ubuntu 22.04, Docker, OnlyOffice Document Server (`JWT_ENABLED=false`)

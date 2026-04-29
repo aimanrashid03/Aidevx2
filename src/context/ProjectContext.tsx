@@ -49,39 +49,73 @@ export interface Project {
     documents?: { id: string; name: string; path: string; embeddingStatus: string }[];
     requirementDocs: RequirementDoc[];
     createdAt: string;
+    updatedAt: string;
+    archivedAt: string | null;
+    deletedAt: string | null;
     /** Current user's role: 'owner' if they created it, otherwise their project_members role */
     userRole?: 'owner' | 'editor' | 'viewer';
+    /** True when admin RLS returned this project but the user isn't the owner or a member */
+    isAdminView: boolean;
     memberCount?: number;
     ownerName?: string;
     description_embedding_status?: 'pending' | 'processing' | 'processed' | 'failed';
     notes_embedding_status?: 'pending' | 'processing' | 'processed' | 'failed';
 }
 
+export interface DuplicateProjectOptions {
+    id: string;
+    name: string;
+    copyDocs: boolean;
+}
+
 interface ProjectContextType {
     projects: Project[];
     loading: boolean;
+    trashedCount: number;
     refreshProjects: () => Promise<void>;
-    addProject: (project: Omit<Project, 'id' | 'createdAt' | 'requirementDocs'>) => Promise<string | null>;
+    addProject: (project: Omit<Project, 'id' | 'createdAt' | 'updatedAt' | 'archivedAt' | 'deletedAt' | 'requirementDocs' | 'isAdminView'>) => Promise<string | null>;
     updateProject: (projectId: string, updates: Partial<Pick<Project, 'name' | 'description' | 'notes'>>) => Promise<void>;
+    // Project lifecycle
+    softDeleteProject: (id: string) => Promise<void>;
+    restoreProject: (id: string) => Promise<void>;
+    permanentlyDeleteProject: (id: string) => Promise<void>;
+    archiveProject: (id: string) => Promise<void>;
+    unarchiveProject: (id: string) => Promise<void>;
+    duplicateProject: (opts: DuplicateProjectOptions) => Promise<string | null>;
+    fetchTrashedProjects: () => Promise<Project[]>;
     deleteProjectDocument: (path: string) => Promise<void>;
     deleteRequirementDoc: (id: string, projectId: string) => Promise<void>;
     saveRequirementDoc: (projectId: string, doc: RequirementDoc, changeSummary?: string) => Promise<void>;
     fetchDocVersions: (docId: string, projectId: string) => Promise<DocVersion[]>;
     restoreVersion: (version: DocVersion, projectId: string) => Promise<void>;
     restoreOnlyOfficeVersion: (version: DocVersion, projectId: string) => Promise<void>;
-    // Phase 3: locking
+    // Document locking
     lockDocument: (docId: string, projectId: string) => Promise<void>;
     unlockDocument: (docId: string, projectId: string) => Promise<void>;
-    // Phase 4: CR versioning
+    // CR versioning
     createChangeRequest: (projectId: string, originalDocId: string, description: string) => Promise<string | null>;
 }
 
 const ProjectContext = createContext<ProjectContextType | undefined>(undefined);
 
 export function ProjectProvider({ children }: { children: ReactNode }) {
-    const { user } = useAuth();
+    const { user, profile } = useAuth();
     const [projects, setProjects] = useState<Project[]>([]);
     const [loading, setLoading] = useState(true);
+    const [trashedCount, setTrashedCount] = useState(0);
+
+    // Fire-and-forget audit log entry — only written when actor is admin.
+    // Non-admin users get an RLS rejection from Supabase, which we swallow.
+    const logAudit = (action: string, targetId: string, metadata: Record<string, unknown> = {}) => {
+        if (profile?.role !== 'admin') return;
+        void supabase.from('admin_audit_log').insert({
+            actor_id: user?.id,
+            action,
+            target_type: 'project',
+            target_id: targetId,
+            metadata,
+        });
+    };
 
     const fetchProjects = async () => {
         if (!user) {
@@ -93,11 +127,12 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
         try {
             setLoading(true);
 
-            // 1. Fetch Projects (RLS returns owned + shared projects)
+            // 1. Fetch Projects (RLS returns owned + shared projects; exclude soft-deleted)
             const { data: projectsData, error: projectsError } = await supabase
                 .from('projects')
                 .select('*')
-                .order('created_at', { ascending: false });
+                .is('deleted_at', null)
+                .order('updated_at', { ascending: false });
 
             if (projectsError) throw projectsError;
 
@@ -168,6 +203,9 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
                     }
                 }
 
+                const isMember = !!roleByProject[p.id];
+                const isOwner = p.user_id === user.id;
+
                 return {
                     id: p.id,
                     name: p.name,
@@ -176,7 +214,11 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
                     description_embedding_status: (p.description_embedding_status as Project['description_embedding_status']) || 'pending',
                     notes_embedding_status: (p.notes_embedding_status as Project['notes_embedding_status']) || 'pending',
                     createdAt: p.created_at,
-                    userRole: (roleByProject[p.id] || (p.user_id === user.id ? 'owner' : 'viewer')) as 'owner' | 'editor' | 'viewer',
+                    updatedAt: p.updated_at ?? p.created_at,
+                    archivedAt: p.archived_at ?? null,
+                    deletedAt: p.deleted_at ?? null,
+                    userRole: (roleByProject[p.id] || (isOwner ? 'owner' : 'viewer')) as 'owner' | 'editor' | 'viewer',
+                    isAdminView: !isOwner && !isMember,
                     documents: docsData?.map(d => ({ id: d.id, name: d.file_name, path: d.file_path, embeddingStatus: d.embedding_status || 'pending' })) || [],
                     requirementDocs: reqDocsData?.map(d => ({
                         id: d.id,
@@ -202,6 +244,13 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
             }));
 
             setProjects(enrichedProjects);
+
+            // Fetch trash count for sidebar badge
+            const { count: trashCount } = await supabase
+                .from('projects')
+                .select('id', { count: 'exact', head: true })
+                .not('deleted_at', 'is', null);
+            setTrashedCount(trashCount ?? 0);
         } catch (error) {
             console.error('Error fetching projects:', error);
         } finally {
@@ -214,7 +263,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [user?.id]);
 
-    const addProject = async (projectData: Omit<Project, 'id' | 'createdAt' | 'requirementDocs'>) => {
+    const addProject = async (projectData: Omit<Project, 'id' | 'createdAt' | 'updatedAt' | 'archivedAt' | 'deletedAt' | 'requirementDocs' | 'isAdminView'>) => {
         if (!user) return null;
 
         try {
@@ -564,6 +613,191 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
         }
     };
 
+    // ── Project lifecycle ────────────────────────────────────────────────────
+
+    const softDeleteProject = async (id: string) => {
+        if (!user) return;
+        const { error } = await supabase
+            .from('projects')
+            .update({ deleted_at: new Date().toISOString() })
+            .eq('id', id);
+        if (error) throw error;
+        setProjects(prev => prev.filter(p => p.id !== id));
+        setTrashedCount(prev => prev + 1);
+        logAudit('project.soft_delete', id, { project_name: projects.find(p => p.id === id)?.name });
+    };
+
+    const restoreProject = async (id: string) => {
+        if (!user) return;
+        const { error } = await supabase
+            .from('projects')
+            .update({ deleted_at: null })
+            .eq('id', id);
+        if (error) throw error;
+        await fetchProjects();
+    };
+
+    const permanentlyDeleteProject = async (id: string) => {
+        if (!user) return;
+        // Projects state only holds non-deleted rows; if not found, it's in trash
+        const wasInTrash = !projects.some(p => p.id === id);
+        const projectName = projects.find(p => p.id === id)?.name;
+        const { error } = await supabase
+            .from('projects')
+            .delete()
+            .eq('id', id);
+        if (error) throw error;
+        setProjects(prev => prev.filter(p => p.id !== id));
+        if (wasInTrash) setTrashedCount(prev => Math.max(0, prev - 1));
+        logAudit('project.permanent_delete', id, { project_name: projectName });
+    };
+
+    const archiveProject = async (id: string) => {
+        if (!user) return;
+        const projectName = projects.find(p => p.id === id)?.name;
+        const { error } = await supabase
+            .from('projects')
+            .update({ archived_at: new Date().toISOString() })
+            .eq('id', id);
+        if (error) throw error;
+        setProjects(prev => prev.map(p =>
+            p.id === id ? { ...p, archivedAt: new Date().toISOString() } : p
+        ));
+        logAudit('project.archive', id, { project_name: projectName });
+    };
+
+    const unarchiveProject = async (id: string) => {
+        if (!user) return;
+        const projectName = projects.find(p => p.id === id)?.name;
+        const { error } = await supabase
+            .from('projects')
+            .update({ archived_at: null })
+            .eq('id', id);
+        if (error) throw error;
+        setProjects(prev => prev.map(p =>
+            p.id === id ? { ...p, archivedAt: null } : p
+        ));
+        logAudit('project.unarchive', id, { project_name: projectName });
+    };
+
+    const duplicateProject = async ({ id, name, copyDocs }: DuplicateProjectOptions): Promise<string | null> => {
+        if (!user) return null;
+        try {
+            // Fetch source project
+            const { data: source, error: srcErr } = await supabase
+                .from('projects')
+                .select('description, notes')
+                .eq('id', id)
+                .single();
+            if (srcErr || !source) throw srcErr ?? new Error('Source project not found');
+
+            // Insert new project (trigger auto-adds user as owner in project_members)
+            const { data: newProject, error: insertErr } = await supabase
+                .from('projects')
+                .insert({
+                    user_id: user.id,
+                    name,
+                    description: source.description,
+                    notes: source.notes,
+                })
+                .select()
+                .single();
+            if (insertErr || !newProject) throw insertErr ?? new Error('Insert failed');
+
+            if (copyDocs) {
+                // Copy requirement_docs rows (storage copy handled in Phase 3)
+                const { data: srcDocs } = await supabase
+                    .from('requirement_docs')
+                    .select('*')
+                    .eq('project_id', id);
+
+                if (srcDocs && srcDocs.length > 0) {
+                    const copies = srcDocs.map(d => ({
+                        project_id: newProject.id,
+                        title: d.title,
+                        type: d.type,
+                        content: d.content,
+                        section_statuses: d.section_statuses,
+                        status: 'draft' as const,
+                        current_version: 1,
+                        last_modified: new Date().toISOString(),
+                    }));
+                    await supabase.from('requirement_docs').insert(copies);
+                }
+            }
+
+            await fetchProjects();
+            logAudit('project.duplicate', newProject.id, { source_id: id, project_name: name });
+            return newProject.id;
+        } catch (error) {
+            console.error('Error duplicating project:', error);
+            return null;
+        }
+    };
+
+    const fetchTrashedProjects = async (): Promise<Project[]> => {
+        if (!user) return [];
+        try {
+            // Fetch soft-deleted projects visible to this user (RLS allows it)
+            const { data: trashedData, error } = await supabase
+                .from('projects')
+                .select('*')
+                .not('deleted_at', 'is', null)
+                .order('deleted_at', { ascending: false });
+
+            if (error) throw error;
+            if (!trashedData || trashedData.length === 0) return [];
+
+            // Filter to projects where user is owner or editor
+            const projectIds = trashedData.map(p => p.id);
+            const { data: memberRows } = await supabase
+                .from('project_members')
+                .select('project_id, role')
+                .eq('user_id', user.id)
+                .in('project_id', projectIds)
+                .in('role', ['owner', 'editor']);
+
+            const allowedIds = new Set((memberRows || []).map(m => m.project_id));
+            const roleByProject: Record<string, string> = {};
+            for (const m of memberRows || []) roleByProject[m.project_id] = m.role;
+
+            // Fetch owner names
+            const ownerIds = [...new Set(trashedData.map(p => p.user_id))];
+            const { data: ownerProfiles } = await supabase
+                .from('profiles')
+                .select('id, full_name')
+                .in('id', ownerIds);
+            const ownerNameById: Record<string, string> = {};
+            for (const prof of ownerProfiles || []) {
+                if (prof.full_name) ownerNameById[prof.id] = prof.full_name;
+            }
+
+            return trashedData
+                .filter(p => allowedIds.has(p.id))
+                .map(p => ({
+                    id: p.id,
+                    name: p.name,
+                    description: p.description ?? '',
+                    notes: p.notes ?? undefined,
+                    createdAt: p.created_at,
+                    updatedAt: p.updated_at ?? p.created_at,
+                    archivedAt: p.archived_at ?? null,
+                    deletedAt: p.deleted_at ?? null,
+                    requirementDocs: [],
+                    documents: [],
+                    userRole: (roleByProject[p.id] || (p.user_id === user.id ? 'owner' : 'viewer')) as 'owner' | 'editor' | 'viewer',
+                    isAdminView: false,
+                    memberCount: 0,
+                    ownerName: ownerNameById[p.user_id],
+                }));
+        } catch (error) {
+            console.error('Error fetching trashed projects:', error);
+            return [];
+        }
+    };
+
+    // ── Project metadata ─────────────────────────────────────────────────────
+
     const updateProject = async (projectId: string, updates: Partial<Pick<Project, 'name' | 'description' | 'notes'>>) => {
         if (!user) return;
         try {
@@ -626,9 +860,17 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
         <ProjectContext.Provider value={{
             projects,
             loading,
+            trashedCount,
             refreshProjects: fetchProjects,
             addProject,
             updateProject,
+            softDeleteProject,
+            restoreProject,
+            permanentlyDeleteProject,
+            archiveProject,
+            unarchiveProject,
+            duplicateProject,
+            fetchTrashedProjects,
             deleteProjectDocument,
             deleteRequirementDoc,
             saveRequirementDoc,

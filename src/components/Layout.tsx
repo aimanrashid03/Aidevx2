@@ -1,5 +1,5 @@
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, LogOut, ChevronLeft, ChevronRight, FolderOpen, ChevronDown, ShieldAlert, Palette } from 'lucide-react';
+import { LayoutDashboard, LogOut, ChevronLeft, ChevronRight, FolderOpen, ChevronDown, ShieldAlert, Palette, Trash2 } from 'lucide-react';
 import clsx from 'clsx';
 import { useState, useEffect, useRef } from 'react';
 import { useProjects } from '../context/ProjectContext';
@@ -46,7 +46,7 @@ function getInitials(name: string) {
 export default function Layout() {
     const location = useLocation();
     const navigate = useNavigate();
-    const { projects } = useProjects();
+    const { projects, trashedCount } = useProjects();
     const { profile, session, loading, signOut } = useAuth();
     const { theme, setTheme } = useTheme();
 
@@ -279,6 +279,45 @@ export default function Layout() {
                                         : "text-slate-400 group-hover:text-[var(--accent-600)]"
                                 )} />
                                 {!isCollapsed && <span className="whitespace-nowrap font-medium">Document Repository</span>}
+                            </Link>
+                        </div>
+
+                        {/* Trash */}
+                        <div className="group relative">
+                            <Link
+                                to="/trash"
+                                className={clsx(
+                                    "flex items-center gap-2.5 px-3 py-1.5 rounded-lg transition-all border text-sm overflow-hidden",
+                                    location.pathname.startsWith('/trash')
+                                        ? "border-rose-200 bg-rose-50 font-medium text-rose-700"
+                                        : "border-transparent text-slate-900 hover:bg-rose-50 hover:text-rose-600",
+                                    isCollapsed ? "justify-center px-0" : ""
+                                )}
+                                title={isCollapsed ? "Trash" : undefined}
+                            >
+                                <div className="relative shrink-0">
+                                    <Trash2 size={17} className={clsx(
+                                        "flex-shrink-0 transition-colors",
+                                        location.pathname.startsWith('/trash')
+                                            ? "text-rose-700"
+                                            : "text-slate-400 group-hover:text-rose-500"
+                                    )} />
+                                    {isCollapsed && trashedCount > 0 && (
+                                        <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-rose-500 text-[8px] font-bold text-white leading-none">
+                                            {trashedCount > 9 ? '9+' : trashedCount}
+                                        </span>
+                                    )}
+                                </div>
+                                {!isCollapsed && (
+                                    <>
+                                        <span className="whitespace-nowrap font-medium flex-1">Trash</span>
+                                        {trashedCount > 0 && (
+                                            <span className="ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-rose-100 text-rose-600 shrink-0">
+                                                {trashedCount}
+                                            </span>
+                                        )}
+                                    </>
+                                )}
                             </Link>
                         </div>
 
