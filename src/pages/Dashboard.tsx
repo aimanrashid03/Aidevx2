@@ -28,6 +28,21 @@ function getInitials(name: string) {
     return name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
 }
 
+function formatRelativeTime(iso: string): string {
+    const ms = Date.now() - new Date(iso).getTime();
+    const sec = Math.max(1, Math.floor(ms / 1000));
+    if (sec < 60) return 'just now';
+    const min = Math.floor(sec / 60);
+    if (min < 60) return `${min}m ago`;
+    const hr = Math.floor(min / 60);
+    if (hr < 24) return `${hr}h ago`;
+    const day = Math.floor(hr / 24);
+    if (day < 30) return `${day}d ago`;
+    const mo = Math.floor(day / 30);
+    if (mo < 12) return `${mo}mo ago`;
+    return `${Math.floor(mo / 12)}y ago`;
+}
+
 export default function Dashboard() {
     const { projects, loading, archiveProject, unarchiveProject, softDeleteProject, permanentlyDeleteProject, restoreProject } = useProjects();
     const { profile } = useAuth();
@@ -365,40 +380,49 @@ export default function Dashboard() {
 
                                             {/* Card footer */}
                                             <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
-                                                <div className="flex items-center gap-3">
+                                                {/* Left: avatar + two-line stack (OWNER on top, name + collaborators below) */}
+                                                <div className="flex items-center gap-2 min-w-0">
                                                     {project.ownerName && (
-                                                        <div className="flex items-center gap-2">
-                                                            <div className="flex flex-col items-center">
-                                                                <div
-                                                                    className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white"
-                                                                    style={{ background: 'var(--accent-600)' }}
-                                                                >
-                                                                    {getInitials(project.ownerName)}
-                                                                </div>
+                                                        <>
+                                                            <div
+                                                                className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0"
+                                                                style={{ background: 'var(--accent-600)' }}
+                                                            >
+                                                                {getInitials(project.ownerName)}
+                                                            </div>
+                                                            <div className="flex flex-col min-w-0">
                                                                 <span
-                                                                    className="text-[10px] font-bold uppercase tracking-wider mt-0.5"
+                                                                    className="text-[10px] font-bold uppercase tracking-wider leading-none mb-0.5"
                                                                     style={{ color: 'var(--accent-500)' }}
                                                                 >
                                                                     Owner
                                                                 </span>
+                                                                <div className="flex items-center gap-1.5 min-w-0">
+                                                                    <span className="text-[12px] text-slate-900 font-semibold truncate">
+                                                                        {project.ownerName.split(' ')[0]}
+                                                                    </span>
+                                                                    {otherMembers > 0 && (
+                                                                        <span
+                                                                            className="text-[11px] font-semibold whitespace-nowrap"
+                                                                            style={{ color: 'var(--accent-600)' }}
+                                                                        >
+                                                                            +{otherMembers} collaborator{otherMembers > 1 ? 's' : ''}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
                                                             </div>
-                                                            <span className="text-[11px] text-slate-600 font-medium leading-tight">
-                                                                {project.ownerName.split(' ')[0]}
-                                                            </span>
-                                                        </div>
-                                                    )}
-                                                    {otherMembers > 0 && (
-                                                        <span
-                                                            className="text-[10px] font-bold px-2 py-0.5 rounded-full"
-                                                            style={{ background: 'var(--accent-50)', color: 'var(--accent-700)' }}
-                                                        >
-                                                            +{otherMembers} member{otherMembers > 1 ? 's' : ''}
-                                                        </span>
+                                                        </>
                                                     )}
                                                 </div>
-                                                <div className="flex items-center gap-1 text-slate-900 opacity-0 group-hover:opacity-100 transition-all transform translate-x-[-4px] group-hover:translate-x-0 font-bold uppercase tracking-wider text-[10px]">
-                                                    Open
-                                                    <ArrowRight size={12} />
+                                                {/* Right: Open hover on top, timestamp below */}
+                                                <div className="flex flex-col items-end shrink-0 gap-0.5">
+                                                    <div className="flex items-center gap-1 text-slate-900 opacity-0 group-hover:opacity-100 transition-all transform translate-x-[-4px] group-hover:translate-x-0 font-bold uppercase tracking-wider text-[10px]">
+                                                        Open
+                                                        <ArrowRight size={12} />
+                                                    </div>
+                                                    <span className="text-[10px] text-slate-400 font-medium">
+                                                        {formatRelativeTime(project.createdAt)}
+                                                    </span>
                                                 </div>
                                             </div>
                                         </div>
