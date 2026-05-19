@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Loader2, CheckCircle2, AlertTriangle, XCircle, FileText, Sparkles } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
+import { useGenerationQueue } from '../../hooks/useGenerationQueue'
 
 interface AutoGenerateProgressProps {
     projectId: string
@@ -54,10 +55,16 @@ export default function AutoGenerateProgress({
     onCompleteRef.current = onComplete
     const selectedDocumentPathsRef = useRef(selectedDocumentPaths)
     selectedDocumentPathsRef.current = selectedDocumentPaths
+    const projectNameRef = useRef(projectName)
+    projectNameRef.current = projectName
+
+    const { runningCount, position, registerJob, finishJob } = useGenerationQueue()
+    const jobIdRef = useRef<string | null>(null)
 
     const startGeneration = useCallback(async () => {
         const controller = new AbortController()
         abortRef.current = controller
+        let myJobId: string | null = null
 
         try {
             console.log('[AutoGen] Getting session...')
@@ -79,7 +86,7 @@ export default function AutoGenerateProgress({
                         projectId,
                         docType,
                         selectedDocumentPaths: selectedDocumentPathsRef.current,
-                        projectName,
+                        projectName: projectNameRef.current,
                         docTitle,
                     }),
                     signal: controller.signal,
@@ -96,6 +103,12 @@ export default function AutoGenerateProgress({
             }
 
             setPhase('generating')
+
+            // Register the queue row only once generation is genuinely underway.
+            // Attempts aborted before this point (StrictMode throwaway mount,
+            // dep-change re-runs) never reach here, so they create no row.
+            myJobId = await registerJob(projectId, docType)
+            jobIdRef.current = myJobId
 
             const reader = response.body.getReader()
             const decoder = new TextDecoder()
@@ -170,6 +183,7 @@ export default function AutoGenerateProgress({
                                 return base.map(s => s.title === event.section ? { ...s, status: 'error', error: event.error } : s)
                             })
                         } else if (event.type === 'complete') {
+                            if (myJobId) finishJob(myJobId, 'complete')
                             sessionStorage.removeItem('autoGenInProgress')
                             setPhase('complete')
                             onCompleteRef.current({
@@ -179,6 +193,7 @@ export default function AutoGenerateProgress({
                                 publicUrl: event.publicUrl,
                             })
                         } else if (event.type === 'error') {
+                            if (myJobId) finishJob(myJobId, 'error')
                             sessionStorage.removeItem('autoGenInProgress')
                             setPhase('error')
                             setFatalError(event.message)
@@ -189,11 +204,15 @@ export default function AutoGenerateProgress({
                 }
             }
         } catch (err) {
-            if ((err as Error).name === 'AbortError') return
+            if ((err as Error).name === 'AbortError') {
+                if (myJobId) finishJob(myJobId, 'error')
+                return
+            }
+            if (myJobId) finishJob(myJobId, 'error')
             setPhase('error')
             setFatalError((err as Error).message || 'Connection failed')
         }
-    }, [projectId, docType, projectName, docTitle])
+    }, [projectId, docType, docTitle, registerJob, finishJob])
 
     useEffect(() => {
         if (startedRef.current) return
@@ -228,6 +247,7 @@ export default function AutoGenerateProgress({
                 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
                 const publicUrl = `${supabaseUrl}/storage/v1/object/public/documents/${data.storage_path.replace('documents/', '')}`
                 cancelled = true
+                if (jobIdRef.current) finishJob(jobIdRef.current, 'complete')
                 sessionStorage.removeItem('autoGenInProgress')
                 setPhase('complete')
                 onCompleteRef.current({
@@ -243,7 +263,7 @@ export default function AutoGenerateProgress({
 
         const timer = setTimeout(poll, 5000)
         return () => { cancelled = true; clearTimeout(timer) }
-    }, [phase, pendingDocId])
+    }, [phase, pendingDocId, finishJob])
 
     const handleCancel = () => {
         abortRef.current?.abort()
@@ -272,6 +292,24 @@ export default function AutoGenerateProgress({
                         {projectName} &mdash; {docTitle}
                     </p>
                 </div>
+
+                {/* Queue status — only shown when others are also generating */}
+                {runningCount > 1 && (
+                    <div className="flex justify-center mb-6">
+                        <div
+                            className="inline-flex flex-col items-center gap-0.5 px-4 py-2 rounded-lg border text-center"
+                            style={{ borderColor: 'var(--accent-200)', background: 'var(--accent-50)' }}
+                        >
+                            <span className="text-xs font-medium" style={{ color: 'var(--accent-700)' }}>
+                                {runningCount} generations running across the team
+                                {position ? ` · you are #${position}` : ''}
+                            </span>
+                            <span className="text-[10px] text-slate-500">
+                                Larger queue means slower generation.
+                            </span>
+                        </div>
+                    </div>
+                )}
 
                 {/* Progress bar */}
                 <div className="mb-6">
