@@ -7,7 +7,7 @@
 
 import PizZip from 'https://esm.sh/pizzip@3.1.7'
 import type { ServerDocSection } from './brsStructure.ts'
-import { markdownToOoxml, generateNumberingEntries, diagramOoxml } from './markdownToOoxml.ts'
+import { markdownToOoxml, buildNumberingXml, diagramOoxml, ListIdAllocator } from './markdownToOoxml.ts'
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -297,6 +297,77 @@ function escapeXml(text: string): string {
         .replace(/"/g, '&quot;')
 }
 
+// ── Header table scaler ─────────────────────────────────────────────────────
+
+/**
+ * Scale a header table to targetWidth and zero the negative tblInd bleed.
+ * Uses exact-value string replacement for tblW (more reliable than regex on
+ * large XML) and simple patterns for gridCol/tcW/tblInd.
+ * Rounding drift absorbed into the last gridCol.
+ */
+function scaleHeaderTable(xml: string, targetWidth: number): string {
+    // Extract current tblW value (digits only — tblW is always positive)
+    const tblWMatch = xml.match(/\btblW\b[^>]*\bw:w="(\d+)"/)
+    if (!tblWMatch) {
+        console.error('[scaleHeaderTable] tblW not found in header XML')
+        return xml
+    }
+    const currentWidth = parseInt(tblWMatch[1])
+    if (currentWidth <= 0 || currentWidth === targetWidth) return xml
+    const ratio = targetWidth / currentWidth
+    console.log(`[scaleHeaderTable] currentWidth=${currentWidth} targetWidth=${targetWidth}`)
+
+    // Scale tblW — simple exact-value string replace avoids regex backtracking
+    // issues on large XML. Confirmed only one occurrence per header file.
+    let result = xml.replace(`w:w="${currentWidth}" w:type="dxa"`, `w:w="${targetWidth}" w:type="dxa"`)
+    // Verify the replacement landed
+    if (result.includes(`w:w="${currentWidth}"`)) {
+        // Fallback: attribute order might differ
+        result = xml.replace(new RegExp(`(tblW[^>]*)w:w="${currentWidth}"`), `$1w:w="${targetWidth}"`)
+    }
+    console.log(`[scaleHeaderTable] tblW after: ${result.match(/tblW[^>]*w:w="(\d+)"/)?.[1]}`)
+
+    // Scale <w:gridCol w:w="..."> — proportional, drift into last column
+    const gridCols: number[] = []
+    const gridColRe = /w:gridCol w:w="(\d+)"/g
+    let gcm: RegExpExecArray | null
+    while ((gcm = gridColRe.exec(result)) !== null) gridCols.push(parseInt(gcm[1]))
+    if (gridCols.length > 0) {
+        const scaled = gridCols.map(w => Math.round(w * ratio))
+        const drift = targetWidth - scaled.reduce((a, b) => a + b, 0)
+        scaled[scaled.length - 1] += drift
+        let colIdx = 0
+        result = result.replace(/w:gridCol w:w="(\d+)"/g, () => `w:gridCol w:w="${scaled[colIdx++]}"`)
+        console.log(`[scaleHeaderTable] gridCols [${gridCols.join(',')}] → [${scaled.join(',')}]`)
+    }
+
+    // Scale <w:tcW w:w="..."> proportionally
+    result = result.replace(/w:tcW w:w="(\d+)"/g,
+        (_, w) => `w:tcW w:w="${Math.round(parseInt(w) * ratio)}"`)
+
+    // Zero the tblInd negative bleed: replace the w:w value on the tblInd element.
+    // The template has w:w="-606"; we set it to "0" so the table is flush with the body.
+    result = result.replace(/(<w:tblInd\b[^>]*)w:w="-\d+"/, '$1w:w="0"')
+
+    return result
+}
+
+// ── TOC field builder ───────────────────────────────────────────────────────
+
+/** Build a complex TOC field paragraph for SENARAI RAJAH / SENARAI JADUAL index pages. */
+function tocFieldXml(seqType: 'Rajah' | 'Jadual'): string {
+    const label = seqType === 'Rajah' ? 'Rajah' : 'Jadual'
+    return (
+        `<w:p><w:pPr><w:pStyle w:val="Content"/></w:pPr>` +
+        `<w:r><w:rPr/><w:fldChar w:fldCharType="begin" w:dirty="true"/></w:r>` +
+        `<w:r><w:instrText xml:space="preserve"> TOC \\h \\z \\c "${seqType}" </w:instrText></w:r>` +
+        `<w:r><w:fldChar w:fldCharType="separate"/></w:r>` +
+        `<w:r><w:t xml:space="preserve">(Senarai ${label} akan dikemas kini apabila dokumen dibuka)</w:t></w:r>` +
+        `<w:r><w:fldChar w:fldCharType="end"/></w:r>` +
+        `</w:p>`
+    )
+}
+
 // ── Main builder ────────────────────────────────────────────────────────────
 
 /** Rendered diagram image data for embedding into DOCX. */
@@ -365,32 +436,73 @@ export async function buildFromTemplate(
         .filter(r => r.section.autoGenerate)
         .sort((a, b) => b.contentStart - a.contentStart)
 
-    // Assign each section a unique numId pair so numbered lists restart at 1
-    // per section. Start at 100 to avoid colliding with template numIds.
-    const NUM_ID_BASE = 100
-    const ABSTRACT_ID_BASE = 50
+    // Parse numbering.xml once to find the highest existing numId and abstractNumId
+    // so our injected ids are guaranteed not to collide with template definitions.
+    const numberingXmlRaw = zip.file('word/numbering.xml')?.asText() ?? ''
+    let maxNumId = 0
+    let maxAbstractId = 0
+    const numIdRe = /<w:num w:numId="(\d+)"/g
+    const absIdRe = /<w:abstractNum w:abstractNumId="(\d+)"/g
+    let _m: RegExpExecArray | null
+    while ((_m = numIdRe.exec(numberingXmlRaw)) !== null) maxNumId = Math.max(maxNumId, parseInt(_m[1]))
+    while ((_m = absIdRe.exec(numberingXmlRaw)) !== null) maxAbstractId = Math.max(maxAbstractId, parseInt(_m[1]))
 
-    // Inject numbering definitions into word/numbering.xml before processing
-    try {
-        const numberingXml = zip.file('word/numbering.xml')?.asText()
-        if (numberingXml) {
-            const entries = generateNumberingEntries(sortedRanges.length, NUM_ID_BASE, ABSTRACT_ID_BASE)
-            const updated = numberingXml.replace('</w:numbering>', entries + '\n</w:numbering>')
-            zip.file('word/numbering.xml', updated)
-        }
-    } catch {
-        // Non-fatal: fall back to default numId=5 behaviour
+    // Shared allocator — each distinct numbered list gets its own numId starting
+    // above the template's highest. One bullet numId is allocated per section.
+    let nextNumId = maxNumId + 1
+    const numberedIds: number[] = []
+    const bulletIds: number[] = []
+    const allocator: ListIdAllocator = {
+        allocNumbered() { const id = nextNumId++; numberedIds.push(id); return id },
+        allocBullet()   { const id = nextNumId++; bulletIds.push(id); return id },
     }
 
-    for (let idx = 0; idx < sortedRanges.length; idx++) {
-        const range = sortedRanges[idx]
+    // Generate content for all sections first (this populates numberedIds/bulletIds)
+    // then inject numbering definitions — required ordering: content loop must run
+    // before we know which numIds were actually allocated.
+    for (const range of sortedRanges) {
         const markdown = generatedContent.get(range.section.title)
         if (!markdown) continue
-
-        const numberedNumId = NUM_ID_BASE + idx * 2
-        const bulletNumId = NUM_ID_BASE + idx * 2 + 1
-        const ooxmlFragment = markdownToOoxml(markdown, numberedNumId, bulletNumId)
+        const ooxmlFragment = markdownToOoxml(markdown, allocator)
         elements = replaceContentRange(elements, range, ooxmlFragment)
+    }
+
+    // Inject numbering definitions with schema-correct ordering:
+    //   abstractXml → after the last </w:abstractNum> (all abstractNum before num)
+    //   numXml      → before </w:numbering>
+    if (numberingXmlRaw && (numberedIds.length > 0 || bulletIds.length > 0)) {
+        try {
+            const absDecimalId = maxAbstractId + 1
+            const absBulletId  = maxAbstractId + 2
+            const { abstractXml, numXml } = buildNumberingXml(numberedIds, bulletIds, absDecimalId, absBulletId)
+
+            let updated = numberingXmlRaw
+            const CLOSE_ABSTRACT = '</w:abstractNum>'
+            const lastAbsEnd = updated.lastIndexOf(CLOSE_ABSTRACT)
+            if (lastAbsEnd >= 0) {
+                const insertPos = lastAbsEnd + CLOSE_ABSTRACT.length
+                updated = updated.slice(0, insertPos) + '\n' + abstractXml + updated.slice(insertPos)
+            } else {
+                // No existing abstractNums — insert before first <w:num> or at end
+                const firstNum = updated.indexOf('<w:num ')
+                updated = firstNum >= 0
+                    ? updated.slice(0, firstNum) + abstractXml + '\n' + updated.slice(firstNum)
+                    : updated.replace('</w:numbering>', abstractXml + '\n</w:numbering>')
+            }
+            // <w:num> blocks must precede <w:numIdMacAtCleanup> (CT_Numbering
+            // schema: num* then numIdMacAtCleanup?). Inserting before
+            // </w:numbering> would place them after numIdMacAtCleanup, making
+            // the file schema-invalid — Word then silently drops the numbering.
+            const cleanupIdx = updated.indexOf('<w:numIdMacAtCleanup')
+            if (cleanupIdx >= 0) {
+                updated = updated.slice(0, cleanupIdx) + numXml + '\n' + updated.slice(cleanupIdx)
+            } else {
+                updated = updated.replace('</w:numbering>', numXml + '\n</w:numbering>')
+            }
+            zip.file('word/numbering.xml', updated)
+        } catch (e) {
+            console.error('[numbering] injection failed:', (e as Error).message)
+        }
     }
 
     // ── Inject diagram images ──────────────────────────────────────────────
@@ -434,8 +546,9 @@ export async function buildFromTemplate(
 
             // 3. Generate diagram OOXML and append to the section's content
             const docPrId = DOC_PR_ID_BASE + diagramCounter
-            const caption = `Rajah: ${sectionTitle}`
-            const diagXml = diagramOoxml(relId, img.width, img.height, caption, docPrId)
+            const sectionDef = structure.find(s => s.title === sectionTitle)
+            const captionDesc = sectionDef?.diagramHint ?? sectionTitle
+            const diagXml = diagramOoxml(relId, img.width, img.height, captionDesc, docPrId)
 
             const contentIdx = titleToLastContentIndex.get(sectionTitle)
             if (contentIdx !== undefined) {
@@ -463,6 +576,32 @@ export async function buildFromTemplate(
 
     // Update title page
     elements = updateTitlePage(elements, projectName, docTitle)
+
+    // Inject TOC field paragraphs immediately after the SENARAI RAJAH and
+    // SENARAI JADUAL headings. Done after all content and diagram injection
+    // to avoid index-shift complications — we search the live elements array.
+    for (const { title, seqType } of [
+        { title: 'SENARAI RAJAH',  seqType: 'Rajah'  as const },
+        { title: 'SENARAI JADUAL', seqType: 'Jadual' as const },
+    ]) {
+        const normTitle = normalizeTitle(title)
+        const headingIdx = elements.findIndex(
+            el => headingLevel(el) !== null && normalizeTitle(el.text) === normTitle
+        )
+        if (headingIdx >= 0) {
+            const tocEl: BodyElement = {
+                index: headingIdx + 1,
+                xml: tocFieldXml(seqType),
+                tag: 'other',
+                text: '',
+            }
+            elements = [
+                ...elements.slice(0, headingIdx + 1),
+                tocEl,
+                ...elements.slice(headingIdx + 1),
+            ]
+        }
+    }
 
     // Ensure portrait orientation in the body-level sectPr
     if (sectPrXml) {

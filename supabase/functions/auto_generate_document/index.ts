@@ -401,6 +401,17 @@ serve(async (req) => {
                     })
                 }
 
+                // If the client disconnected before we reach the build phase
+                // (React StrictMode throwaway mount, user Cancel, or an early
+                // SSE abort), stop here — do NOT build/upload/upsert. Otherwise
+                // every aborted attempt would leave a stray requirement_docs row.
+                // A genuine SSE drop *during* Phase 3 happens after this check,
+                // so the frontend's polling fallback still recovers that case.
+                if (req.signal.aborted) {
+                    console.log('[auto-gen] Client disconnected before build — skipping document creation')
+                    return
+                }
+
                 // ── Phase 3: Build DOCX using pre-fetched template ───────────
                 sendEvent({
                     type: 'progress',
