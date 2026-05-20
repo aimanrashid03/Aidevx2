@@ -113,18 +113,14 @@ export default function DocumentEditor() {
     }, [aiPanelVisible, showAiPanel, notify])
 
     // ─── BRS auto-generate reload guard ────────────────────────────────────────
-    // Prevents silent re-generation if the user reloads the page mid-generation.
+    // Prevents silent re-generation only if the user reloads the page mid-run.
+    // Users may freely generate multiple BRS docs — the existence of a prior
+    // BRS does NOT block a new generation.
     useEffect(() => {
         if (!isAutoGenerate || !project) return
 
-        // Guard 1: project already has a saved BRS — navigate there instead of re-generating
-        const existingBRS = project.requirementDocs.find(d => d.type === 'BRS' && d.storagePath)
-        if (existingBRS) {
-            navigate(`/editor/${projectId}/${existingBRS.id}`, { replace: true })
-            return
-        }
-
-        // Guard 2: a recent in-progress session entry exists — check if the doc was saved
+        // If a recent in-progress session entry exists, check whether the doc
+        // was already saved — if so, the reload landed after completion.
         const raw = sessionStorage.getItem('autoGenInProgress')
         if (!raw) return
         try {
